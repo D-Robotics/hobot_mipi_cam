@@ -1,5 +1,10 @@
 # Changelog for package mipi_cam
 
+tros_2.2.0 (2024-04-01)
+------------------
+1. 适配ros2 humble零拷贝。
+2. 新增中英双语README。
+
 tros_2.1.8 (2024-3-6)
 ------------------
 1. 配置文件路径由`/opt/tros/lib`变更为`/opt/tros/${TROS_DISTRO}/lib`。
