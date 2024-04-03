@@ -22,7 +22,7 @@
 #include <fstream>
 #include "rcpputils/env.hpp"
 #include "rcutils/env.h"
-  
+
 #define PUB_BUF_NUM 5
 namespace mipi_cam {
 
@@ -191,7 +191,7 @@ void MipiCamNode::init() {
     // 创建hbmempub
     publisher_hbmem_ =
         this->create_publisher<hbm_img_msgs::msg::HbmMsg1080P>(
-            "hbmem_img", PUB_BUF_NUM);
+            "hbmem_img", rclcpp::SensorDataQoS());
   }
 
   // start the camera

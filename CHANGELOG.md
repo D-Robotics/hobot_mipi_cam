@@ -5,6 +5,7 @@ tros_2.2.0 (2024-04-01)
 1. 适配ros2 humble零拷贝。
 2. 新增中英双语README。
 3. 新增`frame_ts_type`配置项，支持`realtime`和`sensor`（默认）配置参数，用于计算通信延迟。
+4. 零拷贝通信使用的qos的Reliability由RMW_QOS_POLICY_RELIABILITY_RELIABLE（rclcpp::QoS()）变更为RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT（rclcpp::SensorDataQoS()）。
 
 tros_2.1.8 (2024-3-6)
 ------------------
