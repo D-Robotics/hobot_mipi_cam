@@ -3,7 +3,6 @@
 # 功能介绍
 
 对已适配的MIPI接口摄像头进行配置，并将采集的图像数据以ROS标准图像消息或者零拷贝（hbmem）图像消息进行发布，供需要使用图像数据的其他模块订阅。
-本文档的说明是针对tros版本的说明和使用方法，关于tros humble版本前参考[tros-humbel](README_humble.md)
 
 # 物料清单
 
@@ -31,21 +30,36 @@
 
 在RDK系统的终端中运行如下指令，即可快速安装：
 
+tros foxy 版本
 ```bash
 sudo apt update
 sudo apt install -y tros-mipi-cam
+```
+tros humbel 版本
+```bash
+sudo apt update
+sudo apt install -y tros-humble-mipi-cam
 ```
 
 ## 启动相机
 
 在RDK系统的终端中运行如下指令，可使用默认相机配置，自适应启动已连接的相机：
 
+tros foxy 版本
 ```bash
 # 配置 tros.b 环境：
 source /opt/tros/setup.bash
 # launch 方式启动
 ros2 launch mipi_cam mipi_cam.launch.py
 ```
+tros humble 版本
+```bash
+# 配置 tros.b humble 环境：
+source /opt/tros/humble/setup.bash
+# launch 方式启动
+ros2 launch mipi_cam mipi_cam.launch.py
+```
+
 mipi_cam.launch.py配置默认输出960*544分辨率NV12图像，发布的话题名称为/hbmem_img
 
 如需使用其他分比率或者图像格式可以使用对应的launch文件，比如：
@@ -69,6 +83,7 @@ mipi_cam.launch.py配置默认输出960*544分辨率NV12图像，发布的话题
 
 这里采用rqt_image_view方式实现图像可视化，需要在PC端安装ROS2 Humble版本。由于发布的是原始数据，需要编码JPEG图像提高传输效率，另起一个终端用于订阅 MIPI 数据并编码为JPEG。
 
+#### tros foxy 版本
 ```shell
 source /opt/tros/setup.bash
 ros2 launch hobot_codec hobot_codec_encode.launch.py codec_out_format:=jpeg codec_pub_topic:=/image_raw/compressed
@@ -82,6 +97,20 @@ source /opt/ros/foxy/local_setup.bash
 ros2 run rqt_image_view rqt_image_view
 ```
 
+#### tros humble 版本
+```shell
+source /opt/tros/humble/setup.bash
+ros2 launch hobot_codec hobot_codec_encode.launch.py codec_out_format:=jpeg codec_pub_topic:=/image_raw/compressed
+```
+
+保证PC与RDK X3处于同一网段，以Humble版本为例在PC上执行
+
+```shell
+# 配置ROS2环境
+source /opt/ros/humble/local_setup.bash
+ros2 run rqt_image_view rqt_image_view
+```
+
 选择话题/image_raw/compressed,图像效果如下：
 
 ![](./image/rqt-result.png)
@@ -90,7 +119,8 @@ ros2 run rqt_image_view rqt_image_view
 
 这里采用web端方式实现图像可视化，由于发布的是原始数据，需要编码JPEG图像，另起两个终端：一个进行订阅 MIPI 数据编码为JPEG，一个用于webservice发布。
 
- 打开一个新的终端
+#### tros foxy 版本
+打开一个新的终端
 ```shell
 source /opt/tros/local_setup.bash
 # 启动编码
@@ -99,6 +129,19 @@ ros2 launch hobot_codec hobot_codec_encode.launch.py
 另起一个终端
 ```shell
 source /opt/tros/local_setup.bash
+# 启动websocket
+ros2 launch websocket websocket.launch.py websocket_image_topic:=/image_jpeg websocket_only_show_image:=true
+```
+#### tros humble 版本
+打开一个新的终端
+```shell
+source /opt/tros/humble/local_setup.bash
+# 启动编码
+ros2 launch hobot_codec hobot_codec_encode.launch.py
+```
+另起一个终端
+```shell
+source /opt/tros/humble/local_setup.bash
 # 启动websocket
 ros2 launch websocket websocket.launch.py websocket_image_topic:=/image_jpeg websocket_only_show_image:=true
 ```
@@ -152,10 +195,17 @@ PC打开浏览器（chrome/firefox/edge）输入<http://IP:8000>（IP为地平�
 
    - 检查地平线RDK是否正常pub图像
 
+        tros foxy 版本
       ```shell
       source /opt/tros/setup.bash
       ros2 topic list
       ```
+
+        tros humble 版本
+      ```shell
+      source /opt/tros/humble/setup.bash
+      ros2 topic list
+      ```      
 
       输出：
 
