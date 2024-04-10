@@ -3,7 +3,6 @@ English| [简体中文](./README_cn.md)
 # Function Introduction
 
 Configure the MIPI interface camera that has been adapted, and publish the collected image data in the form of ROS standard image messages or zero-copy (hbmem) image messages for other modules that need to use image data to subscribe to.
-This document is an explanation and usage instructions for the tros version, refer to [tros-humbe](README_humble.md) for the tros humble version.
 
 # Bill of Materials
 
@@ -29,18 +28,35 @@ Taking the F37 camera as an example, the connection method with RDK X3 is as fol
 
 Run the following commands in the terminal of the RDK system to quickly install:
 
+tros foxy:
 ```bash
 sudo apt update
 sudo apt install -y tros-mipi-cam
+```
+
+tros humble:
+```bash
+sudo apt update
+sudo apt install -y ros-humble-ros-base
+sudo apt install -y tros-humble-mipi-cam
 ```
 
 ## Start Camera
 
 Run the following commands in the terminal of the RDK system to use the default camera configuration and adaptively start the connected camera:
 
+tros foxy:
 ```bash
 # Configure the tros.b environment:
 source /opt/tros/setup.bash
+# Launch to start
+ros2 launch mipi_cam mipi_cam.launch.py
+```
+
+tros humble:
+```bash
+# Configure the tros.b humble environment:
+source /opt/tros/humble/setup.bash
 # Launch to start
 ros2 launch mipi_cam mipi_cam.launch.py
 ```
@@ -66,6 +82,7 @@ If the program outputs the following information, it indicates that the node has
 
 Here, image visualization is achieved using the rqt_image_view in ROS2 Humble version installed on the PC side. Since raw data is being published, encoding the data into JPEG images can improve transmission efficiency. Open another terminal to subscribe to MIPI data and encode it as JPEG.
 
+#### tros foxy
 ```shell
 source /opt/tros/setup.bash
 ros2 launch hobot_codec hobot_codec_encode.launch.py codec_out_format:=jpeg codec_pub_topic:=/image_raw/compressed
@@ -79,6 +96,20 @@ source /opt/ros/foxy/local_setup.bash
 ros2 run rqt_image_view rqt_image_view
 ```
 
+#### tros humble
+```shell
+source /opt/tros/humble/setup.bash
+ros2 launch hobot_codec hobot_codec_encode.launch.py codec_out_format:=jpeg codec_pub_topic:=/image_raw/compressed
+```
+
+Ensure that the PC and RDK X3 are on the same network segment. For the humble version, execute the following command on the PC:
+
+```shell
+# Set up ROS2 environment
+source /opt/ros/humble/local_setup.bash
+ros2 run rqt_image_view rqt_image_view
+```
+
 Select the topic /image_raw/compressed to view the image as shown below:
 
 ![](./image/rqt-result.png)
@@ -87,6 +118,7 @@ Select the topic /image_raw/compressed to view the image as shown below:
 
 Here, image visualization is achieved through a web interface. Since raw data is published, encoding the data into JPEG images is necessary. Open two separate terminals: one for subscribing to MIPI data and encoding it as JPEG, and another for publishing the webservice.
 
+#### tros foxy
 Open a new terminal
 ```shell
 source /opt/tros/local_setup.bash
@@ -96,6 +128,20 @@ ros2 launch hobot_codec hobot_codec_encode.launch.py
 Open another terminal
 ```shell
 source /opt/tros/local_setup.bash
+# Start the websocket
+ros2 launch websocket websocket.launch.py websocket_image_topic:=/image_jpeg websocket_only_show_image:=true
+```
+
+#### tros humble
+Open a new terminal
+```shell
+source /opt/tros/humble/local_setup.bash
+# Start encoding
+ros2 launch hobot_codec hobot_codec_encode.launch.py
+```
+Open another terminal
+```shell
+source /opt/tros/humble/local_setup.bash
 # Start the websocket
 ros2 launch websocket websocket.launch.py websocket_image_topic:=/image_jpeg websocket_only_show_image:=true
 ```
@@ -147,8 +193,16 @@ Open a browser (chrome/firefox/edge) on your PC and enter <http://IP:8000> (wher
 
 4. If the PC-side ros2 topic list does not recognize the camera topics, troubleshoot as follows:- Check if the Horizon RDK is publishing images normally
 
+
+     tros foxy:
       ```shell
       source /opt/tros/setup.bash
+      ros2 topic list
+      ```
+
+     tros humble:
+      ```shell
+      source /opt/tros/humble/setup.bash
       ros2 topic list
       ```
 
