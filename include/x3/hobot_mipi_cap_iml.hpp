@@ -86,6 +86,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int entry_index_ = 0;
   int sensor_bus_ = 2;
   int pipeline_id_ = 0;
+  int vps_channel_ = 2; 
   std::vector<int> mipi_started_;
   std::vector<int> mipi_stoped_;
   std::map<int, BOARD_CONFIG_ST> board_config_m_;

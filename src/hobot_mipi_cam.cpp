@@ -98,10 +98,24 @@ class MipiCamIml : public MipiCam {
     builtin_interfaces::msg::Time & stamp,
     std::string & encoding,
     uint32_t & height, uint32_t & width,
+    uint32_t & step, std::vector<uint8_t> & data, std::string channel);
+
+  // grabs a new image from the camera
+  bool getCombineImage(
+    builtin_interfaces::msg::Time & stamp,
+    std::string & encoding,
+    uint32_t & height, uint32_t & width,
     uint32_t & step, std::vector<uint8_t> & data);
 
   // grabs a new hbmem's image hbmem from the camera
   bool getImageMem(
+    builtin_interfaces::msg::Time & stamp,
+    std::array<uint8_t, 12> & encoding,
+    uint32_t & height, uint32_t & width, uint32_t & step,
+    std::array<uint8_t, 6220800> & data, uint32_t & data_size, std::string channel);
+
+    // grabs a new hbmem's image hbmem from the camera
+  bool getCombineImageMem(
     builtin_interfaces::msg::Time & stamp,
     std::array<uint8_t, 12> & encoding,
     uint32_t & height, uint32_t & width, uint32_t & step,
@@ -168,6 +182,8 @@ int MipiCamIml::init(struct NodePara &para) {
   cap_info_.height = nodePare_.image_height_;
   cap_info_.fps = nodePare_.framerate_;
   cap_info_.channel_ = nodePare_.channel_;
+  cap_info_.device_mode_ = nodePare_.device_mode_;
+  cap_info_.dual_combine_ = nodePare_.dual_combine_;
 
   if (mipiCap_ptr_->initEnv() < 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
@@ -219,7 +235,7 @@ int MipiCamIml::start() {
     image_nv12_ = reinterpret_cast<camera_image_t *>(calloc(1, sizeof(camera_image_t)));
     image_nv12_->width = nodePare_.image_width_;
     image_nv12_->height = nodePare_.image_height_;
-    image_nv12_->image_size = nodePare_.image_width_ * nodePare_.image_height_ * 1.5;
+    image_nv12_->image_size = nodePare_.image_width_ * nodePare_.image_height_ * 1.5 * 2;
     image_nv12_->image = reinterpret_cast<char *>(calloc(image_nv12_->image_size, sizeof(char *)));
   }
   return ret;
@@ -243,7 +259,7 @@ bool MipiCamIml::getImage(builtin_interfaces::msg::Time &stamp,
                         uint32_t &height,
                         uint32_t &width,
                         uint32_t &step,
-                        std::vector<uint8_t> &data) {
+                        std::vector<uint8_t> &data, std::string channel) {
   if (!is_capturing_) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
       "[%s][%-%d] Camera isn't captureing", __FILE__, __func__, __LINE__);
@@ -265,10 +281,14 @@ bool MipiCamIml::getImage(builtin_interfaces::msg::Time &stamp,
     msStart = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
   }
   uint64_t timestamp;
-  int data_size = nodePare_.image_width_ * nodePare_.image_height_ * 1.5;
+  int data_size;
+  if (channel == "combine") {
+    data_size = nodePare_.image_width_ * nodePare_.image_height_ * 1.5 * 2;
+  } else {
+    data_size = nodePare_.image_width_ * nodePare_.image_height_ * 1.5;
+  }
   if ((nodePare_.out_format_name_ == "bgr8") && image_nv12_) {
-    if (mipiCap_ptr_->getFrame(
-          2,
+    if (mipiCap_ptr_->getFrame(channel,
           reinterpret_cast<int *>(&width),
           reinterpret_cast<int *>(&height),
           reinterpret_cast<void *>(image_nv12_->image),
@@ -286,28 +306,26 @@ bool MipiCamIml::getImage(builtin_interfaces::msg::Time &stamp,
   } else if (nodePare_.out_format_name_ == "gray") {
     data_size = nodePare_.image_width_ * nodePare_.image_height_;
     data.resize(data_size);  // step * height);
-    if (mipiCap_ptr_->getFrame(
-          2,
+    if (mipiCap_ptr_->getFrame(channel,
           reinterpret_cast<int *>(&width),
           reinterpret_cast<int *>(&height),
           reinterpret_cast<void *>(&data[0]),
           data_size,
           reinterpret_cast<unsigned int *>(&data_size),
           timestamp, true))
-    return false;
+      return false;
     encoding = "mono8";
     step = width;
   } else {
     data.resize(data_size);  // step * height);
-    if (mipiCap_ptr_->getFrame(
-          2,
+    if (mipiCap_ptr_->getFrame(channel,
           reinterpret_cast<int *>(&width),
           reinterpret_cast<int *>(&height),
           reinterpret_cast<void *>(&data[0]),
           data_size,
           reinterpret_cast<unsigned int *>(&data_size),
           timestamp))
-    return false;
+      return false;
     encoding = "nv12";
     step = width;
   }
@@ -320,7 +338,8 @@ bool MipiCamIml::getImage(builtin_interfaces::msg::Time &stamp,
   }
 
   RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cam"),
-             "hbmem enc=" << encoding.data()
+             "getImage channel=" << channel.data()
+             << ", enc=" << encoding.data()
              << ", width=" << width
              << ", height=" << height
              << ", step=" << step
@@ -331,6 +350,7 @@ bool MipiCamIml::getImage(builtin_interfaces::msg::Time &stamp,
   return true;
 }
 
+
 bool MipiCamIml::getImageMem(
     builtin_interfaces::msg::Time &stamp,
     std::array<uint8_t, 12> &encoding,
@@ -338,7 +358,7 @@ bool MipiCamIml::getImageMem(
     uint32_t &width,
     uint32_t &step,
     std::array<uint8_t, 6220800> &data,
-    uint32_t &data_size) {
+    uint32_t &data_size, std::string channel) {
   if (!is_capturing_) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
       "[%s][%-%d] Camera isn't captureing", __FILE__, __func__, __LINE__);
@@ -363,8 +383,7 @@ bool MipiCamIml::getImageMem(
   uint64_t timestamp;
   data_size = nodePare_.image_width_ * nodePare_.image_height_ * 1.5;
   if ((nodePare_.out_format_name_ == "bgr8") && image_nv12_) {
-    if (mipiCap_ptr_->getFrame(
-          2,
+    if (mipiCap_ptr_->getFrame(channel,
           reinterpret_cast<int *>(&width),
           reinterpret_cast<int *>(&height),
           reinterpret_cast<void *>(image_nv12_->image),
@@ -373,12 +392,15 @@ bool MipiCamIml::getImageMem(
           timestamp))
       return false;
     data_size = width * height * 3;
+    if (data_size > 6220800) {
+      RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "rgb image data size %d > HbmMsg1080P size(6220800)", data_size);
+      return false;
+    }
     NV12_TO_BGR24((unsigned char *)image_nv12_->image,
                   (unsigned char *)data.data(), width, height);
     memcpy(encoding.data(), "bgr8", strlen("bgr8"));
   } else if (nodePare_.out_format_name_ == "gray") {
-    if (mipiCap_ptr_->getFrame(
-          2,
+    if (mipiCap_ptr_->getFrame(channel,
           reinterpret_cast<int *>(&width),
           reinterpret_cast<int *>(&height),
           reinterpret_cast<void *>(data.data()),
@@ -388,8 +410,7 @@ bool MipiCamIml::getImageMem(
     return false;
      memcpy(encoding.data(), "mono8", strlen("mono8"));
   } else {
-    if (mipiCap_ptr_->getFrame(
-          2,
+    if (mipiCap_ptr_->getFrame(channel,
           reinterpret_cast<int *>(&width),
           reinterpret_cast<int *>(&height),
           reinterpret_cast<void *>(data.data()),
@@ -408,7 +429,8 @@ bool MipiCamIml::getImageMem(
     msEnd = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
   }
   RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cam"),
-             "enc=" << encoding.data()
+             "getImageMem channel=" << channel.data()
+             << ", enc=" << encoding.data()
              << ", width=" << width
              << ", height=" << height
              << ", step=" << step

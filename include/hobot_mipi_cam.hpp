@@ -57,7 +57,7 @@ class MipiCam
     builtin_interfaces::msg::Time & stamp,
     std::string & encoding,
     uint32_t & height, uint32_t & width, uint32_t & step,
-    std::vector<uint8_t> & data) = 0;
+    std::vector<uint8_t> & data, std::string channel) = 0;
 
   // grabs a new hbmem's image hbmem from the camera
   virtual bool getImageMem(
@@ -65,7 +65,7 @@ class MipiCam
     builtin_interfaces::msg::Time & stamp,
     std::array<uint8_t, 12> & encoding,
     uint32_t & height, uint32_t & width, uint32_t & step,
-    std::array<uint8_t, 6220800> & data, uint32_t & data_size) = 0;
+    std::array<uint8_t, 6220800> & data, uint32_t & data_size, std::string channel) = 0;
 
   // gen camera calibration
   virtual bool getCamCalibration(sensor_msgs::msg::CameraInfo& cam_info,

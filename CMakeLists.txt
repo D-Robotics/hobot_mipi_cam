@@ -70,6 +70,25 @@ elseif(PLATFORM_Rdkultra)
     ${CMAKE_SYSROOT}/usr/include/isp
     ${CMAKE_SYSROOT}/usr/include/vps/vpm
   )
+elseif(PLATFORM_X5)
+  message("build platform X5")
+  add_definitions(-DPLATFORM_X5)
+  set(PREFIX_PATH x5)
+  set(SRC_PLATFORM_FILE 
+    src/x5/sensor/f37_linear_1920x1080_raw10_30fps_1lane.c
+    src/x5/sensor/irs2875_linear_208x1413_raw12_15fps_2lane.c
+    src/x5/sensor/ov5640_linear_1920x1080_raw10_30fps_2lane.c
+    src/x5/sensor/sc035hgs_linear_640x480_raw10_30fps_1lane.c
+    src/x5/sensor/sc132gs_linear_896x896_raw10_10fps_2lane.c
+    src/x5/sensor/sc132gs_linear_1088x1280_raw10_10fps_2lane.c
+    src/x5/sensor/sc230ai_linear_1920x1080_raw10_10fps_1lane.c
+    src/x5/sensor/sc230ai_linear_1920x1080_raw10_30fps_1lane.c
+    src/x5/sensor/sc1330t_linear_1280x960_raw10_30fps_1lane.c
+    src/x5/sensor/vp_sensors.c
+  )
+  include_directories(include 
+    src/x5/sensor
+  )
 else()
   message("invalid platform, build platform X3 default")
   add_definitions(-DPLATFORM_X3)
@@ -108,6 +127,8 @@ if(PLATFORM_X3)
 elseif(PLATFORM_Rdkultra)
   #set(X3_HAPI_LIB jsoncpp hb_api_isp vpm vio_client)
   set(X3_HAPI_LIB jsoncpp hb_api_isp vio)
+elseif(PLATFORM_X5)
+  set(X3_HAPI_LIB jsoncpp multimedia hbmem cam vpf)
 else()
   set(BASE_LIBRARIES pthread vio cam dl)
   set(X3_HAPI_LIB isp_algo z hbmedia isp ion multimedia iar tinyalsa cjson diag gdcbin)
@@ -145,8 +166,13 @@ if(PLATFORM_X3)
 elseif(PLATFORM_Rdkultra)
   install(DIRECTORY
     ${PROJECT_SOURCE_DIR}/config/rdkultra/
-  DESTINATION lib/${PROJECT_NAME}/config/
-)
+    DESTINATION lib/${PROJECT_NAME}/config/
+  )
+elseif(PLATFORM_X5)
+  install(DIRECTORY
+    ${PROJECT_SOURCE_DIR}/config/x5/
+    DESTINATION lib/${PROJECT_NAME}/config/
+  )
 endif()
 
 
