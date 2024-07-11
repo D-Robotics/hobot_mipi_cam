@@ -98,6 +98,12 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 
   entry_index_ = cap_info_.channel_;
 
+  if (cap_info_.device_mode_.compare("dual") == 0) {
+    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
+      "X3 platform no suppot dual channle camera.\n");
+    return -1;
+  }
+
   if (selectSensor(cap_info_.sensor_type, entry_index_, sensor_bus_) < 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
       "not select  sensor!\n");
@@ -268,7 +274,7 @@ int HobotMipiCapIml::stop() {
   return 0;
 }
 
-int HobotMipiCapIml::getFrame(int nChnID, int* nVOutW, int* nVOutH,
+int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
         void* frame_buf, unsigned int bufsize, unsigned int* len,
         uint64_t &timestamp, bool gray) {
   int size = -1, ret = 0;
@@ -285,7 +291,7 @@ int HobotMipiCapIml::getFrame(int nChnID, int* nVOutW, int* nVOutH,
   do {
     ret = HB_VPS_GetChnFrame(
         vps_infos_.m_vps_info[0].m_vps_grp_id,
-        nChnID,
+        vps_channel_,
         &vOut,
         1000);
     if (ret < 0) {
@@ -302,14 +308,14 @@ int HobotMipiCapIml::getFrame(int nChnID, int* nVOutW, int* nVOutH,
            RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
             "Invalid chn:%d in groupID: %d! Please check if this channel "
             "has been closed in unexpected places!",
-            nChnID,
+            vps_channel_,
             vps_infos_.m_vps_info[0].m_vps_grp_id);
           return -1;
         }
         RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
           "[GetVpsFrame]->HB_VPS_GetChnFrame chn=%d,goupID=%d,error =%d "
           "!!!\n",
-          nChnID,
+          vps_channel_,
           vps_infos_.m_vps_info[0].m_vps_grp_id,
           ret);
         return -1;
@@ -365,7 +371,7 @@ int HobotMipiCapIml::getFrame(int nChnID, int* nVOutW, int* nVOutH,
     }
     HB_VPS_ReleaseChnFrame(
         vps_infos_.m_vps_info[0].m_vps_grp_id,
-        nChnID,
+        vps_channel_,
         &vOut);
     break;
   } while (1);
@@ -427,7 +433,7 @@ int HobotMipiCapIml::parseConfig(std::string sensor_name,
   vps_infos_.m_vps_info[0].m_chn_num = 1;
   ret |= vps_chn_param_init(
       &vps_infos_.m_vps_info[0].m_vps_chn_attrs[0],
-      2, w, h, fps);
+      vps_channel_, w, h, fps);
   RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
       "[%s]-> w:h=%d:%d ,fps=%d sucess.\n", __func__, w, h, fps);
   vps_infos_.m_vps_info[0].m_vps_grp_id = pipeline_id_;
