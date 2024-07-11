@@ -69,11 +69,18 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	//copy_config(&pipe_contex[0].sensor_config, vp_sensor_config_list[sensor_v[0]]);
 	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[sensor_v[0]], sizeof(vp_sensor_config_t));
 	vp_sensor_fixed_mipi_host_1(host_v[0], &pipe_contex[0].sensor_config);
-	create_and_run_vflow(&pipe_contex[0]);
+	ret = create_and_run_vflow(&pipe_contex[0]);
+	ERR_CON_EQ(ret, 0);
 	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[sensor_v[1]]);
 	memcpy(&pipe_contex[1].sensor_config, vp_sensor_config_list[sensor_v[1]], sizeof(vp_sensor_config_t));
-	vp_sensor_fixed_mipi_host_1(host_v[1], &pipe_contex[1].sensor_config);
-	create_and_run_vflow(&pipe_contex[1]);
+	ret = vp_sensor_fixed_mipi_host_1(host_v[1], &pipe_contex[1].sensor_config);
+	ERR_CON_EQ(ret, 0);
+	ret = create_and_run_vflow(&pipe_contex[1]);
+	ERR_CON_EQ(ret, 0);
+
+    //n2d_pipe_contex.cap_info_ = &cap_info_;
+	//ret = create_and_run_n2d_vflow(&n2d_pipe_contex);
+	//ERR_CON_EQ(ret, 0);
 
   } else {
 	sensor_v = {3};
@@ -81,8 +88,10 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	pipe_contex.resize(1);
 	pipe_contex[0].cap_info_ = &cap_info_;
 	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[sensor_v[0]], sizeof(vp_sensor_config_t));
-	vp_sensor_fixed_mipi_host_1(host_v[0], &pipe_contex[0].sensor_config);
-	create_and_run_vflow(&pipe_contex[0]);
+	ret = vp_sensor_fixed_mipi_host_1(host_v[0], &pipe_contex[0].sensor_config);
+	ERR_CON_EQ(ret, 0);
+	ret = create_and_run_vflow(&pipe_contex[0]);
+	ERR_CON_EQ(ret, 0);
   }
 
   hb_mem_module_open();
@@ -158,56 +167,61 @@ int HobotMipiCapIml::stop() {
 int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
         void* frame_buf, unsigned int bufsize, unsigned int* len,
         uint64_t &timestamp, bool gray) {
-  int ret = 0;
+  int ret = -1;
   if (!started_) {
      RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
       "x5 camera isn't started");
     return -1;
   }
+  int loop = 6;
   if (dual_frame_task_) {
-	std::shared_ptr<VideoBuffer_ST> buff_ptr = nullptr;
-	if (channel == "combine") {
-		if (q_combine_buff_.size() > 0) {
-			buff_ptr = q_combine_buff_.front();
-			q_combine_buff_.pop();
-		}
-	} else if (channel == "right") {
-		if (q_v_buff_[1].size() > 0) {
-			buff_ptr = q_v_buff_[1].front();
-			q_v_buff_[1].pop();
-		}
-	} else {
-		if (q_v_buff_[0].size() > 0) {
-			buff_ptr = q_v_buff_[0].front();
-			q_v_buff_[0].pop();
-		}
-	}
-	if (buff_ptr) {
-		if (buff_ptr->data_size > bufsize) {
-			q_buff_empty_.push(buff_ptr);
-			return -1;
-		}
-		timestamp = buff_ptr->timestamp;
-		*nVOutW = buff_ptr->width;
-		*nVOutH = buff_ptr->height;
-		*len = buff_ptr->data_size;
-		if (gray == true) {
-			*len = buff_ptr->width * buff_ptr->height;
-			memcpy(frame_buf, buff_ptr->buff, *len);
-		} else {
-			memcpy(frame_buf, buff_ptr->buff, buff_ptr->data_size);
-		}
+	do {
+		std::shared_ptr<VideoBuffer_ST> buff_ptr = nullptr;
 		if (channel == "combine") {
-			q_combine_buff_empty_.push(buff_ptr);
+			if (q_combine_buff_.size() > 0) {
+				buff_ptr = q_combine_buff_.front();
+				q_combine_buff_.pop();
+			}
+		} else if (channel == "right") {
+			if (q_v_buff_[1].size() > 0) {
+				buff_ptr = q_v_buff_[1].front();
+				q_v_buff_[1].pop();
+			}
 		} else {
-			q_buff_empty_.push(buff_ptr);
+			if (q_v_buff_[0].size() > 0) {
+				buff_ptr = q_v_buff_[0].front();
+				q_v_buff_[0].pop();
+			}
 		}
-	} else {
-		return -1;
-	}
+		if (buff_ptr) {
+			if (buff_ptr->data_size > bufsize) {
+				q_buff_empty_.push(buff_ptr);
+				return -1;
+			}
+			timestamp = buff_ptr->timestamp;
+			*nVOutW = buff_ptr->width;
+			*nVOutH = buff_ptr->height;
+			*len = buff_ptr->data_size;
+			if (gray == true) {
+				*len = buff_ptr->width * buff_ptr->height;
+				memcpy(frame_buf, buff_ptr->buff, *len);
+			} else {
+				memcpy(frame_buf, buff_ptr->buff, buff_ptr->data_size);
+			}
+			if (channel == "combine") {
+				q_combine_buff_empty_.push(buff_ptr);
+			} else {
+				q_buff_empty_.push(buff_ptr);
+			}
+			return 0;
+		} 
+		usleep(5 * 1000);
+	} while (loop-- > 0);
+
   } else {
 	int stride = 0;
 	int nChnID = 0;
+	uint32_t frameId = 0;
 	if ((channel == "right") && (pipe_contex.size() == 2)) {
 		nChnID = 1;
 	} else if ((channel == "left") || (channel == "single")) {
@@ -219,21 +233,21 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
 	}
 	
 	ret = getVnodeFrame(pipe_contex[nChnID].vse_node_handle, 0, nVOutW, nVOutH, &stride,
-						frame_buf, bufsize, len, &timestamp, gray);
+						frame_buf, bufsize, len, &timestamp, &frameId, gray);
 	if (ret != 0) {
 		printf("hbn_vnode_getframe VSE channel 0 failed nChnID = %d,ret = %d\n", nChnID,ret);
 		return -1;
 	}
   }
-  return 0;
+  return ret;
 }
 
 
 int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* width,
 		int* height, int* stride, void* frame_buf, unsigned int bufsize, unsigned int* len,
-        uint64_t *timestamp, bool gray) {
+        uint64_t *timestamp, uint32_t* frame_id, bool gray) {
 	
-	if ((width == nullptr) || (height == nullptr) || (stride == nullptr) ||
+	if ((width == nullptr) || (height == nullptr) || (stride == nullptr) || (frame_id == nullptr) || 
 	    (frame_buf == nullptr) || (len == nullptr) || (timestamp == nullptr)) {
 
 		return -1;
@@ -249,9 +263,24 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
 
 	hb_mem_invalidate_buf_with_vaddr((uint64_t)out_img.buffer.virt_addr[1],out_img.buffer.size[1]);
 
-	//timestamp = out_img.info.trig_tv.tv_sec * 1e9 + out_img.info.trig_tv.tv_usec * 1e3;
-	//timestamp = out_img.info.tv.tv_sec * 1e9 + out_img.info.tv.tv_usec * 1e3;
-	*timestamp = out_img.info.timestamps;
+	//*timestamp = out_img.info.trig_tv.tv_sec * 1e9 + out_img.info.trig_tv.tv_usec * 1e3;
+	//*timestamp = out_img.info.tv.tv_sec * 1e9 + out_img.info.tv.tv_usec * 1e3;
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+	
+	uint64_t timestamp_1 = tv.tv_sec * 1e9 + tv.tv_usec * 1e3;
+	uint64_t timestamp_2 = ts.tv_sec * 1e9 + ts.tv_nsec;
+	*timestamp = out_img.info.timestamps + (timestamp_1 - timestamp_2);
+	*frame_id = out_img.info.frame_id;
+	
+	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", image time sec:" << out_img.info.tv.tv_sec
+	//          << ", trig time sec:" << out_img.info.trig_tv.tv_sec 
+	//		  << ", image timestamps(/1e9) sec:" << out_img.info.timestamps / 1e9 <<  std::endl;
+
+	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", timestamp time sec:" << (int)(*timestamp / 1e9) <<  std::endl;
+	
 	*stride = out_img.buffer.stride;
 	*width = out_img.buffer.width;
 	*height = out_img.buffer.height;
@@ -347,7 +376,7 @@ void HobotMipiCapIml::dualFrameTask() {
 					if (buff_ptr[i]) {
 						loss_cnt[i] = 0;
 						ret = getVnodeFrame(pipe_contex[i].vse_node_handle, 0, &buff_ptr[i]->width, &buff_ptr[i]->height, &buff_ptr[i]->stride,
-								buff_ptr[i]->buff, buff_ptr[i]->buff_size, &buff_ptr[i]->data_size, &buff_ptr[i]->timestamp);
+								buff_ptr[i]->buff, buff_ptr[i]->buff_size, &buff_ptr[i]->data_size, &buff_ptr[i]->timestamp, &buff_ptr[i]->frame_id);
 						if (ret != 0) {
 							printf("hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", i,ret);
 							q_buff_empty_.push(buff_ptr[i]);
@@ -418,6 +447,7 @@ void HobotMipiCapIml::dualFrameTask() {
 			if ((buff_ptr[i]) && (loss_cnt[i] > 0)) {
 				q_v_buff_[i].push(buff_ptr[i]);
 				buff_ptr[i] = nullptr;
+				loss_cnt[i] = 0;
 			}
 		}
 	}
@@ -520,7 +550,6 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	if (pipe_contex == nullptr) {
 		return -1;
 	}
-	RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "creat_vse_node--------11111111111");
 	int ret = 0;
 	uint32_t chn_id = 0;
 	uint32_t hw_id = 0;
@@ -529,24 +558,26 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	vse_attr_t vse_attr = {0};
 	vse_ichn_attr_t vse_ichn_attr;
 	vse_ochn_attr_t vse_ochn_attr;
-    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "creat_vse_node--------2222222222");
 	ret = hbn_vnode_get_ichn_attr(pipe_contex->isp_node_handle, chn_id, &isp_ichn_attr);
-	RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "creat_vse_node--------3333333");
 	ERR_CON_EQ(ret, 0);
-    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "creat_vse_node--------44444");
 	int input_width = isp_ichn_attr.width;
 	int input_height = isp_ichn_attr.height;
 
-	vse_ichn_attr.width = input_width;
-	vse_ichn_attr.height = input_height;
-	vse_ichn_attr.fmt = FRM_FMT_NV12;
-	vse_ichn_attr.bit_width = 8;
-    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "creat_vse_node--------5555");
+
 	ret = hbn_vnode_open(HB_VSE, hw_id, AUTO_ALLOC_ID, &pipe_contex->vse_node_handle);
 	ERR_CON_EQ(ret, 0);
 
 	ret = hbn_vnode_set_attr(pipe_contex->vse_node_handle, &vse_attr);
 	ERR_CON_EQ(ret, 0);
+
+	ret = hbn_vnode_get_ichn_attr(pipe_contex->vse_node_handle, chn_id, &vse_ichn_attr);
+	ERR_CON_EQ(ret, 0);
+
+	vse_ichn_attr.width = input_width;
+	vse_ichn_attr.height = input_height;
+	vse_ichn_attr.fmt = FRM_FMT_NV12;
+	vse_ichn_attr.bit_width = 8;
+
 
 	ret = hbn_vnode_set_ichn_attr(pipe_contex->vse_node_handle, chn_id, &vse_ichn_attr);
 	ERR_CON_EQ(ret, 0);
@@ -583,8 +614,28 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	}
 	int32_t ret = 0;
     if (pipe_contex->cap_info_->device_mode_.compare("dual") == 0) {
+		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+		int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
 		pipe_contex->sensor_config.camera_config->sensor_mode = 6;
 		pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 1;
+		for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
+			attr.period = fps_rate;
+		}
+		if (pipe_contex->cap_info_->fps == 30.0) {
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.framelenth = 1125 * 2;
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.linelenth = 2149;
+		} else if (pipe_contex->cap_info_->fps == 10.0) {
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.framelenth = 3375;
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.linelenth = 2348;
+		}
+	} else {
+		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+		int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
+		for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
+			attr.period = fps_rate;
+		}
 	}
 	// 创建pipeline中的每个node
 	ret = creat_camera_node(pipe_contex->sensor_config.camera_config, &pipe_contex->cam_fd);

@@ -46,9 +46,12 @@ static vin_node_attr_t sc230ai_vin_node_attr = {
 		.cim_isp_flyby = 1,
 		.func = {
 			.enable_frame_id = 1,
-			.set_init_frame_id = 0,
+			.set_init_frame_id = 1,
 			.hdr_mode = NOT_HDR,
-			.time_stamp_en = 0,
+			.time_stamp_en = 1,
+			.time_stamp_mode = 3,
+			.ts_src = 1,
+			.pps_src = 3,
 		},
 
 	},

@@ -483,7 +483,7 @@ int32_t vp_sensor_fixed_mipi_host(vp_sensor_config_t *sensor_config)
 
 int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config)
 {
-	int32_t ret = 0, i = 0, j = 0;
+	int32_t ret = -1, i = 0, j = 0;
 	uint32_t frequency = 24000000;
 
 	struct vcon_properties vcon_props_array[VP_MAX_VCON_NUM];
@@ -527,7 +527,7 @@ int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config)
 		enable_mipi_host_clock(0, i);
 	}
 
-	return -1;
+	return ret;
 }
 
 

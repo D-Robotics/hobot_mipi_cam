@@ -47,6 +47,7 @@ typedef struct pipe_contex_s {
 
 typedef struct video_buffer_s {
   uint64_t timestamp;
+  uint32_t frame_id;
   int width;
   int height;
   int stride;
@@ -113,7 +114,7 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* width,
 		int* height, int* stride, void* frame_buf, unsigned int bufsize, unsigned int* len,
-        uint64_t *timestamp, bool gray = false);
+        uint64_t *timestamp, uint32_t* frame_id, bool gray = false);
 
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
   int creat_vse_node(pipe_contex_t *pipe_contex);
