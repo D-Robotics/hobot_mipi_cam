@@ -75,6 +75,11 @@ def generate_launch_description():
             'mipi_frame_ts_type',
             default_value='sensor',
             description='type(sensor/realtime) of timestamp for publishing messages'),
+        DeclareLaunchArgument(
+            'frame_id',
+            default_value='default_cam',
+            description=''),
+
         # 启动零拷贝环境配置node
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -100,6 +105,7 @@ def generate_launch_description():
                 {"device_mode": LaunchConfiguration('device_mode')},
                 {"dual_combine": LaunchConfiguration('dual_combine')},
                 {"frame_ts_type": LaunchConfiguration('mipi_frame_ts_type')},
+                {"frame_id": LaunchConfiguration('frame_id')},
             ],
             arguments=['--ros-args', '--log-level', 'warn']
         )
