@@ -179,19 +179,15 @@ void MipiCamNode::init() {
   if (io_method_name_.compare("ros") == 0) {
     if (nodePare_.device_mode_.compare("dual") == 0) {
 
-      RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "MipiCamNode::init---ros_dual-----111111111");
       if (nodePare_.dual_combine_ == 1) {
-        RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "MipiCamNode::init---ros_dual-----2222222");
         Pub_info_.resize(3);
         init_publisher(Pub_info_[0], "image_left_raw", "left", "camera_left_info", nodePare_.camera_calibration_file_path_, frame_id_);
         init_publisher(Pub_info_[1], "image_right_raw", "right", "camera_right_info", nodePare_.camera_calibration_file_path_, frame_id_);
         init_publisher(Pub_info_[2], "image_combine_raw", "combine", "camera_combine_info", nodePare_.camera_calibration_file_path_, frame_id_);
       } else if (nodePare_.dual_combine_ == 2) {
-        RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "MipiCamNode::init---ros_dual-----333333333333");
         Pub_info_.resize(1);
         init_publisher(Pub_info_[0], "image_combine_raw", "combine", "camera_combine_info", nodePare_.camera_calibration_file_path_, frame_id_);
       } else {
-        RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "MipiCamNode::init---ros_dual-----4444444444");
         Pub_info_.resize(2);
         init_publisher(Pub_info_[0], "image_left_raw", "left", "camera_left_info", nodePare_.camera_calibration_file_path_, frame_id_);
         init_publisher(Pub_info_[1], "image_right_raw", "right", "camera_right_info", nodePare_.camera_calibration_file_path_, frame_id_);        
@@ -302,7 +298,6 @@ void MipiCamNode::init_publisher(Publisher_info_st&  Pub_info, std::string topic
     RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
                 "get camera calibration parameters failed");
   }
-  RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "MipiCamNode::init---ros_dual-----22222222");
   Pub_info.info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
   info_topic, PUB_BUF_NUM);
   Pub_info.topic_type = topic_type;
@@ -310,7 +305,6 @@ void MipiCamNode::init_publisher(Publisher_info_st&  Pub_info, std::string topic
 
 void MipiCamNode::init_publisher_hbmem(Publisher_hbmem_info_st&  Pub_info, std::string topic, std::string topic_type,
                     std::string info_topic, std::string info_file){
-  RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "MipiCamNode::init_publisher_hbmem---1111111111");
   Pub_info.publisher_hbmem_ = this->create_publisher<hbm_img_msgs::msg::HbmMsg1080P>(topic, rclcpp::SensorDataQoS());
   Pub_info.camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
   if (!mipiCam_ptr_->getCamCalibration(*Pub_info.camera_calibration_info_, info_file)) {
@@ -321,7 +315,6 @@ void MipiCamNode::init_publisher_hbmem(Publisher_hbmem_info_st&  Pub_info, std::
   Pub_info.info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
     info_topic, PUB_BUF_NUM);
   Pub_info.topic_type = topic_type;
-  RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "MipiCamNode::init_publisher_hbmem---2222222222");
 
 }
 

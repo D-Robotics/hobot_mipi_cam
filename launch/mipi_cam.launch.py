@@ -52,6 +52,10 @@ def generate_launch_description():
             default_value='544',
             description='mipi camera out image height'),
         DeclareLaunchArgument(
+            'mipi_image_framerate',
+            default_value='30.0',
+            description='mipi camera out image framerate'),
+        DeclareLaunchArgument(
             'mipi_io_method',
             default_value='shared_mem',
             description='mipi camera out io_method'),

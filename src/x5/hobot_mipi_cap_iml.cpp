@@ -116,8 +116,8 @@ int HobotMipiCapIml::start() {
   int i = 0, ret = 0;
   // 使能 vps
   for(auto contex : pipe_contex){
-    ret = hbn_camera_start(contex.cam_fd);
-    ERR_CON_EQ(ret, 0);
+    //ret = hbn_camera_start(contex.cam_fd);
+    //ERR_CON_EQ(ret, 0);
     ret = hbn_vflow_start(contex.vflow_fd);
     ERR_CON_EQ(ret, 0);
   }
@@ -157,7 +157,7 @@ int HobotMipiCapIml::stop() {
     return -1;
   }
   for(auto contex : pipe_contex){
-    ret = hbn_vflow_stop(contex.cam_fd);
+    ret = hbn_vflow_stop(contex.vflow_fd);
     ERR_CON_EQ(ret, 0);
   }
   RCLCPP_INFO(rclcpp::get_logger("mipi_cam"), "x5_mipi_cam_stop end.\n");
@@ -400,6 +400,7 @@ void HobotMipiCapIml::dualFrameTask() {
 				}
 				if (combine_buff_ptr) {
 					if (combine_buff_ptr->buff_size >= buff_ptr[0]->data_size * 2) {
+#if 0
 						combine_buff_ptr->timestamp = buff_ptr[0]->timestamp;
 						combine_buff_ptr->width = buff_ptr[0]->width * 2;
 						combine_buff_ptr->height = buff_ptr[0]->height;
@@ -422,6 +423,23 @@ void HobotMipiCapIml::dualFrameTask() {
 							memcpy(combine_uv_ptr + i * combine_buff_ptr->width + buff_ptr[0]->width, 
 									right_uv_ptr + i * buff_ptr[1]->width, buff_ptr[1]->width);
 						}
+#else
+						combine_buff_ptr->timestamp = buff_ptr[0]->timestamp;
+						combine_buff_ptr->width = buff_ptr[0]->width;
+						combine_buff_ptr->height = buff_ptr[0]->height * 2;
+						combine_buff_ptr->stride = buff_ptr[0]->stride;
+						combine_buff_ptr->data_size = buff_ptr[0]->data_size * 2;
+						int y_size = buff_ptr[0]->width * buff_ptr[0]->height;
+						int uv_size = y_size / 2;
+						//copy y
+						memcpy(combine_buff_ptr->buff, buff_ptr[0]->buff, y_size);
+						memcpy(combine_buff_ptr->buff + y_size, buff_ptr[1]->buff, y_size);
+                        
+						//copy uv
+						memcpy(combine_buff_ptr->buff + y_size * 2, buff_ptr[0]->buff + y_size, uv_size);
+						memcpy(combine_buff_ptr->buff + y_size * 2 + uv_size, buff_ptr[1]->buff + y_size, uv_size);
+
+#endif
 						q_combine_buff_.push(combine_buff_ptr);
 
 					} else {
@@ -622,20 +640,13 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 		for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
 			attr.period = fps_rate;
 		}
-		if (pipe_contex->cap_info_->fps == 30.0) {
-			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.framelenth = 1125 * 2;
-			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.linelenth = 2149;
-		} else if (pipe_contex->cap_info_->fps == 10.0) {
-			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.framelenth = 3375;
-			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.linelenth = 2348;
-		}
 	} else {
 		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
-		int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
-		for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
-			attr.period = fps_rate;
-		}
+		//int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
+		//for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
+		//	attr.period = fps_rate;
+		//}
 	}
 	// 创建pipeline中的每个node
 	ret = creat_camera_node(pipe_contex->sensor_config.camera_config, &pipe_contex->cam_fd);
@@ -674,6 +685,9 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 
 	ret = hbn_camera_attach_to_vin(pipe_contex->cam_fd,
 							pipe_contex->vin_node_handle);
+	ERR_CON_EQ(ret, 0);
+
+	ret = hbn_camera_change_fps(pipe_contex->cam_fd, pipe_contex->sensor_config.camera_config->fps);
 	ERR_CON_EQ(ret, 0);
 	return 0;
 }

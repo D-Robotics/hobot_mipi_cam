@@ -38,6 +38,7 @@ def generate_launch_description():
             'mipi_image_height': '1080',
             'mipi_image_framerate': '10.0',
             'mipi_io_method': 'ros',
+            'device_mode': 'dual',
             'dual_combine': '2',
             'mipi_frame_ts_type': 'realtime'
         }.items()
