@@ -40,6 +40,7 @@ MipiCamNode::~MipiCamNode() {
   if (mipiCam_ptr_) {
     mipiCam_ptr_->stop();
     mipiCam_ptr_->deInit();
+    mipiCam_ptr_ = nullptr;
   }
 }
 

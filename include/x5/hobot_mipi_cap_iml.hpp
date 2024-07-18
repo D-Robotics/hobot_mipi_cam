@@ -27,6 +27,8 @@
 #include "vp_sensors.h"
 #include "vse_cfg.h"
 #include "codec_cfg.h"
+#include "GC820/nano2D.h"
+#include "GC820/nano2D_util.h"
 
 namespace mipi_cam {
 

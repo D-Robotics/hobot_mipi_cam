@@ -40,7 +40,7 @@ def generate_launch_description():
             'mipi_io_method': 'ros',
             'device_mode': 'dual',
             'dual_combine': '2',
-            'mipi_frame_ts_type': 'realtime'
+            'mipi_frame_ts_type': 'sensor'
         }.items()
     )
 

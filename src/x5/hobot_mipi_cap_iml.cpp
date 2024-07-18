@@ -60,7 +60,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 
   if (cap_info_.device_mode_.compare("dual") == 0) {
 	sensor_v = {3,3};
-	host_v = {0,2};
+	host_v = {2,0};
 	
 	pipe_contex.resize(2);
 	pipe_contex[0].cap_info_ = &cap_info_;
@@ -95,19 +95,24 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
   }
 
   hb_mem_module_open();
+  m_inited_ = true;
 
   return ret;
 }
 
 int HobotMipiCapIml::deInit() {
   int i = 0;
-  RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-    "x5_cam_deinit start.\n");
+  if (m_inited_) {
+	m_inited_ = false;
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
+       "x5_cam_deinit start.\n");
 	for(auto contex : pipe_contex){
 		hbn_vflow_destroy(contex.vflow_fd);
 	}
 
 	hb_mem_module_close();
+  }
+
   return 0;
 }
 
@@ -156,6 +161,7 @@ int HobotMipiCapIml::stop() {
       "x5 camera isn't started");
     return -1;
   }
+  started_ = false;
   for(auto contex : pipe_contex){
     ret = hbn_vflow_stop(contex.vflow_fd);
     ERR_CON_EQ(ret, 0);
@@ -269,11 +275,17 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
 	gettimeofday(&tv, NULL);
 	struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
+
 	
 	uint64_t timestamp_1 = tv.tv_sec * 1e9 + tv.tv_usec * 1e3;
 	uint64_t timestamp_2 = ts.tv_sec * 1e9 + ts.tv_nsec;
+    RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+            "capture laps ms= %d", ((timestamp_2 - out_img.info.timestamps)/1000000));
+
 	*timestamp = out_img.info.timestamps + (timestamp_1 - timestamp_2);
 	*frame_id = out_img.info.frame_id;
+
+	
 	
 	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", image time sec:" << out_img.info.tv.tv_sec
 	//          << ", trig time sec:" << out_img.info.trig_tv.tv_sec 

@@ -253,6 +253,7 @@ int HobotMipiCapIml::stop() {
       "x3 camera isn't started");
     return -1;
   }
+  started_ = false;
   RCLCPP_INFO(rclcpp::get_logger("mipi_cam"), "x3_mipi_cam_stop start.\n");
   if (vin_enable_) {
     x3_vin_stop(&vin_info_);

@@ -102,6 +102,7 @@ include_directories(include
   ${PROJECT_SOURCE_DIR}
   ${CMAKE_SYSROOT}/usr/
   ${CMAKE_SYSROOT}/usr/include
+  ${CMAKE_SYSROOT}/usr/include/opencv/
   deps/jsoncpp/include/
 )
 
@@ -128,7 +129,7 @@ elseif(PLATFORM_Rdkultra)
   #set(X3_HAPI_LIB jsoncpp hb_api_isp vpm vio_client)
   set(X3_HAPI_LIB jsoncpp hb_api_isp vio)
 elseif(PLATFORM_X5)
-  set(X3_HAPI_LIB jsoncpp multimedia hbmem cam vpf)
+  set(X3_HAPI_LIB jsoncpp multimedia hbmem cam vpf  Nano2D Nano2Dutil opencv_world)
 else()
   set(BASE_LIBRARIES pthread vio cam dl)
   set(X3_HAPI_LIB isp_algo z hbmedia isp ion multimedia iar tinyalsa cjson diag gdcbin)
