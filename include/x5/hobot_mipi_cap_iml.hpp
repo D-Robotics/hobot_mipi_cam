@@ -20,6 +20,7 @@
 #include <memory>
 #include <queue>
 #include <thread>
+#include <mutex>
 #include "hobot_mipi_cap.hpp"
 #include "hobot_mipi_comm.hpp"
 #include "hb_camera_interface.h"
@@ -140,6 +141,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::map<int, std::vector<std::string>> host_sensor_m_;
   //std::vector<hbn_cfg_t> hbn_cfg_;
   std::shared_ptr<std::thread> dual_frame_task_ = nullptr;
+
+  std::mutex queue_mtx_;
 
   typedef struct hbn_cfg {
     vin_attr_t vin_attr; 

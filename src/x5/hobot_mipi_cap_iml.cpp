@@ -183,6 +183,7 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
   if (dual_frame_task_) {
 	do {
 		std::shared_ptr<VideoBuffer_ST> buff_ptr = nullptr;
+		std::unique_lock<std::mutex> lk(queue_mtx_);
 		if (channel == "combine") {
 			if (q_combine_buff_.size() > 0) {
 				buff_ptr = q_combine_buff_.front();
@@ -367,6 +368,7 @@ void HobotMipiCapIml::dualFrameTask() {
     } else if (result == 0) {
 		// 超时
 		std::cout << "Timeout occurred" << std::endl;
+		std::unique_lock<std::mutex> lk(queue_mtx_);
 		for (int i = 0; i < buff_ptr.size(); i++) {
 			if (buff_ptr[i]) {
 				q_v_buff_[i].push(buff_ptr[i]);
@@ -378,22 +380,28 @@ void HobotMipiCapIml::dualFrameTask() {
 		for (int i = 0; i < ochn_fd.size(); i++) {
 			if (FD_ISSET(ochn_fd[i], &readfds)) {
 				if (buff_ptr[i] == nullptr) {
-					if (q_v_buff_[i].size() >= 3) {
-						buff_ptr[i] = q_v_buff_[i].front();
-						q_v_buff_[i].pop();
-					} else if (q_buff_empty_.size() > 0) {
-						buff_ptr[i] = q_buff_empty_.front();
-						q_buff_empty_.pop();
+					{
+						std::unique_lock<std::mutex> lk(queue_mtx_);
+						if (q_v_buff_[i].size() >= 3) {
+							buff_ptr[i] = q_v_buff_[i].front();
+							q_v_buff_[i].pop();
+						} else if (q_buff_empty_.size() > 0) {
+							buff_ptr[i] = q_buff_empty_.front();
+							q_buff_empty_.pop();
+						}
 					}
+
 					if (buff_ptr[i]) {
 						loss_cnt[i] = 0;
 						ret = getVnodeFrame(pipe_contex[i].vse_node_handle, 0, &buff_ptr[i]->width, &buff_ptr[i]->height, &buff_ptr[i]->stride,
 								buff_ptr[i]->buff, buff_ptr[i]->buff_size, &buff_ptr[i]->data_size, &buff_ptr[i]->timestamp, &buff_ptr[i]->frame_id);
 						if (ret != 0) {
 							printf("hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", i,ret);
+							std::unique_lock<std::mutex> lk(queue_mtx_);
 							q_buff_empty_.push(buff_ptr[i]);
 							buff_ptr[i] = nullptr;
 						}
+						//std::cout << "getVnodeFrame--channel=" << i << ",timestamp=" << buff_ptr[i]->timestamp<<",frame_id="<< buff_ptr[i]->frame_id << std::endl;
 					}
 				}
 			}
@@ -403,12 +411,15 @@ void HobotMipiCapIml::dualFrameTask() {
 	   			(buff_ptr[0]->height == buff_ptr[1]->height)) {
 
 			if (std::abs((int)(buff_ptr[0]->timestamp - buff_ptr[1]->timestamp)) < 15000000) {
-				if (q_combine_buff_.size() >= 3) {
-					combine_buff_ptr = q_combine_buff_.front();
-					q_combine_buff_.pop();
-				} else if (q_combine_buff_empty_.size() > 0) {
-					combine_buff_ptr = q_combine_buff_empty_.front();
-					q_combine_buff_empty_.pop();
+				{
+					std::unique_lock<std::mutex> lk(queue_mtx_);
+					if (q_combine_buff_.size() >= 3) {
+						combine_buff_ptr = q_combine_buff_.front();
+						q_combine_buff_.pop();
+					} else if (q_combine_buff_empty_.size() > 0) {
+						combine_buff_ptr = q_combine_buff_empty_.front();
+						q_combine_buff_empty_.pop();
+					}
 				}
 				if (combine_buff_ptr) {
 					if (combine_buff_ptr->buff_size >= buff_ptr[0]->data_size * 2) {
@@ -452,18 +463,22 @@ void HobotMipiCapIml::dualFrameTask() {
 						memcpy(combine_buff_ptr->buff + y_size * 2 + uv_size, buff_ptr[1]->buff + y_size, uv_size);
 
 #endif
+						std::unique_lock<std::mutex> lk(queue_mtx_);
 						q_combine_buff_.push(combine_buff_ptr);
 
 					} else {
+						std::unique_lock<std::mutex> lk(queue_mtx_);
 						q_combine_buff_empty_.push(combine_buff_ptr);
 					}
 					combine_buff_ptr = nullptr;
 				}
+				std::unique_lock<std::mutex> lk(queue_mtx_);
 				q_v_buff_[0].push(buff_ptr[0]);
 				buff_ptr[0] = nullptr;
 				q_v_buff_[1].push(buff_ptr[1]);
 				buff_ptr[1] = nullptr;
 			} else {
+				std::unique_lock<std::mutex> lk(queue_mtx_);
 				if (buff_ptr[0]->timestamp < buff_ptr[1]->timestamp) {
 					q_v_buff_[0].push(buff_ptr[0]);
 					buff_ptr[0] = nullptr;
@@ -473,6 +488,7 @@ void HobotMipiCapIml::dualFrameTask() {
 				}
 			} 
 		}
+		std::unique_lock<std::mutex> lk(queue_mtx_);
 		for (int i = 0; i < buff_ptr.size(); i++) {
 			if ((buff_ptr[i]) && (loss_cnt[i] > 0)) {
 				q_v_buff_[i].push(buff_ptr[i]);

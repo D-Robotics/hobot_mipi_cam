@@ -532,45 +532,36 @@ int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config)
 
 
 int copy_config(vp_sensor_config_t* dest, vp_sensor_config_t* src) {
-	printf("copy_config----------9999999999\r\n");
 	if ((dest == NULL) || (src == NULL)) {
 		return -1;
 	}
-	printf("copy_config----------1111111111\r\n");
 
 	memcpy(dest, src, sizeof(vp_sensor_config_t));
 	if (src->camera_config) {
-		printf("copy_config----------22222222\r\n");
 		dest->camera_config = malloc(sizeof(camera_config_t));
 		memcpy(dest->camera_config, src->camera_config, sizeof(camera_config_t));
 	}
 	if (src->camera_config) {
-		printf("copy_config----------33333333\r\n");
 		dest->camera_config = malloc(sizeof(vin_node_attr_t));
 		memcpy(dest->camera_config, src->camera_config, sizeof(vin_node_attr_t));
 	}
 	if (src->camera_config) {
-		printf("copy_config----------44444444\r\n");
 		dest->camera_config = malloc(sizeof(vin_ichn_attr_t));
 		memcpy(dest->camera_config, src->camera_config, sizeof(vin_ichn_attr_t));
 	}
 	if (src->camera_config) {
-		printf("copy_config----------555555\r\n");
 		dest->camera_config = malloc(sizeof(vin_ochn_attr_t));
 		memcpy(dest->camera_config, src->camera_config, sizeof(vin_ochn_attr_t));
 	}
 	if (src->isp_attr) {
-		printf("copy_config----------666666666\r\n");
 		dest->isp_attr = malloc(sizeof(isp_attr_t));
 		memcpy(dest->isp_attr, src->isp_attr, sizeof(isp_attr_t));
 	}
 	if (src->isp_ichn_attr) {
-		printf("copy_config----------77777\r\n");
 		dest->isp_ichn_attr = malloc(sizeof(isp_ichn_attr_t));
 		memcpy(dest->isp_ichn_attr, src->isp_ichn_attr, sizeof(isp_ichn_attr_t));
 	}
 	if (src->isp_ochn_attr) {
-		printf("copy_config----------8888888888\r\n");
 		dest->isp_ochn_attr = malloc(sizeof(isp_ochn_attr_t));
 		memcpy(dest->isp_ochn_attr, src->isp_ochn_attr, sizeof(isp_ochn_attr_t));
 	}
