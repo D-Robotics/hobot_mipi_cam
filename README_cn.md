@@ -146,7 +146,7 @@ source /opt/tros/humble/local_setup.bash
 ros2 launch websocket websocket.launch.py websocket_image_topic:=/image_jpeg websocket_only_show_image:=true
 ```
 
-PC打开浏览器（chrome/firefox/edge）输入<http://IP:8000>（IP为地平线RDK IP地址），点击左上方Web端展示即可看到MIPI摄像头输出的实时画面
+PC打开浏览器（chrome/firefox/edge）输入<http://IP:8000>（IP为RDK IP地址），点击左上方Web端展示即可看到MIPI摄像头输出的实时画面
     ![web-f37-codec](./image/web-f37-codec.png "实时图像")
 
 
@@ -193,7 +193,7 @@ PC打开浏览器（chrome/firefox/edge）输入<http://IP:8000>（IP为地平�
 
 4. 如遇到PC端ros2 topic list未识别到摄像头topic，做如下排查：
 
-   - 检查地平线RDK是否正常pub图像
+   - 检查RDK是否正常pub图像
 
         tros foxy 版本
       ```shell
@@ -218,5 +218,5 @@ PC打开浏览器（chrome/firefox/edge）输入<http://IP:8000>（IP为地平�
       /rosout
       ```
 
-   - 检查PC和地平线RDK网络能否ping通；
-   - PC和地平线RDK IP地址是否前三位相同；
+   - 检查PC和RDK网络能否ping通；
+   - PC和RDK IP地址是否前三位相同；

@@ -145,7 +145,7 @@ source /opt/tros/humble/local_setup.bash
 ros2 launch websocket websocket.launch.py websocket_image_topic:=/image_jpeg websocket_only_show_image:=true
 ```
 
-Open a browser (chrome/firefox/edge) on your PC and enter <http://IP:8000> (where IP is the Horizon RDK IP address), then click on the Web display in the top left corner to see the real-time image output by the MIPI camera.
+Open a browser (chrome/firefox/edge) on your PC and enter <http://IP:8000> (where IP is the RDK IP address), then click on the Web display in the top left corner to see the real-time image output by the MIPI camera.
     ![web-f37-codec](./image/web-f37-codec.png "Real-time image")
 
 
@@ -190,7 +190,7 @@ Open a browser (chrome/firefox/edge) on your PC and enter <http://IP:8000> (wher
     - Confirm the tros.b environment settings
     - Verify the parameters, refer to Hobot_Sensors README.md for specifics
 
-4. If the PC-side ros2 topic list does not recognize the camera topics, troubleshoot as follows:- Check if the Horizon RDK is publishing images normally
+4. If the PC-side ros2 topic list does not recognize the camera topics, troubleshoot as follows:- Check if the RDK is publishing images normally
 
 
      tros foxy:
@@ -216,5 +216,5 @@ Open a browser (chrome/firefox/edge) on your PC and enter <http://IP:8000> (wher
       /rosout
       ```
 
-   - Check if the PC can ping the Horizon RDK successfully;
-   - Check if the IP addresses of the PC and Horizon RDK share the same first three segments;
+   - Check if the PC can ping the RDK successfully;
+   - Check if the IP addresses of the PC and RDK share the same first three segments;

@@ -4,7 +4,7 @@
   <name>mipi_cam</name>
   <version>2.2.0</version>
   <description>A TogetheROS Driver for Mipi Cameras</description>
-  <maintainer email="wenli.wu@horizon.ai">wenli wu</maintainer>
+  <maintainer email="wenli.wu@d-robotics.cc">wenli wu</maintainer>
   <license>Apache License 2.0</license>
   
   <buildtool_depend>ament_cmake_auto</buildtool_depend>

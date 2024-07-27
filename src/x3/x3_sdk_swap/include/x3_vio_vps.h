@@ -1,6 +1,6 @@
 /***************************************************************************
  * COPYRIGHT NOTICE
- * Copyright 2020 Horizon Robotics, Inc.
+ * Copyright 2020 D-Robotics, Inc.
  * All rights reserved.
  ***************************************************************************/
 #ifndef X3_VIO_VPS_H_
