@@ -182,6 +182,7 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
   int loop = 6;
   if (dual_frame_task_) {
 	do {
+		if (!rclcpp::ok()) break;
 		std::shared_ptr<VideoBuffer_ST> buff_ptr = nullptr;
 		std::unique_lock<std::mutex> lk(queue_mtx_);
 		if (channel == "combine") {
@@ -378,6 +379,7 @@ void HobotMipiCapIml::dualFrameTask() {
 		continue;
     } else {
 		for (int i = 0; i < ochn_fd.size(); i++) {
+			if (!rclcpp::ok()) break;
 			if (FD_ISSET(ochn_fd[i], &readfds)) {
 				if (buff_ptr[i] == nullptr) {
 					{

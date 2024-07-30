@@ -14,6 +14,7 @@
   <depend>sensor_msgs</depend>
   <depend>hbm_img_msgs</depend>
   <depend>yaml_cpp_vendor</depend>
+  <depend>rclcpp_components</depend>
 
   <depend condition="$PLATFORM == X3">hobot-multimedia-dev</depend>
 
