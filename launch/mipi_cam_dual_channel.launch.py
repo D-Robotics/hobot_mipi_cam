@@ -79,6 +79,10 @@ def generate_launch_description():
             'frame_id',
             default_value='default_cam',
             description=''),
+        DeclareLaunchArgument(
+            'log_level',
+            default_value='warn',
+            description='log level'),
 
         # 启动零拷贝环境配置node
         IncludeLaunchDescription(
@@ -107,6 +111,6 @@ def generate_launch_description():
                 {"frame_ts_type": LaunchConfiguration('mipi_frame_ts_type')},
                 {"frame_id": LaunchConfiguration('frame_id')},
             ],
-            arguments=['--ros-args', '--log-level', 'warn']
+            arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         )
     ])

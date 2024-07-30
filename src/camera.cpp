@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
   rclcpp::NodeOptions opt;
   auto node = std::make_shared<MipiCamNode>(opt);
-  node->init();
+  // node->init();
   rclcpp::executors::SingleThreadedExecutor exec;
   exec.add_node(node);
   exec.spin();

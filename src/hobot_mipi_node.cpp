@@ -32,7 +32,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
       camera_calibration_info_(new sensor_msgs::msg::CameraInfo()) {
 
   getParams();
-  // init();
+  init();
 }
 
 MipiCamNode::~MipiCamNode() {
@@ -421,3 +421,6 @@ void MipiCamNode::save_yuv(const builtin_interfaces::msg::Time stamp,
 }
 
 }  // namespace mipi_cam
+
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE(mipi_cam::MipiCamNode)
