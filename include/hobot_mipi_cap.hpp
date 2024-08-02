@@ -47,9 +47,10 @@ class HobotMipiCap {
   // 返回值：0，停止成功；-1，停止失败。
   virtual int stop() = 0;
 
-  // 如果有 vps ，就 输出vps 的分层数据
-  virtual int getFrame(int nChnID, int* nVOutW, int* nVOutH,
+  // 如果有 vps ，就 输出vps 的分层数据 channel--"single":单sensor，"left": 双目的左sensor，"right":双目的右sensor，"combine"：左右sensor拼合的图像。
+  virtual int getFrame(std::string channel, int* nVOutW, int* nVOutH,
       void* buf, unsigned int bufsize, unsigned int*, uint64_t&, bool gray = false) = 0;
+
 
   // 获取cap的info信息；
   // 输入输出参数：MIPI_CAP_INFO_ST的结构信息。

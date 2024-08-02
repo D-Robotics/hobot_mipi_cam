@@ -32,9 +32,12 @@ struct NodePara {
   std::string camera_info_url_;
   std::string camera_calibration_file_path_;
   std::string out_format_name_;
+  std::string gdc_bin_file_;
   int image_width_;
   int image_height_;
   int framerate_;
+  std::string device_mode_; //"single":单目设备模式，"dual"：双目设备模式
+  int dual_combine_; //当device_mode_=="dual"时生效，0：表示不支持拼接,输出左右图，1：标志支持拼接，并输出左右图+拼接图，2：表示支持拼接，只输出拼接图。
   // The type of timestamp for publishing messages
   // "realtime": Uses the system CLOCK_REALTIME time when the image data is obtained
   // "sensor"/"default": Uses the time when the sensor captures the image, which is the time obtained through the getFrame interface
@@ -49,6 +52,9 @@ typedef struct {
   int height;
   int fps;
   int channel_;
+  std::string device_mode_; //"single":单目设备模式，"dual"：双目设备模式
+  int dual_combine_; //当device_mode_=="dual"时生效，0：表示不支持拼接,输出左右图，1：标志支持拼接，并输出左右图+拼接图，2：表示支持拼接，只输出拼接图。
+  std::string gdc_bin_file_;
 } MIPI_CAP_INFO_ST;
 
 typedef struct sensor_id {

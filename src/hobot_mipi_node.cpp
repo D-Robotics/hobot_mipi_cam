@@ -16,6 +16,7 @@
 
 #include <sstream>
 #include <stdarg.h>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -29,11 +30,10 @@ namespace mipi_cam {
 MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     : m_bIsInit(0),
       Node("mipi_cam", node_options),
-      img_(new sensor_msgs::msg::Image()),
       camera_calibration_info_(new sensor_msgs::msg::CameraInfo()) {
 
   getParams();
-  // init();
+  init();
 }
 
 MipiCamNode::~MipiCamNode() {
@@ -41,6 +41,7 @@ MipiCamNode::~MipiCamNode() {
   if (mipiCam_ptr_) {
     mipiCam_ptr_->stop();
     mipiCam_ptr_->deInit();
+    mipiCam_ptr_ = nullptr;
   }
 }
 
@@ -59,6 +60,9 @@ void MipiCamNode::getParams() {
   this->declare_parameter("out_format", "bgr8");   // nv12
   this->declare_parameter("video_device", "");  // "F37");
   this->declare_parameter("camera_calibration_file_path", "");
+  this->declare_parameter("gdc_bin_file", "");
+  this->declare_parameter("device_mode", "single");
+  this->declare_parameter("dual_combine", 0);
   this->declare_parameter("frame_ts_type", nodePare_.frame_ts_type_);
   auto parameters_client = std::make_shared<rclcpp::SyncParametersClient>(this);
   for (auto& parameter :
@@ -73,6 +77,9 @@ void MipiCamNode::getParams() {
                                           "io_method",
                                           "video_device",
                                           "camera_calibration_file_path",
+                                          "gdc_bin_file",
+                                          "device_mode",
+                                          "dual_combine",
                                           "frame_ts_type"
                                           })) {
     if (parameter.get_name() == "config_path") {
@@ -121,6 +128,21 @@ void MipiCamNode::getParams() {
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "camera_calibration_file_path value: %s",
                   parameter.value_to_string().c_str());
+    } else if (parameter.get_name() == "gdc_bin_file") {
+      nodePare_.gdc_bin_file_ = parameter.value_to_string();
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+                  "gdc_bin_file value: %s",
+                  parameter.value_to_string().c_str());
+    } else if (parameter.get_name() == "device_mode") {
+      nodePare_.device_mode_ = parameter.value_to_string();
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+                  "device_mode value: %s",
+                  parameter.value_to_string().c_str());
+    } else if (parameter.get_name() == "dual_combine") {
+      nodePare_.dual_combine_ = parameter.as_int();
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+                  "dual_combine value: %s",
+                  parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "frame_ts_type") {
       nodePare_.frame_ts_type_ = parameter.value_to_string();
       RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
@@ -144,12 +166,6 @@ void MipiCamNode::init() {
               __func__);
     rclcpp::shutdown();
   }
-  if (io_method_name_.compare("ros") == 0) {
-    image_pub_ =
-      this->create_publisher<sensor_msgs::msg::Image>("image_raw", PUB_BUF_NUM);
-  }
-  info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
-      "camera_info", PUB_BUF_NUM);
 
   while (frame_id_ == "") {
     RCLCPP_WARN_ONCE(
@@ -159,19 +175,44 @@ void MipiCamNode::init() {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
 
-  img_->header.frame_id = frame_id_;
-  camera_calibration_info_->header.frame_id = frame_id_;
   RCLCPP_INFO(
-      rclcpp::get_logger("mipi_node"),
-      "[MipiCamNode::%s]->Initing '%s' at %dx%d via %s at %i FPS",
-      __func__,
-      nodePare_.config_path_.c_str(),
-      nodePare_.image_width_,
-      nodePare_.image_height_,
-      io_method_name_.c_str(),
-      nodePare_.framerate_);
-  // set the IO method
-  if (io_method_name_.compare("shared_mem") == 0) {
+    rclcpp::get_logger("mipi_node"),
+    "[MipiCamNode::%s]->Initing '%s' at %dx%d via %s at %i FPS",
+    __func__,
+    nodePare_.config_path_.c_str(),
+    nodePare_.image_width_,
+    nodePare_.image_height_,
+    io_method_name_.c_str(),
+    nodePare_.framerate_);
+
+  if (io_method_name_.compare("ros") == 0) {
+    if (nodePare_.device_mode_.compare("dual") == 0) {
+
+      if (nodePare_.dual_combine_ == 1) {
+        Pub_info_.resize(3);
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_left_info", nodePare_.camera_calibration_file_path_);
+        init_publisher(Pub_info_[0], "image_left_raw", "left", frame_id_);
+        init_publisher(Pub_info_[1], "image_right_raw", "right", frame_id_);
+        init_publisher(Pub_info_[2], "image_combine_raw", "combine", frame_id_);
+      } else if (nodePare_.dual_combine_ == 2) {
+        Pub_info_.resize(1);
+        init_DualCalibration(&Pub_info_[0], "camera_left_info", "camera_right_info", nodePare_.camera_calibration_file_path_);
+        init_publisher(Pub_info_[0], "image_combine_raw", "combine", frame_id_);
+      } else {
+        Pub_info_.resize(2);
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_left_info", nodePare_.camera_calibration_file_path_);
+        init_publisher(Pub_info_[0], "image_left_raw", "left", frame_id_);
+        init_publisher(Pub_info_[1], "image_right_raw", "right", frame_id_);        
+      }
+    } else if ((nodePare_.device_mode_.compare("single") == 0) ||
+      (nodePare_.device_mode_.compare("") == 0)) {
+      Pub_info_.resize(1);
+      init_Calibration(&Pub_info_[0], "camera_info", nodePare_.camera_calibration_file_path_);
+      init_publisher(Pub_info_[0], "image_raw", "single", frame_id_);
+    } else {
+      return;
+    }
+  } else if (io_method_name_.compare("shared_mem") == 0) {
     std::string ros_zerocopy_env = rcpputils::get_env_var("RMW_FASTRTPS_USE_QOS_FROM_XML");
     if (ros_zerocopy_env.empty()) {
       RCLCPP_ERROR_STREAM(this->get_logger(),
@@ -187,11 +228,35 @@ void MipiCamNode::init() {
           << "Data transporting without zero-copy!");
       }
     }
+    if (nodePare_.device_mode_.compare("dual") == 0) {
 
-    // 创建hbmempub
-    publisher_hbmem_ =
-        this->create_publisher<hbm_img_msgs::msg::HbmMsg1080P>(
-            "hbmem_img", rclcpp::SensorDataQoS());
+      if (nodePare_.dual_combine_ == 1) {
+        Pub_hbmem_info_.resize(3);
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_left_info", nodePare_.camera_calibration_file_path_);
+        init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_left_img", "left");
+        init_publisher_hbmem(Pub_hbmem_info_[1], "hbmem_right_img", "right");
+        init_publisher_hbmem(Pub_hbmem_info_[2], "hbmem_combine_img", "combine");
+      } else if (nodePare_.dual_combine_ == 2) {
+        Pub_hbmem_info_.resize(1);
+        init_DualCalibration(&Pub_hbmem_info_[0], "camera_left_info", "camera_right_info", nodePare_.camera_calibration_file_path_);
+        init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_combine_img", "combine");
+      } else {
+        Pub_hbmem_info_.resize(2);
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_left_info", nodePare_.camera_calibration_file_path_);
+        init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_left_img", "left");
+        init_publisher_hbmem(Pub_hbmem_info_[1], "hbmem_right_img", "right");
+      }
+    } else if ((nodePare_.device_mode_.compare("single") == 0) ||
+      (nodePare_.device_mode_.compare("") == 0)) {
+      Pub_hbmem_info_.resize(1);
+      init_Calibration(&Pub_hbmem_info_[0], "camera_info", nodePare_.camera_calibration_file_path_);
+      init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_img", "single");
+    } else {
+      return;
+    }    
+
+  } else {
+    return;
   }
 
   // start the camera
@@ -202,67 +267,146 @@ void MipiCamNode::init() {
     return;
   }
   const int period_ms = 1000.0 / nodePare_.framerate_;
-  if (!mipiCam_ptr_->getCamCalibration(*camera_calibration_info_,
-                        nodePare_.camera_calibration_file_path_)) {
-    camera_calibration_info_ = nullptr;
-    RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
-                "get camera calibration parameters failed");
-  }
-  if (io_method_name_.compare("shared_mem") != 0) {
-    timer_ = this->create_wall_timer(
+
+
+  if (io_method_name_.compare("ros") == 0) {
+    for (Publisher_info_st& info : Pub_info_) {
+      //timer_.push_back(this->create_wall_timer(
+      //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
+      //  std::bind(&MipiCamNode::update, this, info)));
+      //timer_tmp_ = this->create_wall_timer(
+      //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
+      //  std::bind(&MipiCamNode::update, this, info));
+      // std::bind(&MipiCamNode::update, this, info);
+      timer_.push_back(this->create_wall_timer(
         std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-        std::bind(&MipiCamNode::update, this));
-  } else {
-    timer_ = this->create_wall_timer(
+        [this, &info]() {
+          this->update(&info);
+        }));
+    }
+
+  } else if (io_method_name_.compare("shared_mem") == 0) {
+    for (Publisher_hbmem_info_st& info : Pub_hbmem_info_) {
+      //timer_.push_back(this->create_wall_timer(
+      //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
+      //  std::bind(&MipiCamNode::hbmemUpdate, this, info)));
+      timer_.push_back(this->create_wall_timer(
         std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-        std::bind(&MipiCamNode::hbmemUpdate, this));
+        [this, &info]() {
+          this->hbmemUpdate(&info);
+        }));
+    }
   }
+
   RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_node"),
                      "starting timer " << period_ms);
   m_bIsInit = 1;
 }
 
-bool MipiCamNode::sendCalibration(const builtin_interfaces::msg::Time& stamp) {
-  if (camera_calibration_info_ != nullptr) {
-    camera_calibration_info_->header.stamp = stamp;
-    info_pub_->publish(*camera_calibration_info_);
-    return true;
-  } else {
-    return false;
-  }
+void MipiCamNode::init_publisher(Publisher_info_st&  Pub_info, std::string topic, std::string topic_type,
+                    std::string frame_id){
+  Pub_info.image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(topic, PUB_BUF_NUM);
+  Pub_info.img_ = std::make_unique<sensor_msgs::msg::Image>();
+  Pub_info.img_->header.frame_id = frame_id;
+  Pub_info.topic_type = topic_type;
 }
 
-void MipiCamNode::update() {
+void MipiCamNode::init_publisher_hbmem(Publisher_hbmem_info_st&  Pub_info, std::string topic, std::string topic_type){
+  Pub_info.publisher_hbmem_ = this->create_publisher<hbm_img_msgs::msg::HbmMsg1080P>(topic, rclcpp::SensorDataQoS());
+  Pub_info.topic_type = topic_type;
+
+}
+
+
+void MipiCamNode::init_Calibration(Publisher_info_base_st*  Pub_info,
+                    std::string info_topic, std::string info_file){
+  Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  if (!mipiCam_ptr_->getCamCalibration(*Pub_info->camera_calibration_info_, info_file)) {
+    Pub_info->camera_calibration_info_ = nullptr;
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                "get camera calibration parameters failed");
+    return;
+  }
+  Pub_info->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+    info_topic, PUB_BUF_NUM);
+  return;
+}
+
+void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info,
+                    std::string info_topic, std::string info_topic2, std::string info_file){
+  Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  Pub_info->camera_calibration_info2_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  if (!mipiCam_ptr_->getDualCamCalibration(*Pub_info->camera_calibration_info_, 
+       *Pub_info->camera_calibration_info2_, info_file)) {
+    Pub_info->camera_calibration_info_ = nullptr;
+    Pub_info->camera_calibration_info2_ = nullptr;
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                "get camera calibration parameters failed");
+    return;
+  }
+  Pub_info->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+    info_topic, PUB_BUF_NUM);
+  Pub_info->info_pub2_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+    info_topic2, PUB_BUF_NUM);
+  return;
+}
+
+
+void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info, Publisher_info_base_st*  Pub_info2,
+                    std::string info_topic, std::string info_topic2, std::string info_file){
+  Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  Pub_info2->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  if (!mipiCam_ptr_->getDualCamCalibration(*Pub_info->camera_calibration_info_, 
+       *Pub_info2->camera_calibration_info_, info_file)) {
+    Pub_info->camera_calibration_info_ = nullptr;
+    Pub_info2->camera_calibration_info_ = nullptr;
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                "get camera calibration parameters failed");
+    return;
+  }
+  Pub_info->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+    info_topic, PUB_BUF_NUM);
+  Pub_info2->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+    info_topic2, PUB_BUF_NUM);
+  return;
+}
+
+
+void MipiCamNode::update(Publisher_info_st* pub_info) {
   if (mipiCam_ptr_->isCapturing()) {
-    if (!mipiCam_ptr_->getImage(img_->header.stamp,
-                            img_->encoding,
-                            img_->height,
-                            img_->width,
-                            img_->step,
-                            img_->data)) {
+    if (!mipiCam_ptr_->getImage(pub_info->img_->header.stamp,
+                          pub_info->img_->encoding,
+                          pub_info->img_->height,
+                          pub_info->img_->width,
+                          pub_info->img_->step,
+                          pub_info->img_->data,
+                          pub_info->topic_type)) {
       RCLCPP_ERROR(rclcpp::get_logger("mipi_node"), "grab failed");
       return;
     }
+    
     if ("realtime" == nodePare_.frame_ts_type_) {
       struct timespec ts;
       clock_gettime(CLOCK_REALTIME, &ts);
-      img_->header.stamp.sec = ts.tv_sec;
-      img_->header.stamp.nanosec = ts.tv_nsec;
+      pub_info->img_->header.stamp.sec = ts.tv_sec;
+      pub_info->img_->header.stamp.nanosec = ts.tv_nsec;
     }
-    save_yuv(img_->header.stamp, (void *)&img_->data[0], img_->data.size());
-    image_pub_->publish(*img_);
-    if (sendCalibration(img_->header.stamp)) {
-      RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_node"), "publish camera info.\n");
-    } else {
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "Unable to publish camera info.\n");
+    save_yuv(pub_info->img_->header.stamp, (void *)&pub_info->img_->data[0], pub_info->img_->data.size());
+    pub_info->image_pub_->publish(*pub_info->img_);
+    if (pub_info->info_pub_) {
+      pub_info->camera_calibration_info_->header.stamp = pub_info->img_->header.stamp;
+      pub_info->info_pub_->publish(*pub_info->camera_calibration_info_);
+    }
+    if (pub_info->info_pub2_) {
+      pub_info->camera_calibration_info2_->header.stamp = pub_info->img_->header.stamp;
+      pub_info->info_pub2_->publish(*pub_info->camera_calibration_info2_);
     }
   }
 }
 
-void MipiCamNode::hbmemUpdate() {
+void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
   if (mipiCam_ptr_->isCapturing()) {
-    auto loanedMsg = publisher_hbmem_->borrow_loaned_message();
+    auto loanedMsg = pub_info->publisher_hbmem_->borrow_loaned_message();
     if (loanedMsg.is_valid()) {
       auto& msg = loanedMsg.get();
       if (!mipiCam_ptr_->getImageMem(msg.time_stamp,
@@ -271,11 +415,13 @@ void MipiCamNode::hbmemUpdate() {
                                   msg.width,
                                   msg.step,
                                   msg.data,
-                                  msg.data_size)) {
+                                  msg.data_size,
+                                  pub_info->topic_type)) {
         RCLCPP_ERROR(rclcpp::get_logger("mipi_node"),
-                     "hbmemUpdate grab img failed");
+                    "hbmemUpdate grab img failed");
         return;
       }
+
       if ("realtime" == nodePare_.frame_ts_type_) {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -283,13 +429,15 @@ void MipiCamNode::hbmemUpdate() {
         msg.time_stamp.nanosec = ts.tv_nsec;
       }
       save_yuv(msg.time_stamp, (void *)&msg.data, msg.data_size);
-      msg.index = mSendIdx++;
-      publisher_hbmem_->publish(std::move(loanedMsg));
-      if (sendCalibration(msg.time_stamp)) {
-        RCLCPP_INFO(rclcpp::get_logger("mipi_node"), "publish camera info.");
-      } else {
-        RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                    "Unable to publish camera info.");
+      msg.index = pub_info->mSendIdx++;
+      pub_info->publisher_hbmem_->publish(std::move(loanedMsg));
+      if (pub_info->info_pub_) {
+        pub_info->camera_calibration_info_->header.stamp = msg.time_stamp;
+        pub_info->info_pub_->publish(*pub_info->camera_calibration_info_);
+      }
+      if (pub_info->info_pub_) {
+        pub_info->camera_calibration_info2_->header.stamp = msg.time_stamp;
+        pub_info->info_pub2_->publish(*pub_info->camera_calibration_info2_);
       }
     } else {
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
@@ -314,3 +462,6 @@ void MipiCamNode::save_yuv(const builtin_interfaces::msg::Time stamp,
 }
 
 }  // namespace mipi_cam
+
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE(mipi_cam::MipiCamNode)

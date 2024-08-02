@@ -320,6 +320,14 @@ int HobotMipiCapIml::initEnv() {
 int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
   int ret = 0;
   cap_info_ = info;
+  
+  if (cap_info_.device_mode_.compare("dual") == 0) {
+    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
+      "RDK Ultra platform no suppot dual channle camera.\n");
+    return -1;
+  }
+
+
   RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
     "Rdkultra init start.\n");
 
@@ -450,7 +458,7 @@ int HobotMipiCapIml::stop() {
   return 0;
 }
 
-int HobotMipiCapIml::getFrame(int nChnID, int* nVOutW, int* nVOutH,
+int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
         void* frame_buf, unsigned int bufsize, unsigned int* len,
         uint64_t &timestamp, bool gray) {
   int size = -1, ret = 0;

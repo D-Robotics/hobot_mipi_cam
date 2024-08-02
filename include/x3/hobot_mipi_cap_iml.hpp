@@ -50,7 +50,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int stop();
 
   // 如果有 vps ，就 输出vps 的分层数据
-  int getFrame(int nChnID, int* nVOutW, int* nVOutH,
+  int getFrame(std::string channel, int* nVOutW, int* nVOutH,
         void* buf, unsigned int bufsize, unsigned int*, uint64_t&, bool gray = false);
 
   int parseConfig(std::string sensor_name, int w, int h, int fps);
@@ -86,6 +86,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int entry_index_ = 0;
   int sensor_bus_ = 2;
   int pipeline_id_ = 0;
+  int vps_channel_ = 2; 
   std::vector<int> mipi_started_;
   std::vector<int> mipi_stoped_;
   std::map<int, BOARD_CONFIG_ST> board_config_m_;

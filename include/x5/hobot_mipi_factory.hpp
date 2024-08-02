@@ -12,25 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <string>
+#ifndef HOBOT_MIPI_FACTORY_HPP_
+#define HOBOT_MIPI_FACTORY_HPP_
+
 #include <memory>
+#include <string>
+#include "hobot_mipi_cap.hpp"
 
-#include "rclcpp/rclcpp.hpp"
-#include "hobot_mipi_node.hpp"
+namespace mipi_cam {
+  // 创建sensor数据捕抓对象HobotMipiCap,工厂模式。
+  // dev_name--板级类型名称，如RDKX3,RDKX3_m,x3sdb.
+  std::shared_ptr<HobotMipiCap> createMipiCap(const std::string &dev_name);
 
-using mipi_cam::MipiCamNode;
+  // 检测当前板子的类型，。
+  // 返回值--板级类型名称，如RDKX3,RDKX3_m,x3sdb.
+  std::string getBoardType();
 
-int main(int argc, char** argv) {
-  RCLCPP_WARN(rclcpp::get_logger("mipi_cam"), "This is version for optimizing camera timestamp!");
+}  // namespace mipi_cam
 
-  rclcpp::init(argc, argv);
-  rclcpp::NodeOptions opt;
-  auto node = std::make_shared<MipiCamNode>(opt);
-  // node->init();
-  rclcpp::executors::SingleThreadedExecutor exec;
-  exec.add_node(node);
-  exec.spin();
 
-  rclcpp::shutdown();
-  return 0;
-}
+#endif  // HOBOT_MIPI_FACTORY_HPP_
