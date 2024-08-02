@@ -101,7 +101,7 @@ static vin_ichn_attr_t sc230ai_vin_ichn_attr = {
 };
 
 static vin_ochn_attr_t sc230ai_vin_ochn_attr = {
-	.ddr_en = 0,
+	.ddr_en = 1,
 	.ochn_attr_type = VIN_BASIC_ATTR,
 	.vin_basic_attr = {
 		.format = RAW10,

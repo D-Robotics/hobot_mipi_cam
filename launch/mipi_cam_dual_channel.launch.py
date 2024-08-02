@@ -27,7 +27,7 @@ import os
 def generate_launch_description():
     config_file_path = os.path.join(
         get_package_prefix('mipi_cam'),
-        "lib/mipi_cam/config/F37_calibration.yaml")
+        "lib/mipi_cam/config/")
     print("config_file_path is ", config_file_path)
 
     return LaunchDescription([
@@ -37,7 +37,7 @@ def generate_launch_description():
             description='mipi camera calibration file path'),
         DeclareLaunchArgument(
             'mipi_camera_calibration_file_path',
-            default_value='default',
+            default_value=TextSubstitution(text=str(config_file_path)+"calib_params.yaml"),
             description='mipi camera calibration file path'),
         DeclareLaunchArgument(
             'mipi_out_format',
@@ -80,6 +80,10 @@ def generate_launch_description():
             default_value='default_cam',
             description=''),
         DeclareLaunchArgument(
+            'mipi_gdc_bin_file',
+            default_value='',
+            description='mipi camera gdc bin_file'),
+        DeclareLaunchArgument(
             'log_level',
             default_value='warn',
             description='log level'),
@@ -107,6 +111,7 @@ def generate_launch_description():
                 {"io_method": LaunchConfiguration('mipi_io_method')},
                 {"video_device": LaunchConfiguration('mipi_video_device')},
                 {"device_mode": LaunchConfiguration('device_mode')},
+                {"gdc_bin_file": LaunchConfiguration('mipi_gdc_bin_file')},
                 {"dual_combine": LaunchConfiguration('dual_combine')},
                 {"frame_ts_type": LaunchConfiguration('mipi_frame_ts_type')},
                 {"frame_id": LaunchConfiguration('frame_id')},

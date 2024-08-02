@@ -132,6 +132,9 @@ class MipiCamIml : public MipiCam {
   // gen camera calibration
   bool getCamCalibration(sensor_msgs::msg::CameraInfo& cam_info,
                            const std::string &file_path);
+  
+  bool getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,
+                sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
 
   bool isCapturing();
 
@@ -197,6 +200,7 @@ int MipiCamIml::init(struct NodePara &para) {
   cap_info_.channel_ = nodePare_.channel_;
   cap_info_.device_mode_ = nodePare_.device_mode_;
   cap_info_.dual_combine_ = nodePare_.dual_combine_;
+  cap_info_.gdc_bin_file_ = nodePare_.gdc_bin_file_;
 
   if (mipiCap_ptr_->initEnv() < 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
@@ -586,6 +590,118 @@ bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
     for (int i = 0; i < d_rows * d_cols; ++i) {
       cam_info.d[i] = distortion_coefficients_data[i].as<double>();
     }
+    RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
+      "[getCamCalibration]->parse calibration file successfully");
+    return true;
+  } catch (YAML::Exception &e) {
+    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
+      "Unable to parse camera calibration file normally:%s",
+      e.what());
+    return false;
+  }
+}
+
+bool MipiCamIml::getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,sensor_msgs::msg::CameraInfo &cam_info_r,
+                                  const std::string &file_path) {
+
+  try {
+    std::string cal_file = file_path;
+    std::string camera_name;
+    std::ifstream fin(cal_file.c_str());
+    if (!fin) {
+      RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
+          "Camera calibration file: %s is not exist!"
+          "\nIf you need calibration msg, please make sure the calibration file path is correct and the calibration file exists!",
+          cal_file.c_str());
+      return false;
+    }
+    YAML::Node calibration_doc = YAML::Load(fin);
+    const YAML::Node &cal_l_doc = calibration_doc["cam0"];
+    const YAML::Node &T_cn_cnm1 = calibration_doc["T_cn_cnm1"];
+
+    cam_info_l.width = cal_l_doc["resolution"][0].as<int>();
+    cam_info_l.height = cal_l_doc["resolution"][1].as<int>();
+
+    cam_info_l.d.resize(cal_l_doc["distortion_coeffs"].size());
+    for (int i = 0; i < cal_l_doc["distortion_coeffs"].size(); ++i) {
+      cam_info_l.d[i] = cal_l_doc["distortion_coeffs"][i].as<double>();
+    }
+
+    cam_info_l.k[0] = cal_l_doc["intrinsics"][0].as<double>();
+    cam_info_l.k[1] = 0.0;
+    cam_info_l.k[2] = cal_l_doc["intrinsics"][1].as<double>();
+    cam_info_l.k[3] = 0.0;
+    cam_info_l.k[4] = cal_l_doc["intrinsics"][2].as<double>();
+    cam_info_l.k[5] = cal_l_doc["intrinsics"][3].as<double>();
+    cam_info_l.k[6] = 0.0;
+    cam_info_l.k[7] = 0.0;
+    cam_info_l.k[8] = 1.0;
+
+    cam_info_l.r[0] = 1.0;
+    cam_info_l.r[1] = 0.0;
+    cam_info_l.r[2] = 0.0;
+    cam_info_l.r[3] = 0.0;
+    cam_info_l.r[4] = 1.0;
+    cam_info_l.r[5] = 0.0;
+    cam_info_l.r[6] = 0.0;
+    cam_info_l.r[7] = 0.0;
+    cam_info_l.r[8] = 1.0;
+
+    cam_info_l.p[0] = cal_l_doc["intrinsics"][0].as<double>();
+    cam_info_l.p[1] = 0.0;
+    cam_info_l.p[2] = cal_l_doc["intrinsics"][1].as<double>();
+    cam_info_l.p[3] = 0.0;
+    cam_info_l.p[4] = 0.0;
+    cam_info_l.p[5] = cal_l_doc["intrinsics"][2].as<double>();
+    cam_info_l.p[6] = cal_l_doc["intrinsics"][3].as<double>();
+    cam_info_l.p[7] = 0.0;
+    cam_info_l.p[8] = 0.0;
+    cam_info_l.p[9] = 0.0;
+    cam_info_l.p[10] = 1.0;
+    cam_info_l.p[11] = 0.0;
+
+    const YAML::Node &cal_r_doc = calibration_doc["cam1"];
+
+    cam_info_r.width = cal_r_doc["resolution"][0].as<int>();
+    cam_info_r.height = cal_r_doc["resolution"][1].as<int>();
+
+    cam_info_r.d.resize(cal_r_doc["distortion_coeffs"].size());
+    for (int i = 0; i < cal_r_doc["distortion_coeffs"].size(); ++i) {
+      cam_info_r.d[i] = cal_r_doc["distortion_coeffs"][i].as<double>();
+    }
+
+    cam_info_r.k[0] = cal_r_doc["intrinsics"][0].as<double>();
+    cam_info_r.k[1] = 0.0;
+    cam_info_r.k[2] = cal_r_doc["intrinsics"][1].as<double>();
+    cam_info_r.k[3] = 0.0;
+    cam_info_r.k[4] = cal_r_doc["intrinsics"][2].as<double>();
+    cam_info_r.k[5] = cal_r_doc["intrinsics"][3].as<double>();
+    cam_info_r.k[6] = 0.0;
+    cam_info_r.k[7] = 0.0;
+    cam_info_r.k[8] = 1.0;
+
+    cam_info_r.r[0] = T_cn_cnm1[0][0].as<double>();
+    cam_info_r.r[1] = T_cn_cnm1[0][1].as<double>();
+    cam_info_r.r[2] = T_cn_cnm1[0][2].as<double>();
+    cam_info_r.r[3] = T_cn_cnm1[1][0].as<double>();
+    cam_info_r.r[4] = T_cn_cnm1[1][1].as<double>();
+    cam_info_r.r[5] = T_cn_cnm1[1][2].as<double>();
+    cam_info_r.r[6] = T_cn_cnm1[2][0].as<double>();
+    cam_info_r.r[7] = T_cn_cnm1[2][1].as<double>();
+    cam_info_r.r[8] = T_cn_cnm1[2][2].as<double>();
+
+    cam_info_r.p[0] = cal_r_doc["intrinsics"][0].as<double>();
+    cam_info_r.p[1] = 0.0;
+    cam_info_r.p[2] = cal_r_doc["intrinsics"][1].as<double>();
+    cam_info_r.p[3] = 0.0;
+    cam_info_r.p[4] = 0.0;
+    cam_info_r.p[5] = cal_r_doc["intrinsics"][2].as<double>();
+    cam_info_r.p[6] = cal_r_doc["intrinsics"][3].as<double>();
+    cam_info_r.p[7] = 0.0;
+    cam_info_r.p[8] = 0.0;
+    cam_info_r.p[9] = 0.0;
+    cam_info_r.p[10] = 1.0;
+    cam_info_r.p[11] = 0.0;
     RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
       "[getCamCalibration]->parse calibration file successfully");
     return true;

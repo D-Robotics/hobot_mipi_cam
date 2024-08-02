@@ -27,6 +27,8 @@
 #include "hbn_api.h"
 #include "vp_sensors.h"
 #include "vse_cfg.h"
+#include "gdc_cfg.h"
+#include "gdc_bin_cfg.h"
 #include "codec_cfg.h"
 #include "GC820/nano2D.h"
 #include "GC820/nano2D_util.h"
@@ -45,6 +47,9 @@ typedef struct pipe_contex_s {
 	hbn_vnode_handle_t vpu_node_handle;
 	camera_handle_t cam_fd;
 	vp_sensor_config_t sensor_config;
+  hb_mem_common_buf_t gdc_bin_buf;
+  int gdc_bin_buf_is_valid;
+  int gdc_init_valid;
   MIPI_CAP_INFO_ST *cap_info_;
 }pipe_contex_t;
 
@@ -123,7 +128,9 @@ class HobotMipiCapIml : public HobotMipiCap {
   int creat_vse_node(pipe_contex_t *pipe_contex);
   int creat_isp_node(pipe_contex_t *pipe_contex);
   int creat_vin_node(pipe_contex_t *pipe_contex);
+  int creat_gdc_node(pipe_contex_t *pipe_contex);
   int creat_camera_node(camera_config_t* camera_config,int64_t* cam_fd);
+  int get_gdc_config(std::string gdc_bin_file, hb_mem_common_buf_t *bin_buf);
 
   bool m_inited_ = false;
   bool started_ = false;

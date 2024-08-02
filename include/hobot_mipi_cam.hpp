@@ -70,6 +70,8 @@ class MipiCam
   // gen camera calibration
   virtual bool getCamCalibration(sensor_msgs::msg::CameraInfo& cam_info,
                const std::string &file_path) = 0;
+  virtual bool getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,
+                sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path) = 0;
 
   virtual bool isCapturing() = 0;
 };

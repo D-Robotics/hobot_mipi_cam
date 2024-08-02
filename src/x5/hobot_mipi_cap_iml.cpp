@@ -179,52 +179,55 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
       "x5 camera isn't started");
     return -1;
   }
-  int loop = 6;
+
+  int loop = (1000 / cap_info_.fps + 10) / 10;
   if (dual_frame_task_) {
 	do {
 		if (!rclcpp::ok()) break;
-		std::shared_ptr<VideoBuffer_ST> buff_ptr = nullptr;
-		std::unique_lock<std::mutex> lk(queue_mtx_);
-		if (channel == "combine") {
-			if (q_combine_buff_.size() > 0) {
-				buff_ptr = q_combine_buff_.front();
-				q_combine_buff_.pop();
-			}
-		} else if (channel == "right") {
-			if (q_v_buff_[1].size() > 0) {
-				buff_ptr = q_v_buff_[1].front();
-				q_v_buff_[1].pop();
-			}
-		} else {
-			if (q_v_buff_[0].size() > 0) {
-				buff_ptr = q_v_buff_[0].front();
-				q_v_buff_[0].pop();
-			}
-		}
-		if (buff_ptr) {
-			if (buff_ptr->data_size > bufsize) {
-				q_buff_empty_.push(buff_ptr);
-				return -1;
-			}
-			timestamp = buff_ptr->timestamp;
-			*nVOutW = buff_ptr->width;
-			*nVOutH = buff_ptr->height;
-			*len = buff_ptr->data_size;
-			if (gray == true) {
-				*len = buff_ptr->width * buff_ptr->height;
-				memcpy(frame_buf, buff_ptr->buff, *len);
-			} else {
-				memcpy(frame_buf, buff_ptr->buff, buff_ptr->data_size);
-			}
+		{
+			std::shared_ptr<VideoBuffer_ST> buff_ptr = nullptr;
+			std::unique_lock<std::mutex> lk(queue_mtx_);
 			if (channel == "combine") {
-				q_combine_buff_empty_.push(buff_ptr);
+				if (q_combine_buff_.size() > 0) {
+					buff_ptr = q_combine_buff_.front();
+					q_combine_buff_.pop();
+				}
+			} else if (channel == "right") {
+				if (q_v_buff_[1].size() > 0) {
+					buff_ptr = q_v_buff_[1].front();
+					q_v_buff_[1].pop();
+				}
 			} else {
-				q_buff_empty_.push(buff_ptr);
+				if (q_v_buff_[0].size() > 0) {
+					buff_ptr = q_v_buff_[0].front();
+					q_v_buff_[0].pop();
+				}
 			}
-			return 0;
-		} 
-		usleep(5 * 1000);
-	} while (loop-- > 0);
+			if (buff_ptr) {
+				if (buff_ptr->data_size > bufsize) {
+					q_buff_empty_.push(buff_ptr);
+					return -1;
+				}
+				timestamp = buff_ptr->timestamp;
+				*nVOutW = buff_ptr->width;
+				*nVOutH = buff_ptr->height;
+				*len = buff_ptr->data_size;
+				if (gray == true) {
+					*len = buff_ptr->width * buff_ptr->height;
+					memcpy(frame_buf, buff_ptr->buff, *len);
+				} else {
+					memcpy(frame_buf, buff_ptr->buff, buff_ptr->data_size);
+				}
+				if (channel == "combine") {
+					q_combine_buff_empty_.push(buff_ptr);
+				} else {
+					q_buff_empty_.push(buff_ptr);
+				}
+				return 0;
+			} 
+		}
+		usleep(10 * 1000);
+	} while ((loop-- > 0) && started_);
 
   } else {
 	int stride = 0;
@@ -541,6 +544,15 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 	// 设置输出通道的属性
 	ret = hbn_vnode_set_ochn_attr(pipe_contex->vin_node_handle, chn_id, sensor_config.vin_ochn_attr);
 	ERR_CON_EQ(ret, 0);
+	hbn_buf_alloc_attr_t alloc_attr_raw = {0};
+    alloc_attr_raw.buffers_num = 3;
+	alloc_attr_raw.is_contig = 1;
+	alloc_attr_raw.flags = HB_MEM_USAGE_CPU_READ_OFTEN
+						| HB_MEM_USAGE_CPU_WRITE_OFTEN
+						| HB_MEM_USAGE_CACHED;
+	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vin_node_handle, chn_id, &alloc_attr_raw);
+	ERR_CON_EQ(ret, 0);
+
 	// 设置额外属性，for mclk
 
 	vin_attr_ex.vin_attr_ex_mask = 0x80;
@@ -656,12 +668,81 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	return 0;
 }
 
+int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
+	if (pipe_contex == nullptr) {
+		return -1;
+	}
+	int ret = 0;
+	uint32_t chn_id = 0;
+	isp_ichn_attr_t isp_ichn_attr;
+	pipe_contex->gdc_bin_buf_is_valid = 0;
+	pipe_contex->gdc_init_valid = 0;
+#if 0
+    const char* gdc_bin_file = vp_gdc_get_bin_file(vp_vflow_contex->gdc_info.sensor_name);
+	if(gdc_bin_file == NULL){
+		SC_LOGE("%s is enable gdc, but gdc bin file is not set.", vp_vflow_contex->gdc_info.sensor_name);
+		return -1;
+	}
+#endif
+	ret = hbn_vnode_get_ichn_attr(pipe_contex->isp_node_handle, chn_id, &isp_ichn_attr);
+	ERR_CON_EQ(ret, 0);
+	int input_width = isp_ichn_attr.width;
+	int input_height = isp_ichn_attr.height;
+
+    ret = get_gdc_config(pipe_contex->cap_info_->gdc_bin_file_, &pipe_contex->gdc_bin_buf);
+	ERR_CON_EQ(ret, 0);
+	pipe_contex->gdc_bin_buf_is_valid = 1;
+
+	uint32_t hw_id = 0;
+	ret = hbn_vnode_open(HB_GDC, hw_id, AUTO_ALLOC_ID, &pipe_contex->gdc_node_handle);
+	ERR_CON_EQ(ret, 0);
+	gdc_attr_t gdc_attr = {0};
+	gdc_attr.config_addr = pipe_contex->gdc_bin_buf.phys_addr;
+	gdc_attr.config_size = pipe_contex->gdc_bin_buf.size;
+	gdc_attr.binary_ion_id = pipe_contex->gdc_bin_buf.share_id;
+	gdc_attr.binary_offset = pipe_contex->gdc_bin_buf.offset;
+	gdc_attr.total_planes = 2;
+	gdc_attr.div_width = 0;
+	gdc_attr.div_height = 0;
+	ret = hbn_vnode_set_attr(pipe_contex->gdc_node_handle, &gdc_attr);
+	ERR_CON_EQ(ret, 0);
+	//uint32_t chn_id = 0;
+
+	gdc_ichn_attr_t gdc_ichn_attr = {0};
+	gdc_ichn_attr.input_width = input_width;
+	gdc_ichn_attr.input_height = input_height;
+	gdc_ichn_attr.input_stride = input_width;
+	ret = hbn_vnode_set_ichn_attr(pipe_contex->gdc_node_handle, chn_id, &gdc_ichn_attr);
+	ERR_CON_EQ(ret, 0);
+
+	gdc_ochn_attr_t gdc_ochn_attr = {0};
+	gdc_ochn_attr.output_width = input_width;
+	gdc_ochn_attr.output_height = input_height;
+	gdc_ochn_attr.output_stride = input_width;
+	ret = hbn_vnode_set_ochn_attr(pipe_contex->gdc_node_handle, chn_id, &gdc_ochn_attr);
+	ERR_CON_EQ(ret, 0);
+	hbn_buf_alloc_attr_t alloc_attr = {0};
+	alloc_attr.buffers_num = 3;
+	alloc_attr.is_contig = 1;
+	alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN |
+					HB_MEM_USAGE_CPU_WRITE_OFTEN |
+					HB_MEM_USAGE_CACHED;
+	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->gdc_node_handle, chn_id, &alloc_attr);
+	ERR_CON_EQ(ret, 0);
+	pipe_contex->gdc_init_valid = 1;
+
+	return 0;
+}
+
 int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
+	int isp_bind = 1;
 	if (pipe_contex == nullptr) {
 		return -1;
 	}
 	int32_t ret = 0;
     if (pipe_contex->cap_info_->device_mode_.compare("dual") == 0) {
+		pipe_contex->sensor_config.isp_attr->input_mode = 2;
+		isp_bind = 0;
 		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
 		int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
@@ -685,6 +766,7 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ERR_CON_EQ(ret, 0);
 	ret = creat_isp_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
+	creat_gdc_node(pipe_contex);
 	ret = creat_vse_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
 
@@ -697,21 +779,41 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
 							pipe_contex->isp_node_handle);
 	ERR_CON_EQ(ret, 0);
+	if (pipe_contex->gdc_init_valid == 1) {
+		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+							pipe_contex->gdc_node_handle);
+		ERR_CON_EQ(ret, 0);
+	}
 	ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
 							pipe_contex->vse_node_handle);
 	ERR_CON_EQ(ret, 0);
 	ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 							pipe_contex->vin_node_handle,
-							1,
+							isp_bind,
 							pipe_contex->isp_node_handle,
 							0);
 	ERR_CON_EQ(ret, 0);
-	ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+	if (pipe_contex->gdc_init_valid == 1) {
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->isp_node_handle,
+							0,
+							pipe_contex->gdc_node_handle,
+							0);
+		ERR_CON_EQ(ret, 0);
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->gdc_node_handle,
+							0,
+							pipe_contex->vse_node_handle,
+							0);
+		ERR_CON_EQ(ret, 0);
+	} else {
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 							pipe_contex->isp_node_handle,
 							0,
 							pipe_contex->vse_node_handle,
 							0);
-	ERR_CON_EQ(ret, 0);
+		ERR_CON_EQ(ret, 0);
+	}
 
 	ret = hbn_camera_attach_to_vin(pipe_contex->cam_fd,
 							pipe_contex->vin_node_handle);
@@ -869,6 +971,53 @@ int HobotMipiCapIml::selectSensor(std::string &sensor, int &host, int &i2c_bus) 
     }
   }
   return -1;
+}
+
+int HobotMipiCapIml::get_gdc_config(std::string gdc_bin_file, hb_mem_common_buf_t *bin_buf) {
+	int64_t alloc_flags = 0;
+	int ret = 0;
+	int offset = 0;
+	char *cfg_buf = NULL;
+
+	FILE *fp = fopen(gdc_bin_file.c_str(), "r");
+	if (fp == NULL) {
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),"File %s open failed\n", gdc_bin_file);
+		return -1;
+	}
+	fseek(fp, 0, SEEK_END);
+	long file_size = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	cfg_buf = (char*)malloc(file_size);
+	int n = fread(cfg_buf, 1, file_size, fp);
+	if (n != file_size) {
+        free(cfg_buf);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),"Read file size failed\n");
+        fclose(fp);
+        return -1;
+	}
+	fclose(fp);
+
+	memset(bin_buf, 0, sizeof(hb_mem_common_buf_t));
+	alloc_flags = HB_MEM_USAGE_MAP_INITIALIZED | HB_MEM_USAGE_PRIV_HEAP_2_RESERVERD | HB_MEM_USAGE_CPU_READ_OFTEN |
+				HB_MEM_USAGE_CPU_WRITE_OFTEN | HB_MEM_USAGE_CACHED;
+	ret = hb_mem_alloc_com_buf(file_size, alloc_flags, bin_buf);
+	if (ret != 0 || bin_buf->virt_addr == NULL) {
+        free(cfg_buf);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),"hb_mem_alloc_com_buf for bin failed, ret = %d\n", ret);
+		return -1;
+	}
+
+	memcpy(bin_buf->virt_addr, cfg_buf, file_size);
+	ret = hb_mem_flush_buf(bin_buf->fd, offset, file_size);
+	if (ret != 0 || bin_buf->virt_addr == NULL) {
+        free(cfg_buf);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),"hb_mem_flush_buf for bin failed, ret = %d\n", ret);
+		return -1;
+	}
+
+    free(cfg_buf);
+
+	return ret;
 }
 
 
