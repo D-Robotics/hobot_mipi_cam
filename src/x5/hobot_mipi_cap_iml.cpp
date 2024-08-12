@@ -83,7 +83,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	//ERR_CON_EQ(ret, 0);
 
   } else {
-	sensor_v = {3};
+	sensor_v = {8};
 	host_v = {0};
 	pipe_contex.resize(1);
 	pipe_contex[0].cap_info_ = &cap_info_;
@@ -555,7 +555,8 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 
 	// 设置额外属性，for mclk
 
-	vin_attr_ex.vin_attr_ex_mask = 0x80;
+	//vin_attr_ex.vin_attr_ex_mask = 0x80;
+	vin_attr_ex.vin_attr_ex_mask = 0x00;
 	vin_attr_ex.mclk_ex_attr.mclk_freq = 24000000; // 24MHz
 
 
@@ -819,8 +820,8 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 							pipe_contex->vin_node_handle);
 	ERR_CON_EQ(ret, 0);
 
-	ret = hbn_camera_change_fps(pipe_contex->cam_fd, pipe_contex->sensor_config.camera_config->fps);
-	ERR_CON_EQ(ret, 0);
+	//ret = hbn_camera_change_fps(pipe_contex->cam_fd, pipe_contex->sensor_config.camera_config->fps);
+	//ERR_CON_EQ(ret, 0);
 	return 0;
 }
 

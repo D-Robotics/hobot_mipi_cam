@@ -79,6 +79,7 @@ elseif(PLATFORM_X5)
     src/x5/sensor/f37_linear_1920x1080_raw10_30fps_1lane.c
     src/x5/sensor/irs2875_linear_208x1413_raw12_15fps_2lane.c
     src/x5/sensor/ov5640_linear_1920x1080_raw10_30fps_2lane.c
+    src/x5/sensor/ov5647_linear_1920x1080_raw10_30fps_2lane.c
     src/x5/sensor/sc035hgs_linear_640x480_raw10_30fps_1lane.c
     src/x5/sensor/sc132gs_linear_896x896_raw10_10fps_2lane.c
     src/x5/sensor/sc132gs_linear_1088x1280_raw10_10fps_2lane.c

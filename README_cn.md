@@ -163,6 +163,21 @@ PC打开浏览器（chrome/firefox/edge）输入<http://IP:8000>（IP为RDK IP�
 | /image_raw   | sensor_msgs/msg/Image                | 周期发布的图像话题，rgb8格式             |
 | /hbmem_img   | rcl_interfaces/msg/HobotMemoryCommon | 基于共享内存share mem的图像话题，        |
 
+### 双目发布话题
+
+| 名称         | 消息类型                             | 说明                                     |
+| ------------ | ------------------------------------ | ---------------------------------------- |
+| /camera_left_info | sensor_msgs/msg/CameraInfo           | 左目相机内参话题，根据设置的相机标定文件发布 |
+| /camera_right_info | sensor_msgs/msg/CameraInfo           | 右目相机内参话题，根据设置的相机标定文件发布 |
+| /image_left_raw   | sensor_msgs/msg/Image                | 左目相机周期发布的图像话题，rgb8格式             |
+| /image_right_raw   | sensor_msgs/msg/Image                | 右目相机周期发布的图像话题，rgb8格式             |
+| /image_combine_raw   | sensor_msgs/msg/Image                | 左右目拼接在一起，周期发布的图像话题            |
+| /hbmem_left_img   | rcl_interfaces/msg/HobotMemoryCommon | 基于共享内存share mem的图像话题，左目相机图像        |
+| /hbmem_right_img   | rcl_interfaces/msg/HobotMemoryCommon | 基于共享内存share mem的图像话题，右目相机图像        |
+| /hbmem_combine_img   | rcl_interfaces/msg/HobotMemoryCommon | 基于共享内存share mem的图像话题，左右目拼接图像        |
+
+
+
 ## 参数
 
 | 名称                         | 参数值                                          | 说明                                               |
@@ -173,7 +188,9 @@ PC打开浏览器（chrome/firefox/edge）输入<http://IP:8000>（IP为RDK IP�
 | out_format                   | bgr8（默认）<br />nv12                          | 图像编码方式                                       |
 | io_method                    | 无（默认）<br />shared_mem                      | 图像传输方式，配置shared_mem后将使用零拷贝机制传输 |
 | camera_calibration_file_path | 无（默认）                                      | 相机标定文件的路径                                 |
-
+| device_mode                  | single（默认）<br />single<br />dual            | 设备是单目、双目的选择模式                           |
+| dual_combine                   | 0（默认）<br />1 <br />2              | 当device_mode_=="dual"时生效，0：表示不支持拼接,输出左右图，1：标志支持拼接，并输出左右图+拼接图，2：表示支持拼接，只输出拼接图                                       |
+| gdc_bin_file                   | 无（默认）                                      | 相机GDC文件的路径                                 |
 
 
 # 常见问题
