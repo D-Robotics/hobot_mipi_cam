@@ -82,10 +82,11 @@ elseif(PLATFORM_X5)
     src/x5/sensor/ov5647_linear_1920x1080_raw10_30fps_2lane.c
     src/x5/sensor/sc035hgs_linear_640x480_raw10_30fps_1lane.c
     src/x5/sensor/sc132gs_linear_896x896_raw10_10fps_2lane.c
-    src/x5/sensor/sc132gs_linear_1088x1280_raw10_10fps_2lane.c
-    src/x5/sensor/sc230ai_linear_1920x1080_raw10_10fps_1lane.c
+    src/x5/sensor/sc132gs_linear_1088x1280_raw10_30fps_1lane.c
     src/x5/sensor/sc230ai_linear_1920x1080_raw10_30fps_1lane.c
     src/x5/sensor/sc1330t_linear_1280x960_raw10_30fps_1lane.c
+    src/x5/sensor/imx219_linear_1920x1080_raw10_30fps_2lane.c
+    src/x5/sensor/imx415_linear_3840x2160_raw10_30fps_4lane.c
     src/x5/sensor/vp_sensors.c
   )
   include_directories(include 

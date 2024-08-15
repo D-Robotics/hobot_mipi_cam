@@ -45,11 +45,11 @@ def generate_launch_description():
             description='mipi camera out format'),
         DeclareLaunchArgument(
             'mipi_image_width',
-            default_value='960',
+            default_value='544',
             description='mipi camera out image width'),
         DeclareLaunchArgument(
             'mipi_image_height',
-            default_value='544',
+            default_value='640',
             description='mipi camera out image height'),
         DeclareLaunchArgument(
             'mipi_image_framerate',

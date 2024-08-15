@@ -47,6 +47,7 @@ typedef struct pipe_contex_s {
 	hbn_vnode_handle_t vpu_node_handle;
 	camera_handle_t cam_fd;
 	vp_sensor_config_t sensor_config;
+  vp_csi_config_t csi_config;
   hb_mem_common_buf_t gdc_bin_buf;
   int gdc_bin_buf_is_valid;
   int gdc_init_valid;
