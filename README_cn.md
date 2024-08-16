@@ -190,6 +190,8 @@ PC打开浏览器（chrome/firefox/edge）输入<http://IP:8000>（IP为RDK IP�
 | camera_calibration_file_path | 无（默认）                                      | 相机标定文件的路径                                 |
 | device_mode                  | single（默认）<br />single<br />dual            | 设备是单目、双目的选择模式                           |
 | dual_combine                   | 0（默认）<br />1 <br />2              | 当device_mode_=="dual"时生效，0：表示不支持拼接,输出左右图，1：标志支持拼接，并输出左右图+拼接图，2：表示支持拼接，只输出拼接图                                       |
+| channel                      | 0（默认）                                        | mipi的camera接口,范围0~3                          |
+| channel2                      | 2（默认）                                        | mipi的camera接口,范围0~3,双目时的右目接口          |
 | gdc_bin_file                   | 无（默认）                                      | 相机GDC文件的路径                                 |
 
 
