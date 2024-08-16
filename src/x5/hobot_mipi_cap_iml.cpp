@@ -86,20 +86,50 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
   std::vector<int> sensor_v;
   std::vector<int> host_v;
   std::vector<mipi_host_info_t> v_host_info;
+  std::vector<mipi_host_info_t> v_host_info_detect;
+  int sensor_index = 0;
+  bool sensor_flag = false;
+  int sensor_index2 = 0;
+  bool sensor_flag2 = false;
   mipi_host_info_t host_info;
   for (int i = 0; i < 4; i++) {
 	ret = vp_sensor_detect_2(i, &host_info);
 	if (ret == 0) {
-		v_host_info.push_back(host_info);
+		v_host_info_detect.push_back(host_info);
 	}
   }
 
   if (cap_info_.device_mode_.compare("dual") == 0) {
-	if (v_host_info.size() < 2) {
+	if (v_host_info_detect.size() < 2) {
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
        		"The detected sensors are 2 less than expected.\n");
 		return -1;
 	}
+	
+	if (cap_info_.channel_ == cap_info_.channel2_) {
+		for(auto& host : v_host_info_detect) {
+			v_host_info.push_back(host);
+		}
+	} else {
+		for(int k = 0; k < v_host_info_detect.size(); k++) {
+			if (v_host_info_detect[k].host_num == cap_info_.channel_) {
+				sensor_index = k;
+				sensor_flag = true;
+			} else if (v_host_info_detect[k].host_num == cap_info_.channel2_) {
+				sensor_index2 = k;
+				sensor_flag2 = true;
+			}
+		}
+		if ((sensor_flag == true) && (sensor_flag2 == true)) {
+			v_host_info.push_back(v_host_info_detect[sensor_index]);
+			v_host_info.push_back(v_host_info_detect[sensor_index2]);
+		} else {
+			for(auto& host : v_host_info_detect) {
+				v_host_info.push_back(host);
+			}
+		}
+	}
+
 	pipe_contex.resize(2);
 	pipe_contex[0].cap_info_ = &cap_info_;
 	pipe_contex[1].cap_info_ = &cap_info_;
@@ -121,11 +151,22 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	//ERR_CON_EQ(ret, 0);
 
   } else {
-	if (v_host_info.size() < 1) {
+	if (v_host_info_detect.size() < 1) {
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
        		"The detected sensors are 1 less than expected.\n");
 		return -1;
 	}
+	for(auto& host : v_host_info_detect) {
+		if (host.host_num == cap_info_.channel_) {
+			v_host_info.push_back(host);
+			sensor_flag = true;
+			break;
+		}
+	}
+	if (sensor_flag == false) {
+		v_host_info.push_back(v_host_info_detect[0]);
+	}
+
 	pipe_contex.resize(1);
 	pipe_contex[0].cap_info_ = &cap_info_;
 	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));

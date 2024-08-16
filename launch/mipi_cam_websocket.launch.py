@@ -38,6 +38,7 @@ def generate_launch_description():
             'mipi_image_height': '640',
             'mipi_image_framerate': '30.0',
             'mipi_io_method': 'ros',
+            'mipi_channel': '0',
             'mipi_frame_ts_type': 'sensor'
         }.items()
     )

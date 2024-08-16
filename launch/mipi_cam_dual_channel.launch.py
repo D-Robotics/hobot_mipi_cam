@@ -72,6 +72,14 @@ def generate_launch_description():
             default_value='1',
             description='dual mode output channel'),
         DeclareLaunchArgument(
+            'mipi_channel',
+            default_value='2',
+            description='mipi camera host channel'),
+        DeclareLaunchArgument(
+            'mipi_channel2',
+            default_value='0',
+            description='mipi dual camera right channel'),
+        DeclareLaunchArgument(
             'mipi_frame_ts_type',
             default_value='sensor',
             description='type(sensor/realtime) of timestamp for publishing messages'),
@@ -113,6 +121,8 @@ def generate_launch_description():
                 {"device_mode": LaunchConfiguration('device_mode')},
                 {"gdc_bin_file": LaunchConfiguration('mipi_gdc_bin_file')},
                 {"dual_combine": LaunchConfiguration('dual_combine')},
+                {"channel": LaunchConfiguration('mipi_channel')},
+                {"channel2": LaunchConfiguration('mipi_channel2')},
                 {"frame_ts_type": LaunchConfiguration('mipi_frame_ts_type')},
                 {"frame_id": LaunchConfiguration('frame_id')},
             ],
