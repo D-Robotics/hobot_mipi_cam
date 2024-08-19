@@ -27,7 +27,7 @@ import os
 def generate_launch_description():
     config_file_path = os.path.join(
         get_package_prefix('mipi_cam'),
-        "lib/mipi_cam/config/F37_calibration.yaml")
+        "lib/mipi_cam/config/")
     print("config_file_path is ", config_file_path)
 
     return LaunchDescription([
@@ -45,11 +45,11 @@ def generate_launch_description():
             description='mipi camera out format'),
         DeclareLaunchArgument(
             'mipi_image_width',
-            default_value='544',
+            default_value='960',
             description='mipi camera out image width'),
         DeclareLaunchArgument(
             'mipi_image_height',
-            default_value='640',
+            default_value='544',
             description='mipi camera out image height'),
         DeclareLaunchArgument(
             'mipi_image_framerate',

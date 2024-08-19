@@ -439,7 +439,7 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
         pub_info->camera_calibration_info_->header.stamp = msg.time_stamp;
         pub_info->info_pub_->publish(*pub_info->camera_calibration_info_);
       }
-      if (pub_info->info_pub_) {
+      if (pub_info->info_pub2_) {
         pub_info->camera_calibration_info2_->header.stamp = msg.time_stamp;
         pub_info->info_pub2_->publish(*pub_info->camera_calibration_info2_);
       }

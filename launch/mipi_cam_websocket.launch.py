@@ -34,8 +34,8 @@ def generate_launch_description():
                 get_package_share_directory('mipi_cam'),
                 'launch/mipi_cam.launch.py')),
         launch_arguments={
-            'mipi_image_width': '544',
-            'mipi_image_height': '640',
+            'mipi_image_width': '960',
+            'mipi_image_height': '544',
             'mipi_image_framerate': '30.0',
             'mipi_io_method': 'ros',
             'mipi_channel': '0',
