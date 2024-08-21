@@ -32,17 +32,13 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(
                 get_package_share_directory('mipi_cam'),
-                'launch/mipi_cam_dual_channel.launch.py')),
+                'launch/mipi_cam.launch.py')),
         launch_arguments={
-            'mipi_image_width': '1920',
-            'mipi_image_height': '1080',
-            'mipi_image_framerate': '10.0',
+            'mipi_image_width': '960',
+            'mipi_image_height': '544',
+            'mipi_image_framerate': '30.0',
             'mipi_io_method': 'ros',
-            'device_mode': 'dual',
-            'dual_combine': '2',
-            'mipi_channel': '2',
-            'mipi_channel2': '0',
-            'mipi_gdc_bin_file': './sc230ai_gdc.bin',
+            'mipi_channel': '0',
             'mipi_frame_ts_type': 'sensor'
         }.items()
     )
@@ -57,8 +53,8 @@ def generate_launch_description():
             'codec_in_mode': 'ros',
             'codec_out_mode': 'ros',
             'codec_jpg_quality': '85.0',
-            'codec_sub_topic': '/image_combine_raw',
-            'codec_pub_topic': '/image_combine_jpeg'
+            'codec_sub_topic': '/image_raw',
+            'codec_pub_topic': '/image_jpeg'
         }.items()
     )
     # web
@@ -68,7 +64,7 @@ def generate_launch_description():
                 get_package_share_directory('websocket'),
                 'launch/websocket.launch.py')),
         launch_arguments={
-            'websocket_image_topic': '/image_combine_jpeg',
+            'websocket_image_topic': '/image_jpeg',
             'websocket_only_show_image': 'True'
         }.items()
     )

@@ -162,6 +162,19 @@ Open a browser (chrome/firefox/edge) on your PC and enter <http://IP:8000> (wher
 | /image_raw   | sensor_msgs/msg/Image                | Periodically published image topic, in rgb8 format |
 | /hbmem_img   | rcl_interfaces/msg/HobotMemoryCommon | Image topic based on shared memory (share mem)    |
 
+### Dual camera published Topics
+
+| 名称         | 消息类型                             | 说明                                     |
+| ------------ | ------------------------------------ | ---------------------------------------- |
+| /camera_left_info | sensor_msgs/msg/CameraInfo           | Left camera intrinsic topic, published based on the camera calibration file settings  |
+| /camera_right_info | sensor_msgs/msg/CameraInfo           | Right Camera intrinsic topic, published based on the camera calibration file settings  |
+| /image_left_raw   | sensor_msgs/msg/Image                |   Left camera periodically published image toplic, in rgb8 format  |
+| /image_right_raw   | sensor_msgs/msg/Image                |   Right camera periodically published image topic, in rgb8 format  |
+| /image_combine_raw   | sensor_msgs/msg/Image                |Combine camera periodically published image topic, in rgb8 format   |
+| /hbmem_left_img   | rcl_interfaces/msg/HobotMemoryCommon |  Image topic based on shared memory (share mem), left camera   |
+| /hbmem_right_img   | rcl_interfaces/msg/HobotMemoryCommon |  Image topic based on shared memory (share mem), right camera      |
+| /hbmem_combine_img   | rcl_interfaces/msg/HobotMemoryCommon |  Image topic based on shared memory (share mem), combine camera      |
+
 ## Parameters
 
 | Name                         | Parameter Values                                | Description                                           |
@@ -172,7 +185,11 @@ Open a browser (chrome/firefox/edge) on your PC and enter <http://IP:8000> (wher
 | out_format                   | bgr8 (default)<br />nv12                        | Image encoding method                                  |
 | io_method                    | None (default)<br />shared_mem                  | Image transfer method, enabling shared_mem will use zero-copy mechanism for transfer |
 | camera_calibration_file_path | None (default)                                  | Path to the camera calibration file                     |
-
+| device_mode                  | single（default）<br />single<br />dual         | device mode is single or dual                    |
+| dual_combine                   | 0（default）<br />1 <br />2              | When device_mode_ == "dual" is effective, 0: publish left and right image;1: publish left, right and combine images;2: only publish combine image                              |
+| channel                      | 0（default）                                      | mipi host number,rang 0~3                          |
+| channel2                      | 2（default）                                 | When device_mode_ == "dual" is effective, mipi_host number of the right camera          |
+| gdc_bin_file                   | None（default）                                 | Path to the GDC file                          |
 
 
 # FAQ

@@ -198,6 +198,7 @@ int MipiCamIml::init(struct NodePara &para) {
   cap_info_.height = nodePare_.image_height_;
   cap_info_.fps = nodePare_.framerate_;
   cap_info_.channel_ = nodePare_.channel_;
+  cap_info_.channel2_ = nodePare_.channel2_;
   cap_info_.device_mode_ = nodePare_.device_mode_;
   cap_info_.dual_combine_ = nodePare_.dual_combine_;
   cap_info_.gdc_bin_file_ = nodePare_.gdc_bin_file_;

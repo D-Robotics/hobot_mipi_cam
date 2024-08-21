@@ -2,14 +2,14 @@
 
 #define SENSOR_WIDTH  1088
 #define SENSOR_HEIGHT  1280
-#define SENSOE_FPS 10
+#define SENSOE_FPS 30
 #define RAW10 0x2B
 
 static mipi_config_t mipi_config = {
 	.rx_enable = 1,
 	.rx_attr = {
 		.phy = 0,
-		.lane = 2,
+		.lane = 1,
 		.datatype = RAW10,
 		.fps = SENSOE_FPS,
 		.mclk = 1,
@@ -22,6 +22,10 @@ static mipi_config_t mipi_config = {
 		.channel_num = 1,
 		.channel_sel = {0},
 	},
+	.rx_ex_mask = 0x1, // 使能 hs nocheck 扩展参数的掩码，只有设置了掩码，对应的参数才能生效
+	.rx_attr_ex = {
+		.nocheck = 1, // 做slave模式，初始化的时候不需要检查是否进入 hs reception, 做master时则必须要做做这个检查
+	}
 };
 
 static camera_config_t camera_config = {
@@ -48,9 +52,49 @@ static vin_node_attr_t vin_node_attr = {
 			.enable_frame_id = 1,
 			.set_init_frame_id = 0,
 			.hdr_mode = NOT_HDR,
-			.time_stamp_en = 0,
+			.time_stamp_en = 1,
+			.time_stamp_mode = 3,
+			.ts_src = 1,
+			.pps_src = 3,
 		},
 
+	},
+	.lpwm_attr = {
+		.enable = 1,
+		.lpwm_chn_attr = {
+			{	.trigger_source = 0,
+				.trigger_mode = 0,
+				.period = 33333,
+				.offset = 10,
+				.duty_time = 100,
+				.threshold = 0,
+				.adjust_step = 0,
+			},
+			{	.trigger_source = 0,
+				.trigger_mode = 0,
+				.period = 33333,
+				.offset = 10,
+				.duty_time = 100,
+				.threshold = 0,
+				.adjust_step = 0,
+			},
+			{	.trigger_source = 0,
+				.trigger_mode = 0,
+				.period = 33333,
+				.offset = 10,
+				.duty_time = 100,
+				.threshold = 0,
+				.adjust_step = 0,
+			},
+			{	.trigger_source = 0,
+				.trigger_mode = 0,
+				.period = 33333,
+				.offset = 10,
+				.duty_time = 100,
+				.threshold = 0,
+				.adjust_step = 0,
+			},
+		},
 	},
 };
 
@@ -95,12 +139,12 @@ static isp_ochn_attr_t isp_ochn_attr = {
 	.bit_width = 8,
 };
 
-vp_sensor_config_t sc132gs_linear_1088x1280_raw10_10fps_2lane = {
+vp_sensor_config_t sc132gs_linear_1088x1280_raw10_30fps_1lane = {
 	.chip_id_reg = 0x3107,
 	.chip_id = 0x0132,
 	.sensor_i2c_addr_list = {0x30, 0x33},
 	.sensor_name = "sc132gs-1280p",
-	.config_file = "linear_1088x1280_raw10_10fps_2lane.c",
+	.config_file = "linear_1088x1280_raw10_30fps_1lane.c",
 	.camera_config = &camera_config,
 	.vin_ichn_attr = &vin_ichn_attr,
 	.vin_node_attr = &vin_node_attr,

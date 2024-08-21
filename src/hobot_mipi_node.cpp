@@ -51,6 +51,7 @@ void MipiCamNode::getParams() {
   // declare params
   this->declare_parameter("config_path", "/opt/tros/" + tros_distro + "/lib/mipi_cam/config/");
   this->declare_parameter("channel", 0);
+  this->declare_parameter("channel2", 2);
   this->declare_parameter("camera_info_url", "");
   this->declare_parameter("framerate", 30.0);  // 10.0);
   this->declare_parameter("frame_id", "default_cam");
@@ -70,6 +71,7 @@ void MipiCamNode::getParams() {
                                           "camera_info_url",
                                           "out_format",
                                           "channel",
+                                          "channel2",
                                           "frame_id",
                                           "framerate",
                                           "image_height",
@@ -89,6 +91,8 @@ void MipiCamNode::getParams() {
       nodePare_.config_path_ = parameter.value_to_string();
     } else if (parameter.get_name() == "channel") {
       nodePare_.channel_ = parameter.as_int();
+    } else if (parameter.get_name() == "channel2") {
+      nodePare_.channel2_ = parameter.as_int();
     } else if (parameter.get_name() == "camera_info_url") {
       nodePare_.camera_info_url_ = parameter.value_to_string();
     } else if (parameter.get_name() == "out_format") {
@@ -435,7 +439,7 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
         pub_info->camera_calibration_info_->header.stamp = msg.time_stamp;
         pub_info->info_pub_->publish(*pub_info->camera_calibration_info_);
       }
-      if (pub_info->info_pub_) {
+      if (pub_info->info_pub2_) {
         pub_info->camera_calibration_info2_->header.stamp = msg.time_stamp;
         pub_info->info_pub2_->publish(*pub_info->camera_calibration_info2_);
       }

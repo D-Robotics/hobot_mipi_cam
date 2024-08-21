@@ -49,6 +49,34 @@
 namespace mipi_cam {
 
 int HobotMipiCapIml::initEnv() {
+  std::vector<int> mipi_hosts;
+  std::vector<int> mipi_bus;
+  if (analysis_board_config ()) {
+    if (board_config_m_.size() > 0) {
+      for (auto board : board_config_m_) {
+        mipi_hosts.push_back(board.first);
+        mipi_bus.push_back(board.second.i2c_bus);
+      }
+    } else {
+      mipi_hosts = {0,1,2,3};
+    }
+  } else {
+    mipi_hosts = {0,1,2,3};
+  }
+  listMipiHost(mipi_hosts, mipi_started_, mipi_stoped_);
+  if (mipi_started_.size() > 0) { //暂时不能同时启动多个mipi_cam进程
+    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "The device has already been started\n");
+    return -1;
+  }
+  if (mipi_stoped_.size() == 0) {
+    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "There are no available host.\n");
+    return -1;
+  }
+  if (board_config_m_.size() == 0) {
+    if (mipi_started_.size() > 0) {
+      return -1;
+    }
+  }  
   return 0;
 }
 
@@ -57,23 +85,63 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
   cap_info_ = info;
   std::vector<int> sensor_v;
   std::vector<int> host_v;
+  std::vector<mipi_host_info_t> v_host_info;
+  std::vector<mipi_host_info_t> v_host_info_detect;
+  int sensor_index = 0;
+  bool sensor_flag = false;
+  int sensor_index2 = 0;
+  bool sensor_flag2 = false;
+  mipi_host_info_t host_info;
+  for (int i = 0; i < 4; i++) {
+	ret = vp_sensor_detect_2(i, &host_info);
+	if (ret == 0) {
+		v_host_info_detect.push_back(host_info);
+	}
+  }
 
   if (cap_info_.device_mode_.compare("dual") == 0) {
-	sensor_v = {3,3};
-	host_v = {2,0};
+	if (v_host_info_detect.size() < 2) {
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
+       		"The detected sensors are 2 less than expected.\n");
+		return -1;
+	}
 	
+	if (cap_info_.channel_ == cap_info_.channel2_) {
+		for(auto& host : v_host_info_detect) {
+			v_host_info.push_back(host);
+		}
+	} else {
+		for(int k = 0; k < v_host_info_detect.size(); k++) {
+			if (v_host_info_detect[k].host_num == cap_info_.channel_) {
+				sensor_index = k;
+				sensor_flag = true;
+			} else if (v_host_info_detect[k].host_num == cap_info_.channel2_) {
+				sensor_index2 = k;
+				sensor_flag2 = true;
+			}
+		}
+		if ((sensor_flag == true) && (sensor_flag2 == true)) {
+			v_host_info.push_back(v_host_info_detect[sensor_index]);
+			v_host_info.push_back(v_host_info_detect[sensor_index2]);
+		} else {
+			for(auto& host : v_host_info_detect) {
+				v_host_info.push_back(host);
+			}
+		}
+	}
+
 	pipe_contex.resize(2);
 	pipe_contex[0].cap_info_ = &cap_info_;
 	pipe_contex[1].cap_info_ = &cap_info_;
-
-	//copy_config(&pipe_contex[0].sensor_config, vp_sensor_config_list[sensor_v[0]]);
-	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[sensor_v[0]], sizeof(vp_sensor_config_t));
-	vp_sensor_fixed_mipi_host_1(host_v[0], &pipe_contex[0].sensor_config);
+	//copy_config(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index]);
+	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
+	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
+	ERR_CON_EQ(ret, 0);
 	ret = create_and_run_vflow(&pipe_contex[0]);
 	ERR_CON_EQ(ret, 0);
-	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[sensor_v[1]]);
-	memcpy(&pipe_contex[1].sensor_config, vp_sensor_config_list[sensor_v[1]], sizeof(vp_sensor_config_t));
-	ret = vp_sensor_fixed_mipi_host_1(host_v[1], &pipe_contex[1].sensor_config);
+	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index]);
+	memcpy(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index], sizeof(vp_sensor_config_t));
+	ret = vp_sensor_fixed_mipi_host_1(v_host_info[1].host_num, &pipe_contex[1].sensor_config, &pipe_contex[1].csi_config);
 	ERR_CON_EQ(ret, 0);
 	ret = create_and_run_vflow(&pipe_contex[1]);
 	ERR_CON_EQ(ret, 0);
@@ -83,12 +151,26 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	//ERR_CON_EQ(ret, 0);
 
   } else {
-	sensor_v = {3};
-	host_v = {0};
+	if (v_host_info_detect.size() < 1) {
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
+       		"The detected sensors are 1 less than expected.\n");
+		return -1;
+	}
+	for(auto& host : v_host_info_detect) {
+		if (host.host_num == cap_info_.channel_) {
+			v_host_info.push_back(host);
+			sensor_flag = true;
+			break;
+		}
+	}
+	if (sensor_flag == false) {
+		v_host_info.push_back(v_host_info_detect[0]);
+	}
+
 	pipe_contex.resize(1);
 	pipe_contex[0].cap_info_ = &cap_info_;
-	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[sensor_v[0]], sizeof(vp_sensor_config_t));
-	ret = vp_sensor_fixed_mipi_host_1(host_v[0], &pipe_contex[0].sensor_config);
+	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
+	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
 	ERR_CON_EQ(ret, 0);
 	ret = create_and_run_vflow(&pipe_contex[0]);
 	ERR_CON_EQ(ret, 0);
@@ -531,6 +613,15 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 	vin_attr_ex_t vin_attr_ex;
 	vp_sensor_config_t& sensor_config = pipe_contex->sensor_config;
 
+	if(pipe_contex->csi_config.mclk_is_not_configed){
+		//设备树中没有配置mclk：使用外部晶振
+		printf("csi%d ignore mclk ex attr, because not config mclk.\n",
+			pipe_contex->csi_config.index);
+	}else{
+		vin_attr_ex.vin_attr_ex_mask = 0x80;	//bit7 for mclk
+		vin_attr_ex.mclk_ex_attr.mclk_freq = 24000000; // 24MHz
+	}
+
 
 	hw_id = sensor_config.vin_node_attr->cim_attr.mipi_rx;
 	ret = hbn_vnode_open(HB_VIN, hw_id, AUTO_ALLOC_ID, &pipe_contex->vin_node_handle);
@@ -554,23 +645,18 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 	ERR_CON_EQ(ret, 0);
 
 	// 设置额外属性，for mclk
-
-	vin_attr_ex.vin_attr_ex_mask = 0x80;
-	vin_attr_ex.mclk_ex_attr.mclk_freq = 24000000; // 24MHz
-
-
 	vin_attr_ex_mask = vin_attr_ex.vin_attr_ex_mask;
 	if (vin_attr_ex_mask) {
 		for (uint8_t i = 0; i < VIN_ATTR_EX_INVALID; i ++) {
 			if ((vin_attr_ex_mask & (1 << i)) == 0)
 				continue;
-
 			vin_attr_ex.ex_attr_type = (vin_attr_ex_type_s)i;
 			/*we need to set hbn_vnode_set_attr_ex in a loop*/
 			ret = hbn_vnode_set_attr_ex(pipe_contex->vin_node_handle, &vin_attr_ex);
 			ERR_CON_EQ(ret, 0);
 		}
 	}
+
 	return 0;
 }
 
@@ -818,9 +904,10 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ret = hbn_camera_attach_to_vin(pipe_contex->cam_fd,
 							pipe_contex->vin_node_handle);
 	ERR_CON_EQ(ret, 0);
-
-	ret = hbn_camera_change_fps(pipe_contex->cam_fd, pipe_contex->sensor_config.camera_config->fps);
-	ERR_CON_EQ(ret, 0);
+	if (pipe_contex->sensor_config.sensor_name == "sc230ai-30fps") {
+	  ret = hbn_camera_change_fps(pipe_contex->cam_fd, pipe_contex->sensor_config.camera_config->fps);
+	  ERR_CON_EQ(ret, 0);
+	}
 	return 0;
 }
 
@@ -876,6 +963,56 @@ bool HobotMipiCapIml::detectSensor(SENSOR_ID_T &sensor_info, int i2c_bus) {
 
 
 bool HobotMipiCapIml::analysis_board_config() {
+  std::string board_type;
+  bool auto_detect = false;
+  std::ifstream som_name("/sys/class/socinfo/som_name");
+  if (som_name.is_open()) {
+    if (!getline(som_name, board_type)) {
+      som_name.close();
+      return false;
+    }
+  } else {
+    return false;
+  }
+
+  std::ifstream board_config("/etc/board_config.json");
+  if (!board_config.is_open()) {
+    return false;
+  }
+  std::string  board_name = "board_" + board_type;
+  Json::Value root;
+  board_config >> root;
+  std::string reset;
+  int i2c_bus;
+  int mipi_host;
+  int gpio_num;
+  int reset_level;
+  std::regex regexPattern(R"((\d+):(\w+))");
+  try {
+    int camera_num = root[board_name]["camera_num"].asInt();
+    for (int i = 0; i < camera_num; i++) {
+      mipi_host = root[board_name]["cameras"][i]["mipi_host"].asInt();
+      i2c_bus = root[board_name]["cameras"][i]["i2c_bus"].asInt();
+      board_config_m_[mipi_host].mipi_host = mipi_host;
+      board_config_m_[mipi_host].i2c_bus = i2c_bus;
+      board_config_m_[mipi_host].reset_flag = false;
+      if (root[board_name]["cameras"][i].isMember("reset")){
+        reset = root[board_name]["cameras"][i]["reset"].asString();
+        std::smatch matches;
+        if (std::regex_search(reset, matches, regexPattern)) {
+          board_config_m_[mipi_host].reset_gpio = std::stoi(matches[1]);
+          if (matches[2] == "low") {
+            board_config_m_[mipi_host].reset_level = 1;
+          } else {
+            board_config_m_[mipi_host].reset_level = 0;
+          } 
+          board_config_m_[mipi_host].reset_flag = true;
+        } 
+      }
+    }
+  }catch (std::runtime_error& e) {
+    return false;
+  }
   return true;
 }
 

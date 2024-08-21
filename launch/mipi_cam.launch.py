@@ -27,7 +27,7 @@ import os
 def generate_launch_description():
     config_file_path = os.path.join(
         get_package_prefix('mipi_cam'),
-        "lib/mipi_cam/config/F37_calibration.yaml")
+        "lib/mipi_cam/config/")
     print("config_file_path is ", config_file_path)
 
     return LaunchDescription([
@@ -55,6 +55,10 @@ def generate_launch_description():
             'mipi_image_framerate',
             default_value='30.0',
             description='mipi camera out image framerate'),
+        DeclareLaunchArgument(
+            'mipi_channel',
+            default_value='2',
+            description='mipi camera host channel'),
         DeclareLaunchArgument(
             'mipi_io_method',
             default_value='shared_mem',
@@ -87,6 +91,7 @@ def generate_launch_description():
                 {"image_width": LaunchConfiguration('mipi_image_width')},
                 {"image_height": LaunchConfiguration('mipi_image_height')},
                 {"io_method": LaunchConfiguration('mipi_io_method')},
+                {"channel": LaunchConfiguration('mipi_channel')},
                 {"video_device": LaunchConfiguration('mipi_video_device')},
                 {"frame_ts_type": LaunchConfiguration('mipi_frame_ts_type')},
             ],
