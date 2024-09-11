@@ -105,12 +105,14 @@ include_directories(include
   ${PROJECT_SOURCE_DIR}
   ${CMAKE_SYSROOT}/usr/
   ${CMAKE_SYSROOT}/usr/include
+  ${CMAKE_SYSROOT}/usr/hobot/include
   ${CMAKE_SYSROOT}/usr/include/opencv/
   deps/jsoncpp/include/
 )
 
 link_directories(
   ${CMAKE_SYSROOT}/usr/lib
+  ${CMAKE_SYSROOT}/usr/hobot/lib
   ${CMAKE_SYSROOT}/usr/lib/hbmedia
   ${CMAKE_SYSROOT}/usr/lib/system/lib
   deps/jsoncpp/lib

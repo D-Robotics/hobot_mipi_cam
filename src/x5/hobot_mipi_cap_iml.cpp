@@ -829,6 +829,7 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
     if (pipe_contex->cap_info_->device_mode_.compare("dual") == 0) {
 		pipe_contex->sensor_config.isp_attr->input_mode = 2;
 		isp_bind = 0;
+#if 0
 		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
 		int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
@@ -837,6 +838,7 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 		for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
 			attr.period = fps_rate;
 		}
+#endif 
 	} else {
 		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
