@@ -10,12 +10,11 @@
 
 | 序号 | 名称   | 示意图片                    | 参数     | 参考链接                                                     |
 | ---- | ------ | --------------------------- | -------- | ------------------------------------------------------------ |
-| 1    | F37    | ![F37](image/F37.jpg)       | 200W像素 | [F37](https://detail.tmall.com/item.htm?abbucket=12&id=683310105141&ns=1&spm=a230r.1.14.28.1dd135f0wI2LwA&skuId=4897731532963) |
-| 2    | GC4663 | ![GC4663](image/GC4663.jpg) | 400W像素 | [GC4663](https://detail.tmall.com/item.htm?abbucket=12&id=683310105141&ns=1&spm=a230r.1.14.28.1dd135f0wI2LwA&skuId=4897731532963) |
-| 3    | IMX219 | ![IMX219](image/IMX219.jpg) | 800W像素 | [IMX219](https://detail.tmall.com/item.htm?abbucket=9&id=710344235988&rn=259e73f46059c2e6fc9de133ba9ddddf&spm=a1z10.5-b-s.w4011-22651484606.159.55df6a83NWrGPi) |
-
-注意：RDK Ultra 只支持imx219 sensor，分辨率最大1920x1080.
-
+| 1    | F37    | ![F37](image/F37.jpg)       | 200W像素 | RDK X3, RDK X3 Module | [F37](https://detail.tmall.com/item.htm?abbucket=12&id=683310105141&ns=1&spm=a230r.1.14.28.1dd135f0wI2LwA&skuId=4897731532963) |
+| 2    | GC4663 | ![GC4663](image/GC4663.jpg) | 400W像素 | RDK X3, RDK X3 Module | [GC4663](https://detail.tmall.com/item.htm?abbucket=12&id=683310105141&ns=1&spm=a230r.1.14.28.1dd135f0wI2LwA&skuId=4897731532963) |
+| 3    | IMX219 | ![IMX219](image/IMX219.jpg) | 800W像素 | RDK X3, RDK X3 Module, RDK Ultra, RDK X5 | [IMX219](https://detail.tmall.com/item.htm?abbucket=9&id=710344235988&rn=259e73f46059c2e6fc9de133ba9ddddf&spm=a1z10.5-b-s.w4011-22651484606.159.55df6a83NWrGPi) |
+| 4    | IMX477 | ![IMX477](image/IMX477.jpg) | 200W像素 | RDK X3, RDK X3 Module | [IMX477](https://www.waveshare.net/shop/IMX477-160-12.3MP-Camera.htm) |
+| 5    | OV5647 | ![OV5647](image/OV5647.jpg) | 200W像素 | RDK X3, RDK X3 Module, RDK X5 | [OV5647](https://www.waveshare.net/shop/RPi-Camera-G.htm) |
 
 # 使用方法
 
