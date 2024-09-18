@@ -24,6 +24,8 @@ std::shared_ptr<HobotMipiCap> createMipiCap(const std::string &dev_name) {
   std::shared_ptr<HobotMipiCap> cap_ptr;
   if (dev_name == "X5_EVB") {
     cap_ptr = std::make_shared<HobotMipiCapIml>();
+  } else if (dev_name == "X5_RDK") {
+    cap_ptr = std::make_shared<HobotMipiCapIml>();
   } else {
     cap_ptr = std::make_shared<HobotMipiCapIml>();
     RCLCPP_ERROR(rclcpp::get_logger("mipi_factory"),
@@ -35,20 +37,23 @@ std::shared_ptr<HobotMipiCap> createMipiCap(const std::string &dev_name) {
 std::string getBoardType() {
   int board_type;
   bool auto_detect = false;
-  std::ifstream som_name("/sys/class/socinfo/som_name");
-  if (som_name.is_open()) {
-    som_name >> std::hex >> board_type;
+  std::ifstream board_id("/sys/class/socinfo/board_id");
+  if (board_id.is_open()) {
+    board_id >> std::hex >> board_type;
     auto_detect = true;
   }
   std::string board_type_str;
   if (auto_detect) {
     switch (board_type) {
-      case 0:
+      case 202:
         board_type_str = "X5_EVB";
+        break;
+      case 301:
+        board_type_str = "X5_RDK";
         break;
       default:
         RCLCPP_INFO(rclcpp::get_logger("mipi_factory"),
-          "/sys/class/socinfo/som_name:%d\n", board_type);
+          "/sys/class/socinfo/board_id:%d\n", board_type);
         break;
     }
   }

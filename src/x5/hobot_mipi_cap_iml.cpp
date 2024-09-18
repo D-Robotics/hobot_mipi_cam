@@ -63,6 +63,12 @@ int HobotMipiCapIml::initEnv() {
   } else {
     mipi_hosts = {0,1,2,3};
   }
+
+  RCLCPP_WARN(rclcpp::get_logger("mipi_cam"), "this board support mipi:");
+  for (auto host : mipi_hosts) {
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cam"), "host %d", host);
+  }
+
   listMipiHost(mipi_hosts, mipi_started_, mipi_stoped_);
   if (mipi_started_.size() > 0) { //暂时不能同时启动多个mipi_cam进程
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "The device has already been started\n");
@@ -92,6 +98,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
   int sensor_index2 = 0;
   bool sensor_flag2 = false;
   mipi_host_info_t host_info;
+  hb_mem_module_open();
   for (int i = 0; i < 4; i++) {
 	ret = vp_sensor_detect_2(i, &host_info);
 	if (ret == 0) {
@@ -176,7 +183,6 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ERR_CON_EQ(ret, 0);
   }
 
-  hb_mem_module_open();
   m_inited_ = true;
 
   return ret;
@@ -967,7 +973,7 @@ bool HobotMipiCapIml::detectSensor(SENSOR_ID_T &sensor_info, int i2c_bus) {
 bool HobotMipiCapIml::analysis_board_config() {
   std::string board_type;
   bool auto_detect = false;
-  std::ifstream som_name("/sys/class/socinfo/som_name");
+  std::ifstream som_name("/sys/class/socinfo/board_id");
   if (som_name.is_open()) {
     if (!getline(som_name, board_type)) {
       som_name.close();
