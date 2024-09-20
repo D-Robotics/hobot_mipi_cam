@@ -39,7 +39,7 @@ std::string getBoardType() {
   bool auto_detect = false;
   std::ifstream board_id("/sys/class/socinfo/board_id");
   if (board_id.is_open()) {
-    board_id >> std::hex >> board_type;
+    board_id >> board_type;
     auto_detect = true;
   }
   std::string board_type_str;
@@ -49,6 +49,7 @@ std::string getBoardType() {
         board_type_str = "X5_EVB";
         break;
       case 301:
+      case 302:
         board_type_str = "X5_RDK";
         break;
       default:
@@ -57,7 +58,7 @@ std::string getBoardType() {
         break;
     }
   }
-  RCLCPP_INFO(rclcpp::get_logger("mipi_factory"),
+  RCLCPP_WARN(rclcpp::get_logger("mipi_factory"),
     "board_type %s\n", board_type_str.c_str());
   return board_type_str;
 }
