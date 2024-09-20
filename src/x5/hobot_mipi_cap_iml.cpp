@@ -623,6 +623,7 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 		//设备树中没有配置mclk：使用外部晶振
 		printf("csi%d ignore mclk ex attr, because not config mclk.\n",
 			pipe_contex->csi_config.index);
+		vin_attr_ex.vin_attr_ex_mask = 0x00;
 	}else{
 		vin_attr_ex.vin_attr_ex_mask = 0x80;	//bit7 for mclk
 		vin_attr_ex.mclk_ex_attr.mclk_freq = 24000000; // 24MHz

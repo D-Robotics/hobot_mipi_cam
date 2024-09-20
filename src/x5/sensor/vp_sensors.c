@@ -802,23 +802,14 @@ int32_t vp_sensor_detect_2(int host, mipi_host_info_t* host_info)
 				host_info->sensor_index = j;
 				host_info->addr = vp_sensor_config_list[j]->camera_config->addr;
 				host_info->mipi_rx = vcon_props.rx_phy[1];
-				//if(!mclk_is_not_configed) {
-				// 	enable_mipi_host_clock(0, host);
-				//}
 				return 0;
 			}
 		}
-#if 1
 		if(!mclk_is_not_configed) {
 			/* enable mclk */
 			write_mipi_host_freq(host, frequency);
 			enable_mipi_host_clock(host, 1);
 		}
-#endif
-		//if(!mclk_is_not_configed) {
-			//Disable frequency
-		//	enable_mipi_host_clock(0, host);
-		//}
 	}
 	return -1;
 
@@ -846,7 +837,7 @@ int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config,
 
 	// 如果该vcon使能了，检测该vcon上是否有连接 sensor
 	if (vcon_props_array[i].status[0] == 'o') { // okay
-#if 1
+#if 0
 		// 检测该vcon上连接的 sensor
 		/*enable gpio_oth, enable camera sensor gpio, maybe pwd/reset gpio */
 		for (j = 0; j < 8; ++j) {
@@ -876,10 +867,6 @@ int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config,
 				sensor_config->sensor_name, vcon_props_array[i].rx_phy[1],
 				sensor_config->camera_config->addr, sensor_config->config_file);
 		}
-		//if(!mclk_is_not_configed) {
-			// Disable frequency
-		//  	enable_mipi_host_clock(0, i);
-		//}
 
 	}
 
