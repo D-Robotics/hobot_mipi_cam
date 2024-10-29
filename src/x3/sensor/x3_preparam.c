@@ -176,6 +176,42 @@ int ov5647_linear_vin_param_init(x3_vin_info_t* vin_info) {
   return 0;
 }
 
+/******************************* OV5647 1944p 方案 **********************************/
+int ov5647_1944p_linear_vin_param_init(x3_vin_info_t* vin_info) {
+  vin_info->snsinfo = SENSOR_2LANE_OV5647_15FPS_1944P_10BIT_LINEAR_INFO;
+  vin_info->mipi_attr = MIPI_2LANE_SENSOR_OV5647_15FPS_1944P_10BIT_LINEAR_ATTR;
+  vin_info->devinfo = DEV_ATTR_OV5647_15FPS_1944P_LINEAR_BASE;
+  vin_info->pipeinfo = PIPE_ATTR_OV5647_15FPS_1944P_LINEAR_BASE;
+  vin_info->disinfo = DIS_ATTR_OV5647_15FPS_1944P_LINEAR_BASE;
+  vin_info->ldcinfo = LDC_ATTR_OV5647_15FPS_1944P_LINEAR_BASE;
+  vin_info->vin_vps_mode = VIN_ONLINE_VPS_OFFLINE;  // VIN_OFFLINE_VPS_OFFINE;
+
+  // 单目的使用dev_id 和 pipe_id 都设置成0
+  vin_info->dev_id = 0;
+  vin_info->pipe_id = 0;
+  vin_info->enable_dev_attr_ex = 0;
+
+  return 0;
+}
+
+/******************************* OV5647 1944p 方案 **********************************/
+int ov5647_480p_linear_vin_param_init(x3_vin_info_t* vin_info) {
+  vin_info->snsinfo = SENSOR_2LANE_OV5647_60FPS_480P_10BIT_LINEAR_INFO;
+  vin_info->mipi_attr = MIPI_2LANE_SENSOR_OV5647_60FPS_480P_10BIT_LINEAR_ATTR;
+  vin_info->devinfo = DEV_ATTR_OV5647_60FPS_480P_LINEAR_BASE;
+  vin_info->pipeinfo = PIPE_ATTR_OV5647_60FPS_480P_LINEAR_BASE;
+  vin_info->disinfo = DIS_ATTR_OV5647_60FPS_480P_LINEAR_BASE;
+  vin_info->ldcinfo = LDC_ATTR_OV5647_60FPS_480P_LINEAR_BASE;
+  vin_info->vin_vps_mode = VIN_ONLINE_VPS_OFFLINE;  // VIN_OFFLINE_VPS_OFFINE;
+
+  // 单目的使用dev_id 和 pipe_id 都设置成0
+  vin_info->dev_id = 0;
+  vin_info->pipe_id = 0;
+  vin_info->enable_dev_attr_ex = 0;
+
+  return 0;
+}
+
 // vps的输入参数
 int vps_grp_param_init(x3_vps_info_t *vps_info, int width, int height) {
   // 默认group id 0
