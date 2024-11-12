@@ -88,6 +88,7 @@ def generate_launch_description():
                 {"camera_calibration_file_path": LaunchConfiguration(
                     'mipi_camera_calibration_file_path')},
                 {"out_format": LaunchConfiguration('mipi_out_format')},
+                {"framerate": LaunchConfiguration('mipi_image_framerate')},
                 {"image_width": LaunchConfiguration('mipi_image_width')},
                 {"image_height": LaunchConfiguration('mipi_image_height')},
                 {"io_method": LaunchConfiguration('mipi_io_method')},
