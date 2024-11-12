@@ -627,6 +627,7 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 	}else{
 		vin_attr_ex.vin_attr_ex_mask = 0x80;	//bit7 for mclk
 		vin_attr_ex.mclk_ex_attr.mclk_freq = 24000000; // 24MHz
+		vin_attr_ex_mask = vin_attr_ex.vin_attr_ex_mask;
 	}
 
 

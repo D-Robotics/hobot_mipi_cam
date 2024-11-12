@@ -309,6 +309,57 @@ static void read_vcon_info_from_device_tree(const int device, struct vcon_proper
 	closedir(dir);
 }
 
+static int32_t vp_i2c_read_reg16_data16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, uint16_t *value)
+{
+	int32_t ret;
+	struct i2c_rdwr_ioctl_data data;
+	uint8_t sendbuf[32] = {0};
+	uint8_t readbuf[32] = {0};
+	struct i2c_msg msgs[I2C_RDRW_IOCTL_MAX_MSGS] = {0};
+	char filename[20];
+	int file;
+
+	// Open the I2C bus
+	snprintf(filename, sizeof(filename), "/dev/i2c-%d", bus);
+	file = open(filename, O_RDWR);
+	if (file < 0) {
+		perror("Failed to open the I2C bus");
+		return -1;
+	}
+
+	sendbuf[0] = (uint8_t)((reg_addr >> 8u) & 0xffu);
+	sendbuf[1] = (uint8_t)(reg_addr & 0xffu);
+
+	data.msgs = msgs; /*PRQA S 5118*/
+	data.nmsgs = 2;
+
+	data.msgs[0].len = 2;
+	data.msgs[0].addr = i2c_addr;
+	data.msgs[0].flags = 0;
+	data.msgs[0].buf = sendbuf;
+
+	data.msgs[1].len = 2;
+	data.msgs[1].addr = i2c_addr;
+	data.msgs[1].flags = I2C_M_RD;
+	data.msgs[1].buf = readbuf;
+
+	ret = ioctl(file, I2C_RDWR, (uint64_t)&data);
+	if (ret < 0) {
+		// perror("Failed to read from the I2C bus");
+		*value = 0;
+		close(file);
+		return -1;
+	}
+
+	*value = (uint16_t)((readbuf[0] << 8) | readbuf[1]);
+
+	// Close the I2C bus
+	close(file);
+
+	return 0;
+}
+
+
 static int32_t vp_i2c_read_reg16_data8(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, uint8_t *value)
 {
 	int32_t ret;
@@ -358,6 +409,27 @@ static int32_t vp_i2c_read_reg16_data8(uint32_t bus, uint8_t i2c_addr, uint16_t 
 	return 0;
 }
 
+static int32_t read_chip_id(vcon_propertie_t vcon_props, vp_sensor_config_t *sensor_config, uint32_t addr, int32_t *chip_id) {
+
+	if(sensor_config->chip_id >> 8 == 0) {
+		// 读取 8 位 chip ID
+		if (vp_i2c_read_reg16_data8(vcon_props.bus, addr, sensor_config->chip_id_reg, (uint8_t*)chip_id) == 0) {
+			if (((chip_id[0] & 0xFF) == (sensor_config->chip_id & 0xFF))) {
+				return 0;
+			}
+		}
+	} else {
+		// 读取 16 位 chip ID
+		if (vp_i2c_read_reg16_data16(vcon_props.bus, addr, sensor_config->chip_id_reg, (uint16_t*)chip_id) == 0) {
+			if ((sensor_config->chip_id == 0xA55A) // 如果有的 sensor 本身读不到ID，但是又想要使用它，就把 sensor 的 chip_id 设为 0xA55A
+			|| ((chip_id[0] & 0xFFFF) == (sensor_config->chip_id & 0xFFFF))) {
+				return 0;
+			}
+		}
+	}
+	return -1;
+}
+
 // Function to check sensor register value
 static int32_t check_sensor_reg_value(vcon_propertie_t vcon_props,
 		vp_sensor_config_t *sensor_config) {
@@ -379,24 +451,20 @@ static int32_t check_sensor_reg_value(vcon_propertie_t vcon_props,
 		addr = sensor_config->sensor_i2c_addr_list[i];
 		if (addr == 0)
 			continue;
-
-		if (vp_i2c_read_reg16_data8(vcon_props.bus, addr, sensor_config->chip_id_reg, (uint8_t*)&chip_id) == 0) {
-			if (sensor_config->chip_id == 0xA55A || // 如果有的 sensor 本身读不到ID，但是又想要使用它，就把 sensor 的 chip_id 设为 0xA55A
-				((chip_id & 0xFF) == (sensor_config->chip_id >> 8 & 0xFF)) ||
-				((chip_id & 0xFF) == (sensor_config->chip_id & 0xFF))) {
-					// Update sensor address to the one successfully read from
-					sensor_config->camera_config->addr = addr;
-					// Update mipi rx phy
-					// 修正配置中的 sensor 使用的 mipi rx phy
-					// 此处的修改并不一定是最终修改，在vpp 的impl 的 param 设置中会根据具体情况再次修改
-					sensor_config->vin_node_attr->cim_attr.mipi_rx = vcon_props.rx_phy[1];
-				return 0;
-			} else {
-				printf("WARN: Sensor Name: %s, Expected Chip ID: 0x%02X, Actual Chip ID Read: 0x%02X\n",
+		if (read_chip_id(vcon_props, sensor_config, addr, &chip_id) == 0) {
+			// Update sensor address to the one successfully read from
+			sensor_config->camera_config->addr = addr;
+			// Update mipi rx phy
+			// 修正配置中的 sensor 使用的 mipi rx phy
+			// 此处的修改并不一定是最终修改，在vpp 的impl 的 param 设置中会根据具体情况再次修改
+			sensor_config->vin_node_attr->cim_attr.mipi_rx = vcon_props.rx_phy[1];
+			return 0;
+		} else {
+			printf("WARN: Sensor Name: %s, Expected Chip ID: 0x%02X, Actual Chip ID Read: 0x%02X\n",
 					sensor_config->sensor_name, sensor_config->chip_id & 0x0000FFFF, chip_id);
-				return -1;
-			}
+			return -1;
 		}
+
 	}
 
 	// If none of the addresses worked
@@ -527,6 +595,11 @@ static void should_used_csi(int *is_need_used_csi)
 		if (strncmp(board_id, "301", 3) == 0) {
 			printf("[INFO] board_id is %s, so skip csi test for index 1 and index 3\n", board_id);
 			is_need_used_csi[1] = false;// board 301 not use csi1 csi3
+			is_need_used_csi[3] = false;
+		}
+		if (strncmp(board_id, "302", 3) == 0) {
+			printf("[INFO] board_id is %s, so skip csi test for index 1 and index 3\n", board_id);
+			is_need_used_csi[1] = false;// board 302 not use csi1 csi3
 			is_need_used_csi[3] = false;
 		}
 	} else {
