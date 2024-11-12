@@ -406,7 +406,14 @@ int HobotMipiCapIml::parseConfig(std::string sensor_name,
   } else if(strcasecmp(sensor_name.c_str(), "imx477") == 0) {
     imx477_linear_vin_param_init(&vin_info_);
   } else if(strcasecmp(sensor_name.c_str(), "ov5647") == 0) {
-    ov5647_linear_vin_param_init(&vin_info_);
+    if ((w > 1920) || (h > 1080)) {
+      ov5647_1944p_linear_vin_param_init(&vin_info_);
+    } else if ((w == 640) && (h == 480)) {
+      ov5647_480p_linear_vin_param_init(&vin_info_);
+    } else {
+      ov5647_linear_vin_param_init(&vin_info_);
+    }
+    
   } else {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
       "[%s]->sensor name not found(%s).\n", __func__, sensor_name.c_str());
