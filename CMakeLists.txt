@@ -37,6 +37,7 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(yaml_cpp_vendor REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(OpenCV 4 REQUIRED)
 
 #set(PREFIX_PATH x3)
 
@@ -107,7 +108,6 @@ include_directories(include
   ${CMAKE_SYSROOT}/usr/
   ${CMAKE_SYSROOT}/usr/include
   ${CMAKE_SYSROOT}/usr/hobot/include
-  ${CMAKE_SYSROOT}/usr/include/opencv/
   deps/jsoncpp/include/
 )
 
@@ -126,7 +126,7 @@ elseif(PLATFORM_Rdkultra)
   #set(X3_HAPI_LIB jsoncpp hb_api_isp vpm vio_client)
   set(X3_HAPI_LIB jsoncpp hb_api_isp vio)
 elseif(PLATFORM_X5)
-  set(X3_HAPI_LIB jsoncpp multimedia hbmem cam vpf  Nano2D Nano2Dutil opencv_world)
+  set(X3_HAPI_LIB jsoncpp multimedia hbmem cam vpf  Nano2D Nano2Dutil)
 else()
   set(BASE_LIBRARIES pthread vio cam dl)
   set(X3_HAPI_LIB isp_algo z hbmedia isp ion multimedia iar tinyalsa cjson diag gdcbin)
@@ -151,6 +151,7 @@ ament_target_dependencies(
   sensor_msgs
   yaml_cpp_vendor
   hbm_img_msgs
+  OpenCV
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}_plugin
