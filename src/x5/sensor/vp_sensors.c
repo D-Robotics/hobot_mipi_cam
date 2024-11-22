@@ -431,7 +431,7 @@ static int32_t read_chip_id(vcon_propertie_t vcon_props, vp_sensor_config_t *sen
 }
 
 // Function to check sensor register value
-static int32_t check_sensor_reg_value(vcon_propertie_t vcon_props,
+int32_t check_sensor_reg_value(vcon_propertie_t vcon_props,
 		vp_sensor_config_t *sensor_config) {
 	int i = 0;
 	// Read sensor chip ID register
@@ -439,13 +439,17 @@ static int32_t check_sensor_reg_value(vcon_propertie_t vcon_props,
 	uint32_t addr = sensor_config->camera_config->addr;
 
 	// Add camera_config->addr to sensor_i2c_addr_list
+	if (sensor_config->sensor_i2c_addr_list[0] == 0) {
+		sensor_config->sensor_i2c_addr_list[0] = addr;
+	}
+#if 0
 	for (i = 1; i < 8; i++) {
 		if (sensor_config->sensor_i2c_addr_list[i] == 0) {
 			sensor_config->sensor_i2c_addr_list[i] = addr;
 			break;
 		}
 	}
-
+#endif
 	// Try reading chip ID using sensor_i2c_addr_list
 	for (i = 0; i < 8; i++) {
 		addr = sensor_config->sensor_i2c_addr_list[i];
@@ -462,7 +466,7 @@ static int32_t check_sensor_reg_value(vcon_propertie_t vcon_props,
 		} else {
 			printf("WARN: Sensor Name: %s, Expected Chip ID: 0x%02X, Actual Chip ID Read: 0x%02X\n",
 					sensor_config->sensor_name, sensor_config->chip_id & 0x0000FFFF, chip_id);
-			return -1;
+			continue;
 		}
 
 	}
