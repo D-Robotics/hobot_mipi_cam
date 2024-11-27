@@ -99,13 +99,12 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
   bool sensor_flag2 = false;
   mipi_host_info_t host_info;
   hb_mem_module_open();
-  for (int i = 0; i < 4; i++) {
+  for (auto i : mipi_stoped_) {
 	ret = vp_sensor_detect_2(i, &host_info);
 	if (ret == 0) {
 		v_host_info_detect.push_back(host_info);
 	}
   }
-
   if (cap_info_.device_mode_.compare("dual") == 0) {
 	if (v_host_info_detect.size() < 2) {
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
@@ -434,6 +433,7 @@ void HobotMipiCapIml::dualFrameTask() {
   ochn_fd.resize(2);
   std::vector<int> loss_cnt = {0,0};
   q_v_buff_.resize(2);
+  int diff_time = 500000000 / cap_info_.fps;
 
   hbn_vnode_get_fd(pipe_contex[0].vse_node_handle, 0, &ochn_fd[0]);
   hbn_vnode_get_fd(pipe_contex[1].vse_node_handle, 0, &ochn_fd[1]);
@@ -503,7 +503,7 @@ void HobotMipiCapIml::dualFrameTask() {
 		if (buff_ptr[0] && buff_ptr[1]  && (buff_ptr[0]->width == buff_ptr[1]->width) &&
 	   			(buff_ptr[0]->height == buff_ptr[1]->height)) {
 
-			if (std::abs((int)(buff_ptr[0]->timestamp - buff_ptr[1]->timestamp)) < 15000000) {
+			if (std::abs((int)(buff_ptr[0]->timestamp - buff_ptr[1]->timestamp)) < diff_time) {
 				{
 					std::unique_lock<std::mutex> lk(queue_mtx_);
 					if (q_combine_buff_.size() >= 3) {
