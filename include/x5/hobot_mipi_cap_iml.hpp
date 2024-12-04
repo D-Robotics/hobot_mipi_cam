@@ -132,6 +132,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int creat_gdc_node(pipe_contex_t *pipe_contex);
   int creat_camera_node(camera_config_t* camera_config,int64_t* cam_fd);
   int get_gdc_config(std::string gdc_bin_file, hb_mem_common_buf_t *bin_buf);
+  int gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height);
 
   bool m_inited_ = false;
   bool started_ = false;
@@ -149,6 +150,9 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::map<int, std::vector<std::string>> host_sensor_m_;
   //std::vector<hbn_cfg_t> hbn_cfg_;
   std::shared_ptr<std::thread> dual_frame_task_ = nullptr;
+
+  std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
+  std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
 
   std::mutex queue_mtx_;
 

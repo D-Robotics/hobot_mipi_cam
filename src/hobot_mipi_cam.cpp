@@ -201,6 +201,7 @@ int MipiCamIml::init(struct NodePara &para) {
   cap_info_.channel2_ = nodePare_.channel2_;
   cap_info_.device_mode_ = nodePare_.device_mode_;
   cap_info_.dual_combine_ = nodePare_.dual_combine_;
+  cap_info_.lpwm_enable_ = nodePare_.lpwm_enable_;
   cap_info_.gdc_bin_file_ = nodePare_.gdc_bin_file_;
 
   if (mipiCap_ptr_->initEnv() < 0) {

@@ -15,6 +15,7 @@
 #include "hobot_mipi_comm.hpp"
 #include "hobot_mipi_cap_iml.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
+#include "opencv2/opencv.hpp"
 
 #include <string>
 #include <fstream>
@@ -720,6 +721,7 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 
 	ret = hbn_vnode_open(HB_VSE, hw_id, AUTO_ALLOC_ID, &pipe_contex->vse_node_handle);
 	ERR_CON_EQ(ret, 0);
+	
 
 	ret = hbn_vnode_set_attr(pipe_contex->vse_node_handle, &vse_attr);
 	ERR_CON_EQ(ret, 0);
@@ -747,6 +749,9 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	//vse_ochn_attr.target_h = input_height;
 	vse_ochn_attr.target_w = pipe_contex->cap_info_->width;
 	vse_ochn_attr.target_h = pipe_contex->cap_info_->height;
+
+	vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
+	vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
 
 	ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 0, &vse_ochn_attr);
 	ERR_CON_EQ(ret, 0);
@@ -837,16 +842,16 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
     if (pipe_contex->cap_info_->device_mode_.compare("dual") == 0) {
 		pipe_contex->sensor_config.isp_attr->input_mode = 2;
 		isp_bind = 0;
-#if 0
-		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
-		int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
-		pipe_contex->sensor_config.camera_config->sensor_mode = 6;
-		pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 1;
-		for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
-			attr.period = fps_rate;
-		}
-#endif 
+		if (pipe_contex->cap_info_->lpwm_enable_) {
+			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+			int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
+			pipe_contex->sensor_config.camera_config->sensor_mode = 6;
+			pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 1;
+			for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
+				attr.period = fps_rate;
+			}
+		} 
 	} else {
 		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
@@ -1167,5 +1172,124 @@ int HobotMipiCapIml::get_gdc_config(std::string gdc_bin_file, hb_mem_common_buf_
 	return ret;
 }
 
+int HobotMipiCapIml::gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height) {
+	if (gdc_width <= 0 || gdc_height<= 0 || out_width <= 0 || out_height <= 0 || cam_info_.size() != 2) {
+		return -1;
+	}
+    // cam param
+    cv::Mat Rl, Rr, Pl, Pr, Q;
+    cv::Mat Kl, Kr, Dl, Dr, R_rl, t_rl;
+    cv::Mat undistmap1l, undistmap2l, undistmap1r, undistmap2r;
+	float camera_cx, camera_cy, camera_fx, camera_fy, base_line;
+	float gdc_width_scale, gdc_height_scale, out_width_scale, out_height_scale;
+
+	gdc_width_scale = gdc_width / static_cast<float>(cam_info_[0].width);
+	gdc_height_scale = gdc_height / static_cast<float>(cam_info_[0].height);
+	out_width_scale = out_width / gdc_width;
+	out_height_scale = out_height / gdc_height;
+
+
+	Dl = cv::Mat(1, cam_info_[0].d.size(), CV_64F, cam_info_[0].d.data()).clone();
+	Kl = cv::Mat(3, 3, CV_64F, cam_info_[0].k.data()).clone();
+	cv::Mat tRl = cv::Mat(3, 3, CV_64F, cam_info_[0].r.data()).clone();
+	cv::Mat tPl = cv::Mat(3, 4, CV_64F, cam_info_[0].p.data()).clone();
+
+
+	Dr = cv::Mat(1, cam_info_[1].d.size(), CV_64F, cam_info_[1].d.data()).clone();
+	Kr = cv::Mat(3, 3, CV_64F, cam_info_[1].k.data()).clone();
+	cv::Mat tRr = cv::Mat(3, 3, CV_64F, cam_info_[1].r.data()).clone();
+	cv::Mat tPr = cv::Mat(3, 4, CV_64F, cam_info_[1].p.data()).clone();
+
+    
+	R_rl = cv::Mat::zeros(3, 3, CV_64F);
+	t_rl = cv::Mat::zeros(3, 1, CV_64F);
+
+	cv::Mat Kr_inv = Kr.inv();
+	cv::Mat RT = Kr_inv * tPr;
+    cv::Mat tTr = RT(cv::Rect(3, 0, 1, 3));
+	R_rl = tRr;
+	t_rl = tTr;
+
+	Kl.at<double>(0, 0) *= gdc_width_scale;
+	Kl.at<double>(0, 2) *= gdc_width_scale;
+	Kl.at<double>(1, 1) *= gdc_height_scale;
+	Kl.at<double>(1, 2) *= gdc_height_scale;
+
+	Kr.at<double>(0, 0) *= gdc_width_scale;
+	Kr.at<double>(0, 2) *= gdc_width_scale;
+	Kr.at<double>(1, 1) *= gdc_height_scale;
+	Kr.at<double>(1, 2) *= gdc_height_scale;
+
+
+
+	cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(gdc_width, gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0);
+
+	cv::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(gdc_width, gdc_height), CV_32FC1, undistmap1l, undistmap2l);
+	cv::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(gdc_width, gdc_height), CV_32FC1, undistmap1r, undistmap2r);
+
+	camera_fx = Q.at<double>(2, 3);
+	camera_fy = Q.at<double>(2, 3);
+	camera_cx = -Q.at<double>(0, 3);
+	camera_cy = -Q.at<double>(1, 3);
+	base_line = std::abs(1 / Q.at<double>(3, 2));
+
+	cv::Mat K = cv::Mat::zeros(3, 3, CV_64F);
+	K.at<double>(0, 0) = camera_fx * out_width_scale;
+	K.at<double>(0, 2) = camera_cx * out_width_scale;
+	K.at<double>(1, 1) = camera_fy * out_height_scale;
+	K.at<double>(1, 2) = camera_cy * out_height_scale;
+	K.at<double>(2, 2) = 1;
+
+	RT = cv::Mat::zeros(3, 4, CV_64F);
+	RT.at<double>(0, 0) = 1;
+	RT.at<double>(1, 1) = 1;
+	RT.at<double>(2, 2) = 1;
+
+	cv::Mat P = K * RT;
+
+	sensor_msgs::msg::CameraInfo cam_info; 
+	cam_info.width = out_width;
+	cam_info.height = out_height;
+	cam_info.d.resize(5);
+	memset(cam_info.d.data(), 0, sizeof(cam_info.d));
+
+	memcpy(cam_info.k.data(), K.data, sizeof(cam_info.k));
+
+	cam_info.r[0] = 1.0;
+    cam_info.r[1] = 0.0;
+    cam_info.r[2] = 0.0;
+    cam_info.r[3] = 0.0;
+    cam_info.r[4] = 1.0;
+    cam_info.r[5] = 0.0;
+    cam_info.r[6] = 0.0;
+    cam_info.r[7] = 0.0;
+    cam_info.r[8] = 1.0;
+
+	memcpy(cam_info.p.data(), P.data, sizeof(cam_info.p));
+	cal_cam_info_.push_back(cam_info);
+
+	RT.at<double>(0, 3) = base_line;
+	P = K * RT;
+	memcpy(cam_info.p.data(), P.data, sizeof(cam_info.p));
+	cal_cam_info_.push_back(cam_info);
+
+	std::cout << "Kl:" << std::endl
+			<< Kl << std::endl
+			<< "Dl:" << std::endl
+			<< Dl << std::endl
+			<< "Kr: " << std::endl
+			<< Kr << std::endl
+			<< "Dr:" << std::endl
+			<< Dr << std::endl
+			<< "R, t: " << std::endl
+			<< R_rl << std::endl
+			<< t_rl << std::endl
+			<< "calib file width, height: " << cam_info_[0].width << ", " << cam_info_[0].height << std::endl
+			<< "gdc_width_scale, gdc_height_scale: " << gdc_width_scale << ", " << gdc_height_scale << std::endl
+			<< "rectify [f, cx, cy, baseline]: " << "[" << camera_fx << ", " << camera_cx << ", " << camera_cy << ", " << base_line << "]" << std::endl
+			<< std::endl;
+	
+
+}
 
 }  // namespace mipi_cam

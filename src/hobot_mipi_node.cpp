@@ -64,6 +64,7 @@ void MipiCamNode::getParams() {
   this->declare_parameter("gdc_bin_file", "");
   this->declare_parameter("device_mode", "single");
   this->declare_parameter("dual_combine", 0);
+  this->declare_parameter("lpwm_enable", false);
   this->declare_parameter("frame_ts_type", nodePare_.frame_ts_type_);
   auto parameters_client = std::make_shared<rclcpp::SyncParametersClient>(this);
   for (auto& parameter :
@@ -82,6 +83,7 @@ void MipiCamNode::getParams() {
                                           "gdc_bin_file",
                                           "device_mode",
                                           "dual_combine",
+                                          "lpwm_enable",
                                           "frame_ts_type"
                                           })) {
     if (parameter.get_name() == "config_path") {
@@ -144,9 +146,14 @@ void MipiCamNode::getParams() {
                   parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "dual_combine") {
       nodePare_.dual_combine_ = parameter.as_int();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+      RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
                   "dual_combine value: %s",
                   parameter.value_to_string().c_str());
+    } else if (parameter.get_name() == "lpwm_enable") {
+      nodePare_.lpwm_enable_ = parameter.as_bool();
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+                  "lpwm_enable value: %d",
+                  parameter.as_bool());
     } else if (parameter.get_name() == "frame_ts_type") {
       nodePare_.frame_ts_type_ = parameter.value_to_string();
       RCLCPP_WARN(rclcpp::get_logger("mipi_node"),

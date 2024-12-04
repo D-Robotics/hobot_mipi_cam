@@ -92,6 +92,10 @@ def generate_launch_description():
             default_value='',
             description='mipi camera gdc bin_file'),
         DeclareLaunchArgument(
+            'mipi_lpwm_enable',
+            default_value='False',
+            description='mipi dual camera lpwm enable'),
+        DeclareLaunchArgument(
             'log_level',
             default_value='warn',
             description='log level'),
@@ -121,6 +125,7 @@ def generate_launch_description():
                 {"device_mode": LaunchConfiguration('device_mode')},
                 {"gdc_bin_file": LaunchConfiguration('mipi_gdc_bin_file')},
                 {"dual_combine": LaunchConfiguration('dual_combine')},
+                {"lpwm_enable": LaunchConfiguration('mipi_lpwm_enable')},
                 {"channel": LaunchConfiguration('mipi_channel')},
                 {"channel2": LaunchConfiguration('mipi_channel2')},
                 {"frame_ts_type": LaunchConfiguration('mipi_frame_ts_type')},

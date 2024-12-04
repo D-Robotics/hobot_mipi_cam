@@ -28,6 +28,11 @@ def generate_launch_description():
     camera_type = os.getenv('CAM_TYPE')
     print("camera_type is ", camera_type)
 
+    mipi_lpwm_enable_arg = DeclareLaunchArgument(
+        'mipi_lpwm_enable',
+        default_value='False',
+        description='mipi lpwm enable')
+
     mipi_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -42,6 +47,7 @@ def generate_launch_description():
             'dual_combine': '2',
             'mipi_channel': '2',
             'mipi_channel2': '0',
+            'mipi_lpwm_enable': 'False',
             'mipi_gdc_bin_file': './sc230ai_gdc.bin',
             'mipi_frame_ts_type': 'sensor'
         }.items()
