@@ -413,7 +413,8 @@ int HobotMipiCapIml::parseConfig(std::string sensor_name,
     } else {
       ov5647_linear_vin_param_init(&vin_info_);
     }
-    
+  } else if(strcasecmp(sensor_name.c_str(), "sc230ai") == 0) {
+    sc230ai_linear_vin_param_init(&vin_info_);  
   } else {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
       "[%s]->sensor name not found(%s).\n", __func__, sensor_name.c_str());
@@ -588,6 +589,7 @@ int HobotMipiCapIml::selectSensor(std::string &sensor, int &host, int &i2c_bus) 
     {1, 0x36, I2C_ADDR_16, 0x300A, "ov5647"},  // ov5647 for x3-pi
     {1, 0x1a, I2C_ADDR_16, 0x0000, "imx586"},  // imx586
     {1, 0x29, I2C_ADDR_16, 0x0000, "gc4c33"},  // gc4c33
+    {1, 0x30, I2C_ADDR_16, 0x0000, "sc230ai"},  // sc230ai for x3-pi
   };
   std::vector<int> i2c_buss= {0,1,2,3,4,5,6};
 

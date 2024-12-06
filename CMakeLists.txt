@@ -59,6 +59,7 @@ if(PLATFORM_X3)
     src/x3/sensor/sensor_imx219_config.c
     src/x3/sensor/sensor_imx477_config.c
     src/x3/sensor/sensor_ov5647_config.c
+    src/x3/sensor/sensor_sc230ai_config.c
     src/x3/sensor/x3_preparam.c
   )
   include_directories(include 
