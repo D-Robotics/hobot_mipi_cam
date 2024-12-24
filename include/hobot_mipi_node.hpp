@@ -68,6 +68,7 @@ class MipiCamNode : public rclcpp::Node {
  private:
   void getParams();
   void save_yuv(const builtin_interfaces::msg::Time stamp, void *data, int data_size);
+  void save_jpg(const builtin_interfaces::msg::Time stamp, std::string encode, int w, int h, void *data);
   void init_publisher(Publisher_info_st&  Pub_info, std::string topic, std::string topic_type,
                       std::string frame_id);
   void init_publisher_hbmem(Publisher_hbmem_info_st&  Pub_info, std::string topic, std::string topic_type);

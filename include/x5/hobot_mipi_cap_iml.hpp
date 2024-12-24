@@ -37,6 +37,16 @@ namespace mipi_cam {
 
 #define PIPES_TOTAL 1
 
+typedef struct gdc_binbuf_s {
+  hb_mem_common_buf_t *bin_buf = nullptr;
+  uint64_t bin_buf_size;
+  ~gdc_binbuf_s() {
+    if (bin_buf != NULL) {
+      hb_mem_free_buf(bin_buf->fd);
+      bin_buf = NULL;
+    }
+  }
+}GdcBinBuf_ST;
 
 typedef struct pipe_contex_s {
 	hbn_vflow_handle_t vflow_fd;
@@ -48,7 +58,7 @@ typedef struct pipe_contex_s {
 	camera_handle_t cam_fd;
 	vp_sensor_config_t sensor_config;
   vp_csi_config_t csi_config;
-  hb_mem_common_buf_t gdc_bin_buf;
+  std::shared_ptr<GdcBinBuf_ST> gdc_bin;
   int gdc_bin_buf_is_valid;
   int gdc_init_valid;
   MIPI_CAP_INFO_ST *cap_info_;
@@ -108,6 +118,15 @@ class HobotMipiCapIml : public HobotMipiCap {
   // 返回值：0，初始化成功；-1，初始化失败。
   int getCapInfo(MIPI_CAP_INFO_ST &info);
 
+  std::vector<sensor_msgs::msg::CameraInfo>* getCalCamInfo() {
+    return &cal_cam_info_;
+  }
+
+  int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
+    cam_info_ = info;
+    return 0;
+  }
+
  protected:
   //遍历初始话的mipi host.
   void listMipiHost(std::vector<int> &mipi_hosts, std::vector<int> &started,
@@ -131,8 +150,12 @@ class HobotMipiCapIml : public HobotMipiCap {
   int creat_vin_node(pipe_contex_t *pipe_contex);
   int creat_gdc_node(pipe_contex_t *pipe_contex);
   int creat_camera_node(camera_config_t* camera_config,int64_t* cam_fd);
-  int get_gdc_config(std::string gdc_bin_file, hb_mem_common_buf_t *bin_buf);
-  int gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height);
+  std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
+  std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height,
+		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info);
+  std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin(int gdc_width, int gdc_height,int out_width, int out_height,
+       sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info);
+  std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
 
   bool m_inited_ = false;
   bool started_ = false;
@@ -153,6 +176,7 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
+  std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
 
   std::mutex queue_mtx_;
 
@@ -162,6 +186,17 @@ class HobotMipiCapIml : public HobotMipiCap {
     vse_cfg_t vse_attr;
     codec_cfg_t codec_attr;
   } hbn_cfg_t;
+
+  typedef struct gdc_cfg {
+    param_t gdc_param; 
+    window_t  wnds;
+    uint32_t wnd_num;
+  } gdc_cfg_t;
+
+
+
+  std::vector<std::shared_ptr<gdc_cfg_t>> v_gdc_cfg_;
+
   camera_config_t g_camera_config[PIPES_TOTAL];
   deserial_config_t g_deserial_config[PIPES_TOTAL];
   mipi_config_t g_mipi_config[PIPES_TOTAL];

@@ -28,6 +28,15 @@ def generate_launch_description():
     camera_type = os.getenv('CAM_TYPE')
     print("camera_type is ", camera_type)
 
+    mipi_camera_calibration_file_path_arg = DeclareLaunchArgument(
+            'mipi_camera_calibration_file_path',
+            default_value='default',
+            description='mipi camera calibration file path')
+    mipi_camera_gdc_file_path_arg = DeclareLaunchArgument(
+        'mipi_gdc_bin_file',
+        default_value='default',
+        description='mipi camera gdc file path')
+
     mipi_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -39,6 +48,8 @@ def generate_launch_description():
             'mipi_image_framerate': '30.0',
             'mipi_io_method': 'ros',
             'mipi_channel': '0',
+            'mipi_camera_calibration_file_path': LaunchConfiguration('mipi_camera_calibration_file_path'),
+            'mipi_gdc_bin_file': LaunchConfiguration('mipi_gdc_bin_file'),
             'mipi_frame_ts_type': 'sensor'
         }.items()
     )
@@ -77,6 +88,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         # 启动零拷贝环境配置node
+        mipi_camera_calibration_file_path_arg,
+        mipi_camera_gdc_file_path_arg,
         shared_mem_node,
         # image publish
         mipi_node,
