@@ -152,11 +152,15 @@ static int enable_sensor_pin(int gpio_number, int active)
 		return -1;
 	}
 
+	usleep(30 * 1000);
+
 	// Set GPIO direction to output
 	if (gpio_set_direction(gpio_number, "out") != 0) {
 		printf("Failed to set GPIO direction\n");
 		return -1;
 	}
+
+	usleep(30 * 1000);
 
 	/* gpio level should be keep same with sensor driver power_on api */
 	// Set GPIO value to active
@@ -894,55 +898,56 @@ int32_t vp_sensor_detect_2(int host, mipi_host_info_t* host_info)
 
 int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config, vp_csi_config_t* csi_config)
 {
-	int32_t ret = -1, i = 0, j = 0;
+	int32_t ret = -1, j = 0;
 	uint32_t frequency = 24000000;
 	if (check_mipi_host_status(host) == 0) {
 		return -1;
 	}
 
-	struct vcon_properties vcon_props_array[VP_MAX_VCON_NUM];
+	//struct vcon_properties vcon_props_array[VP_MAX_VCON_NUM];
+	struct vcon_properties vcon_props;
 
-	i = host;
+	int mclk_is_not_configed = vp_sensor_mipi_host_mclk_is_not_configed(host);
+	read_vcon_info_from_device_tree(host, &vcon_props);
 
-	int mclk_is_not_configed = vp_sensor_mipi_host_mclk_is_not_configed(i);
-	read_vcon_info_from_device_tree(i, &vcon_props_array[i]);
-
-	printf("Searching camera sensor on device: %s ", vcon_props_array[i].device_path);
+	printf("Searching camera sensor on device: %s ", vcon_props.device_path);
 	printf("mclk_is_not_configed: %d\n", mclk_is_not_configed);
-	printf("i2c bus: %d ", vcon_props_array[i].bus);
-	printf("mipi rx phy: %d\n", vcon_props_array[i].rx_phy[1]);
+	printf("i2c bus: %d ", vcon_props.bus);
+	printf("mipi rx phy: %d\n", vcon_props.rx_phy[1]);
 
 	// 如果该vcon使能了，检测该vcon上是否有连接 sensor
-	if (vcon_props_array[i].status[0] == 'o') { // okay
-#if 0
+	if (vcon_props.status[0] == 'o') { // okay
+#if 1
 		// 检测该vcon上连接的 sensor
 		/*enable gpio_oth, enable camera sensor gpio, maybe pwd/reset gpio */
 		for (j = 0; j < 8; ++j) {
-			if (vcon_props_array[i].gpio_oth[j] != 0) {
+			if (vcon_props.gpio_oth[j] != 0) {
 				if (sensor_config->camera_config->gpio_enable_bit != 0) {
 					// gpio_level should be from sensor config and sensor spec
-					enable_sensor_pin(vcon_props_array[i].gpio_oth[j],
+					enable_sensor_pin(vcon_props.gpio_oth[j],
 						(1 - sensor_config->camera_config->gpio_level_bit));
 				}
 			}
 		}
 
-		if(!mclk_is_not_configed) {
-			/* enable mclk */
-			write_mipi_host_freq(i, frequency);
-			enable_mipi_host_clock(i, 1);
-		}
+
 #endif
 
 		// 从指定的vcon关联的i2c bus上读取 vp_sensor_config_list 中指定的 chip_id_reg 对应的寄存器值
-		ret = check_sensor_reg_value(vcon_props_array[i], sensor_config);
+		ret = check_sensor_reg_value(vcon_props, sensor_config);
 		if (ret == 0) {
-			csi_config->index = i;
+			csi_config->index = host;
 			csi_config->mclk_is_not_configed = mclk_is_not_configed;
 			// 检测到 sensor，保存 sensor 信息
 			printf("INFO: vp_sensor_fixed_mipi_host_1 Found sensor_name:%s on mipi rx csi %d, i2c addr 0x%x, config_file:%s\n",
-				sensor_config->sensor_name, vcon_props_array[i].rx_phy[1],
+				sensor_config->sensor_name, vcon_props.rx_phy[1],
 				sensor_config->camera_config->addr, sensor_config->config_file);
+		}
+
+		if(!mclk_is_not_configed) {
+			/* enable mclk */
+			write_mipi_host_freq(host, frequency);
+			enable_mipi_host_clock(host, 1);
 		}
 
 	}

@@ -18,6 +18,7 @@
 #include <vector>
 #include <string>
 #include "hobot_mipi_comm.hpp"
+#include "sensor_msgs/msg/camera_info.hpp"
 
 namespace mipi_cam {
 
@@ -56,6 +57,16 @@ class HobotMipiCap {
   // 输入输出参数：MIPI_CAP_INFO_ST的结构信息。
   // 返回值：0，初始化成功；-1，初始化失败。
   virtual int getCapInfo(MIPI_CAP_INFO_ST &info) = 0;
+
+  virtual std::vector<sensor_msgs::msg::CameraInfo>* getCalCamInfo() {
+    return nullptr;
+  }
+
+  virtual int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
+    return -1;
+  }
+
+  
 };
 
 }  // namespace mipi_cam
