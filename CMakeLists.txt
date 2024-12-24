@@ -21,6 +21,11 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
 endif()
 
+find_package(OpenCV)
+   if(NOT OpenCV_FOUND)
+      message(FATAL_ERROR "OpenCV > 4.4 not found.")
+   endif()
+
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")

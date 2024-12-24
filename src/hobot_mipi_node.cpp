@@ -23,6 +23,8 @@
 #include <fstream>
 #include "rcpputils/env.hpp"
 #include "rcutils/env.h"
+#include "opencv2/opencv.hpp"
+#include "opencv2/imgcodecs.hpp"
 
 #define PUB_BUF_NUM 5
 namespace mipi_cam {
@@ -402,6 +404,7 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
       pub_info->img_->header.stamp.sec = ts.tv_sec;
       pub_info->img_->header.stamp.nanosec = ts.tv_nsec;
     }
+    save_jpg(pub_info->img_->header.stamp,pub_info->img_->encoding,pub_info->img_->width,pub_info->img_->height,(void *)&pub_info->img_->data[0]);
     save_yuv(pub_info->img_->header.stamp, (void *)&pub_info->img_->data[0], pub_info->img_->data.size());
     pub_info->image_pub_->publish(*pub_info->img_);
     if (pub_info->info_pub_) {
@@ -439,6 +442,8 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
         msg.time_stamp.sec = ts.tv_sec;
         msg.time_stamp.nanosec = ts.tv_nsec;
       }
+      std::string encode(msg.encoding.begin(), msg.encoding.end());
+      save_jpg(msg.time_stamp,encode,msg.width,msg.height,(void *)&msg.data);
       save_yuv(msg.time_stamp, (void *)&msg.data, msg.data_size);
       msg.index = pub_info->mSendIdx++;
       pub_info->publisher_hbmem_->publish(std::move(loanedMsg));
@@ -469,6 +474,26 @@ void MipiCamNode::save_yuv(const builtin_interfaces::msg::Time stamp,
     std::ofstream out(yuv_file, std::ios::out|std::ios::binary);
     out.write(reinterpret_cast<char*>(data), data_size);
     out.close();
+  }
+}
+
+void MipiCamNode::save_jpg(const builtin_interfaces::msg::Time stamp, std::string encode, int w, int h, void *data){
+  std::string jpg_path = "./jpg/";
+  uint64_t time_stamp = (stamp.sec * 1000 + stamp.nanosec / 1000000);;
+  if (access(jpg_path.c_str(), F_OK) == 0) {
+
+    std::string jpg_file = "./jpg/" + std::to_string(time_stamp) + ".jpg";
+    RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+      "save jpg image: %s", jpg_file.c_str());
+    if (encode == "nv12") {
+      cv::Mat src_mat(h * 1.5, w, CV_8UC1, data);
+      cv::Mat img_bgr;
+      cv::cvtColor(src_mat, img_bgr, cv::COLOR_YUV2BGR_NV12);
+      cv::imwrite(jpg_file, img_bgr);
+    } else if (encode == "bgr8") {
+      cv::Mat img_bgr(h, w, CV_8UC3, data);
+      cv::imwrite(jpg_file, img_bgr);
+    }
   }
 }
 

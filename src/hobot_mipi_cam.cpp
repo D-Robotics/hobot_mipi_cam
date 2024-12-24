@@ -210,6 +210,21 @@ int MipiCamIml::init(struct NodePara &para) {
     return -1;
   }
 
+  if ( cap_info_.device_mode_ == "dual") {
+    std::vector<sensor_msgs::msg::CameraInfo> cam_info_v;
+    cam_info_v.resize(2);
+    if (getDualCamCalibration(cam_info_v[0], cam_info_v[1], nodePare_.camera_calibration_file_path_)) {
+      mipiCap_ptr_->setCamInfo(cam_info_v);
+    }
+  } else {
+    std::vector<sensor_msgs::msg::CameraInfo> cam_info_v;
+    cam_info_v.resize(1);
+    if (getCamCalibration(cam_info_v[0], nodePare_.camera_calibration_file_path_)) {
+      mipiCap_ptr_->setCamInfo(cam_info_v);
+    }
+  }
+  
+
   if (mipiCap_ptr_->init(cap_info_) != 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
       "[%s]->cap capture init failture.\r\n", __func__);
@@ -383,7 +398,7 @@ bool MipiCamIml::getImage(builtin_interfaces::msg::Time &stamp,
   }
 
   RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-            "publish laps ms= %d", (timestamp_sys - timestamp/1000000));
+            "publish laps ms= %lu", (timestamp_sys - timestamp/1000000));
 
   {
     struct timespec ts;
@@ -523,7 +538,6 @@ bool MipiCamIml::getImageMem(
 
 bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
                                   const std::string &file_path) {
-
   try {
     std::string cal_file;
     if ((file_path.length() == 0) || (file_path == "default")) {
@@ -605,109 +619,70 @@ bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
 
 bool MipiCamIml::getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,sensor_msgs::msg::CameraInfo &cam_info_r,
                                   const std::string &file_path) {
-
+  RCLCPP_WARN(rclcpp::get_logger("mipi_cam"), "cal_file:%s", file_path.c_str());     
   try {
-    std::string cal_file = file_path;
-    std::string camera_name;
-    std::ifstream fin(cal_file.c_str());
-    if (!fin) {
-      RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
-          "Camera calibration file: %s is not exist!"
-          "\nIf you need calibration msg, please make sure the calibration file path is correct and the calibration file exists!",
-          cal_file.c_str());
-      return false;
+    cv::FileStorage fs(file_path.c_str(), cv::FileStorage::READ);
+    if (!fs.isOpened()) {
+        std::cerr << "无法打开标定参数文件！" << std::endl;
+        return false;
     }
-    YAML::Node calibration_doc = YAML::Load(fin);
-    const YAML::Node &cal_l_doc = calibration_doc["cam0"];
-    const YAML::Node &T_cn_cnm1 = calibration_doc["T_cn_cnm1"];
-
-    cam_info_l.width = cal_l_doc["resolution"][0].as<int>();
-    cam_info_l.height = cal_l_doc["resolution"][1].as<int>();
-
-    cam_info_l.d.resize(cal_l_doc["distortion_coeffs"].size());
-    for (int i = 0; i < cal_l_doc["distortion_coeffs"].size(); ++i) {
-      cam_info_l.d[i] = cal_l_doc["distortion_coeffs"][i].as<double>();
+    cv::Mat l_k, l_d, r_k, r_d, R, T;
+    
+    int width = fs["image_width"];
+    int height = fs["image_height"];
+    fs["left_camera_matrix"] >> l_k;
+    fs["left_distortion_coefficients"] >> l_d;
+    fs["right_camera_matrix"] >> r_k;
+    fs["right_distortion_coefficients"] >> r_d;
+    fs["R"] >> R;
+    fs["T"] >> T;
+    fs.release();
+    // 检查数据类型并进行转换（如果需要）
+    if (l_k.type() != CV_64F) {
+      l_k.convertTo(l_k, CV_64F); // 转换为double类型
     }
-
-    cam_info_l.k[0] = cal_l_doc["intrinsics"][0].as<double>();
-    cam_info_l.k[1] = 0.0;
-    cam_info_l.k[2] = cal_l_doc["intrinsics"][1].as<double>();
-    cam_info_l.k[3] = 0.0;
-    cam_info_l.k[4] = cal_l_doc["intrinsics"][2].as<double>();
-    cam_info_l.k[5] = cal_l_doc["intrinsics"][3].as<double>();
-    cam_info_l.k[6] = 0.0;
-    cam_info_l.k[7] = 0.0;
-    cam_info_l.k[8] = 1.0;
-
-    cam_info_l.r[0] = 1.0;
-    cam_info_l.r[1] = 0.0;
-    cam_info_l.r[2] = 0.0;
-    cam_info_l.r[3] = 0.0;
-    cam_info_l.r[4] = 1.0;
-    cam_info_l.r[5] = 0.0;
-    cam_info_l.r[6] = 0.0;
-    cam_info_l.r[7] = 0.0;
-    cam_info_l.r[8] = 1.0;
-
-    cam_info_l.p[0] = cal_l_doc["intrinsics"][0].as<double>();
-    cam_info_l.p[1] = 0.0;
-    cam_info_l.p[2] = cal_l_doc["intrinsics"][1].as<double>();
-    cam_info_l.p[3] = 0.0;
-    cam_info_l.p[4] = 0.0;
-    cam_info_l.p[5] = cal_l_doc["intrinsics"][2].as<double>();
-    cam_info_l.p[6] = cal_l_doc["intrinsics"][3].as<double>();
-    cam_info_l.p[7] = 0.0;
-    cam_info_l.p[8] = 0.0;
-    cam_info_l.p[9] = 0.0;
-    cam_info_l.p[10] = 1.0;
-    cam_info_l.p[11] = 0.0;
-
-    const YAML::Node &cal_r_doc = calibration_doc["cam1"];
-
-    cam_info_r.width = cal_r_doc["resolution"][0].as<int>();
-    cam_info_r.height = cal_r_doc["resolution"][1].as<int>();
-
-    cam_info_r.d.resize(cal_r_doc["distortion_coeffs"].size());
-    for (int i = 0; i < cal_r_doc["distortion_coeffs"].size(); ++i) {
-      cam_info_r.d[i] = cal_r_doc["distortion_coeffs"][i].as<double>();
+    if (l_d.type() != CV_64F) {
+      l_d.convertTo(l_d, CV_64F); // 转换为double类型
+    }
+    if (r_k.type() != CV_64F) {
+      r_k.convertTo(r_k, CV_64F); // 转换为double类型
+    }
+    if (r_d.type() != CV_64F) {
+      r_d.convertTo(r_d, CV_64F); // 转换为double类型
+    }
+    if (R.type() != CV_64F) {
+      R.convertTo(R, CV_64F); // 转换为double类型
+    }
+    if (T.type() != CV_64F) {
+      T.convertTo(T, CV_64F); // 转换为double类型
     }
 
-    cam_info_r.k[0] = cal_r_doc["intrinsics"][0].as<double>();
-    cam_info_r.k[1] = 0.0;
-    cam_info_r.k[2] = cal_r_doc["intrinsics"][1].as<double>();
-    cam_info_r.k[3] = 0.0;
-    cam_info_r.k[4] = cal_r_doc["intrinsics"][2].as<double>();
-    cam_info_r.k[5] = cal_r_doc["intrinsics"][3].as<double>();
-    cam_info_r.k[6] = 0.0;
-    cam_info_r.k[7] = 0.0;
-    cam_info_r.k[8] = 1.0;
+    cam_info_r.width = cam_info_l.width = width;
+    cam_info_r.height = cam_info_l.height = height;
 
-    cam_info_r.r[0] = T_cn_cnm1[0][0].as<double>();
-    cam_info_r.r[1] = T_cn_cnm1[0][1].as<double>();
-    cam_info_r.r[2] = T_cn_cnm1[0][2].as<double>();
-    cam_info_r.r[3] = T_cn_cnm1[1][0].as<double>();
-    cam_info_r.r[4] = T_cn_cnm1[1][1].as<double>();
-    cam_info_r.r[5] = T_cn_cnm1[1][2].as<double>();
-    cam_info_r.r[6] = T_cn_cnm1[2][0].as<double>();
-    cam_info_r.r[7] = T_cn_cnm1[2][1].as<double>();
-    cam_info_r.r[8] = T_cn_cnm1[2][2].as<double>();
+    cam_info_l.d.resize(l_d.total());
+    std::copy(l_d.ptr<double>(0), l_d.ptr<double>(0) + l_d.total(), cam_info_l.d.begin());
+    std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_l.k.begin());
 
-    cam_info_r.p[0] = cal_r_doc["intrinsics"][0].as<double>();
-    cam_info_r.p[1] = 0.0;
-    cam_info_r.p[2] = cal_r_doc["intrinsics"][1].as<double>();
-    cam_info_r.p[3] = 0.0;
-    cam_info_r.p[4] = 0.0;
-    cam_info_r.p[5] = cal_r_doc["intrinsics"][2].as<double>();
-    cam_info_r.p[6] = cal_r_doc["intrinsics"][3].as<double>();
-    cam_info_r.p[7] = 0.0;
-    cam_info_r.p[8] = 0.0;
-    cam_info_r.p[9] = 0.0;
-    cam_info_r.p[10] = 1.0;
-    cam_info_r.p[11] = 0.0;
-    RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-      "[getCamCalibration]->parse calibration file successfully");
+    cam_info_r.d.resize(r_d.total());
+    std::copy(r_d.ptr<double>(0), r_d.ptr<double>(0) + r_d.total(), cam_info_r.d.begin());
+    std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_r.k.begin());
+
+    cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
+    std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_l.r.begin());
+
+    cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
+    cv::Mat l_p = l_k * l_p_eye;
+    std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_l.p.begin());
+
+    cv::Mat RT = cv::Mat::zeros(3, 4, CV_64F);
+    R.copyTo(RT(cv::Rect(0, 0, 3, 3)));
+    T.reshape(1).copyTo(RT.col(3));
+    cv::Mat P = r_k * RT;
+    std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_r.r.begin());
+    std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_r.p.begin());
     return true;
-  } catch (YAML::Exception &e) {
+  } catch (cv::Exception &e) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
       "Unable to parse camera calibration file normally:%s",
       e.what());

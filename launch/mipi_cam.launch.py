@@ -71,6 +71,10 @@ def generate_launch_description():
             'mipi_frame_ts_type',
             default_value='sensor',
             description='type(sensor/realtime) of timestamp for publishing messages'),
+        DeclareLaunchArgument(
+            'mipi_gdc_bin_file',
+            default_value='default',
+            description='mipi camera gdc file path'),
         # 启动零拷贝环境配置node
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -95,6 +99,7 @@ def generate_launch_description():
                 {"channel": LaunchConfiguration('mipi_channel')},
                 {"video_device": LaunchConfiguration('mipi_video_device')},
                 {"frame_ts_type": LaunchConfiguration('mipi_frame_ts_type')},
+                {"gdc_bin_file": LaunchConfiguration('mipi_gdc_bin_file')},
             ],
             arguments=['--ros-args', '--log-level', 'warn']
         )

@@ -32,6 +32,11 @@ def generate_launch_description():
         'mipi_lpwm_enable',
         default_value='False',
         description='mipi lpwm enable')
+    
+    mipi_camera_calibration_file_path_arg = DeclareLaunchArgument(
+        'mipi_camera_calibration_file_path',
+        default_value='default',
+        description='mipi lpwm enable')
 
     mipi_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -48,6 +53,7 @@ def generate_launch_description():
             'mipi_channel': '2',
             'mipi_channel2': '0',
             'mipi_lpwm_enable': 'False',
+            'mipi_camera_calibration_file_path':  LaunchConfiguration('mipi_camera_calibration_file_path'),
             'mipi_gdc_bin_file': './sc230ai_gdc.bin',
             'mipi_frame_ts_type': 'sensor'
         }.items()
@@ -87,6 +93,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         # 启动零拷贝环境配置node
+        mipi_camera_calibration_file_path_arg,
         shared_mem_node,
         # image publish
         mipi_node,
