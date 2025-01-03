@@ -81,6 +81,56 @@ typedef struct video_buffer_s {
   }
 } VideoBuffer_ST;
 
+typedef struct eeprom_id {
+  int i2c_bus;           // sensor挂在哪条总线上
+  int i2c_dev_addr;      // sensor i2c设备地址
+  int i2c_addr_width;    // 总线地址宽（1/2字节）
+  int det_reg;           // 读取的寄存器地址
+  int check_value;           // 读取的寄存器地址
+  char device_name[25];  // sensor名字
+} EEPROM_ID_T;
+
+typedef struct cal_dualcam_info_st {
+  double fxl;        
+  double fyl;    
+  double cxl;    
+  double cyl;        
+  double k1l;        
+  double k2l;
+  double k3l;
+  double k4l;
+  double k5l;
+  double k6l;
+  double p1l;
+  double p2l;
+  double rmsl;
+  double fxr;
+  double fyr;
+  double cxr;
+  double cyr;
+  double k1r;
+  double k2r;
+  double k3r;
+  double k4r;
+  double k5r;
+  double k6r;
+  double p1r;
+  double p2r;
+  double rmslr;
+  double r11;
+  double r12;
+  double r13;
+  double r21;
+  double r22;
+  double r23;
+  double r31;
+  double r32;
+  double r33;
+  double tx;
+  double ty;
+  double tz;
+  double epilines;
+} CalDualCamInfo_ST;
 
 class HobotMipiCapIml : public HobotMipiCap {
  public:
@@ -137,6 +187,10 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool detectSensor(SENSOR_ID_T &sensor_info, int i2c_bus);
 
   int selectSensor(std::string &sensor, int &host, int &i2c_bus);
+
+  int detectEeprom(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
+  bool readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize);
+  bool getDualCamCalibrationFromEeprom();
 
   void dualFrameTask();
 
