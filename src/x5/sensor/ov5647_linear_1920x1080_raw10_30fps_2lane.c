@@ -36,7 +36,7 @@ static camera_config_t camera_config = {
 	.mipi_cfg = &mipi_config,
 	.gpio_enable_bit = 0x01,
 	.gpio_level_bit = 0x00,
-	.calib_lname = "disable",
+	.calib_lname = "/usr/hobot/bin/ov5647_tuning_1920x1080.json",
 };
 
 static vin_node_attr_t vin_node_attr = {

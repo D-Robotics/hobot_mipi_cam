@@ -1179,7 +1179,7 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::get_gdc_bin(std::string gdc_bin_f
 
 	FILE *fp = fopen(gdc_bin_file.c_str(), "r");
 	if (fp == NULL) {
-		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"gdc bin file %s open failed\n", gdc_bin_file);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),"gdc bin file %s open failed\n", gdc_bin_file);
 		return nullptr;
 	}
 	fseek(fp, 0, SEEK_END);
@@ -1189,7 +1189,7 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::get_gdc_bin(std::string gdc_bin_f
 	int n = fread(cfg_buf, 1, file_size, fp);
 	if (n != file_size) {
         free(cfg_buf);
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"Read file size failed\n");
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"Read file size failed\n");
         fclose(fp);
         return nullptr;
 	}
