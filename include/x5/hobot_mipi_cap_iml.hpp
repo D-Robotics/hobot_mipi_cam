@@ -130,6 +130,7 @@ typedef struct cal_dualcam_info_st {
   double ty;
   double tz;
   double epilines;
+  char h_v[4];
 } CalDualCamInfo_ST;
 
 class HobotMipiCapIml : public HobotMipiCap {
