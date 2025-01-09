@@ -1325,7 +1325,6 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	wnds.custom.centerx = gdc_width / 2 - 1;
 	wnds.custom.centery = gdc_height / 2 - 1;
 
-
 	std::vector<point_t> bin_map(gdc_width * gdc_height);
 	std::transform(undistmap1l.ptr<float>(), undistmap1l.ptr<float>() + undistmap1l.total(),
 			undistmap2l.ptr<float>(), bin_map.begin(),

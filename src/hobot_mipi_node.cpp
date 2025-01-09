@@ -203,7 +203,7 @@ void MipiCamNode::init() {
 
       if (nodePare_.dual_combine_ == 1) {
         Pub_info_.resize(3);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_left_info", nodePare_.camera_calibration_file_path_);
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_right_info", nodePare_.camera_calibration_file_path_);
         init_publisher(Pub_info_[0], "image_left_raw", "left", frame_id_);
         init_publisher(Pub_info_[1], "image_right_raw", "right", frame_id_);
         init_publisher(Pub_info_[2], "image_combine_raw", "combine", frame_id_);
@@ -213,7 +213,7 @@ void MipiCamNode::init() {
         init_publisher(Pub_info_[0], "image_combine_raw", "combine", frame_id_);
       } else {
         Pub_info_.resize(2);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_left_info", nodePare_.camera_calibration_file_path_);
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_right_info", nodePare_.camera_calibration_file_path_);
         init_publisher(Pub_info_[0], "image_left_raw", "left", frame_id_);
         init_publisher(Pub_info_[1], "image_right_raw", "right", frame_id_);        
       }
