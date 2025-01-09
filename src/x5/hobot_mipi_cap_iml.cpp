@@ -23,6 +23,15 @@
 #include <unistd.h>
 #include <regex>
 #include <cmath>
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <linux/i2c.h>
+#include <linux/i2c-dev.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
 
 #include <sys/select.h>
 
@@ -144,8 +153,10 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
 	ERR_CON_EQ(ret, 0);
-
 	vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
+	if (cam_info_.size() != 2) {
+		getDualCamCalibrationFromEeprom();
+	}
 	auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_);
 	if (gdc_bin.size() == 2) {
 		gdc_bin_buf_.push_back(gdc_bin[0]);
@@ -153,7 +164,6 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		pipe_contex[0].gdc_bin = gdc_bin[0];
 		pipe_contex[1].gdc_bin = gdc_bin[1];
 	}
-
 	ret = create_and_run_vflow(&pipe_contex[0]);
 	ERR_CON_EQ(ret, 0);
 	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index]);
@@ -1169,7 +1179,7 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::get_gdc_bin(std::string gdc_bin_f
 
 	FILE *fp = fopen(gdc_bin_file.c_str(), "r");
 	if (fp == NULL) {
-		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"gdc bin file %s open failed\n", gdc_bin_file);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),"gdc bin file %s open failed\n", gdc_bin_file);
 		return nullptr;
 	}
 	fseek(fp, 0, SEEK_END);
@@ -1179,7 +1189,7 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::get_gdc_bin(std::string gdc_bin_f
 	int n = fread(cfg_buf, 1, file_size, fp);
 	if (n != file_size) {
         free(cfg_buf);
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"Read file size failed\n");
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"Read file size failed\n");
         fclose(fp);
         return nullptr;
 	}
@@ -1314,7 +1324,6 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	wnds.custom.h = gdc_height-1;
 	wnds.custom.centerx = gdc_width / 2 - 1;
 	wnds.custom.centery = gdc_height / 2 - 1;
-
 
 	std::vector<point_t> bin_map(gdc_width * gdc_height);
 	std::transform(undistmap1l.ptr<float>(), undistmap1l.ptr<float>() + undistmap1l.total(),
@@ -1657,4 +1666,183 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin_json(std::string file
 	gdc_bin_ptr->bin_buf_size = bin_buf_size;
 	return gdc_bin_ptr;
 }
+
+bool HobotMipiCapIml::readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize) {
+	int32_t ret;
+	struct i2c_rdwr_ioctl_data data;
+	uint8_t sendbuf[32] = {0};
+	uint8_t readbuf[32] = {0};
+	struct i2c_msg msgs[I2C_RDRW_IOCTL_MAX_MSGS] = {0};
+	char filename[20];
+	int file;
+
+	// Open the I2C bus
+	snprintf(filename, sizeof(filename), "/dev/i2c-%d", bus);
+	file = open(filename, O_RDWR);
+	if (file < 0) {
+		std::cout << "Failed to open the I2C bus " << bus << std::endl;
+		perror("open the I2C bus");
+		return false;
+	}
+
+	sendbuf[0] = (uint8_t)((reg_addr >> 8u) & 0xffu);
+	sendbuf[1] = (uint8_t)(reg_addr & 0xffu);
+
+	data.msgs = msgs; /*PRQA S 5118*/
+	data.nmsgs = 2;
+
+	data.msgs[0].len = 2;
+	data.msgs[0].addr = i2c_addr;
+	data.msgs[0].flags = 0;
+	data.msgs[0].buf = sendbuf;
+
+	data.msgs[1].len = bufsize;
+	data.msgs[1].addr = i2c_addr;
+	data.msgs[1].flags = I2C_M_RD;
+	data.msgs[1].buf = (uint8_t*)buf;
+
+	ret = ioctl(file, I2C_RDWR, (uint64_t)&data);
+	if (ret < 0) {
+		// perror("Failed to read from the I2C bus");
+		//*value = 0;
+		close(file);
+		return false;
+	}
+
+	//*value = (uint16_t)((readbuf[0] << 8) | readbuf[1]);
+
+	// Close the I2C bus
+	close(file);
+
+	return true;
+}
+
+
+int HobotMipiCapIml::detectEeprom(std::string &device, int &i2c_bus, uint16_t &i2c_addr) {
+
+  // mipi sensor的信息数组
+  EEPROM_ID_T eeprom_id_list[] = {
+    {1, 0x50, I2C_ADDR_16, 0x21, 0x01, "P24C64G-C4H-MIR"},  // P24C64G-C4H-MIR
+  };
+  std::vector<int> i2c_buss= {0,1,2,3,4,5,6,7};
+
+  char buf[512];
+  for (auto num : i2c_buss) {
+    for (auto eeprom_id : eeprom_id_list) {
+      if (readEeprom16(num, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 1)) {
+		if (buf[0] == eeprom_id.check_value) {
+			i2c_bus = num;
+			i2c_addr = eeprom_id.i2c_dev_addr;
+			device = eeprom_id.device_name;
+			return 0;
+		} else {
+			std::cout << "eeprom check failure bus:" << num << ",addr:" << eeprom_id.i2c_dev_addr << ",device_name" << eeprom_id.device_name << std::endl;
+		}
+      }
+    }
+  }
+  return -1;
+}
+
+bool HobotMipiCapIml::getDualCamCalibrationFromEeprom() {
+  int i2c_bus;
+  uint16_t i2c_addr;
+  std::string device;
+  std::vector<char> i2c_buf;
+  i2c_buf.resize(sizeof(CalDualCamInfo_ST));
+  char chech_value;
+  if (detectEeprom(device, i2c_bus, i2c_addr) == -1) {
+	return false;
+  }
+
+  if (readEeprom16(i2c_bus, i2c_addr, 0x0022, i2c_buf.data(), sizeof(CalDualCamInfo_ST)) == false) {
+	return false;
+  }
+  if (readEeprom16(i2c_bus, i2c_addr, 0x0022+sizeof(CalDualCamInfo_ST), &chech_value, 1) == false) {
+	return false;
+  }
+  int sum = 0;
+  std::for_each(i2c_buf.begin(), i2c_buf.end(), [&sum](char c) {
+	sum += static_cast<int>(c);
+  });
+  if (((sum % 255) + 1) == chech_value) {
+	cam_info_.resize(2);
+	CalDualCamInfo_ST* i2c_buf_ptr = (CalDualCamInfo_ST *)i2c_buf.data();
+	int width = (i2c_buf_ptr->h_v[0] << 8) | i2c_buf_ptr->h_v[1];
+	int height = (i2c_buf_ptr->h_v[2] << 8) | i2c_buf_ptr->h_v[3];
+
+	cam_info_[0].width = width;
+    cam_info_[0].height = height;
+	cam_info_[1].width = width;
+    cam_info_[1].height = height;
+
+	cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
+	l_k.at<double>(0,0) = i2c_buf_ptr->fxl;
+	l_k.at<double>(0,2) = i2c_buf_ptr->cxl;
+	l_k.at<double>(1,1) = i2c_buf_ptr->fyl;
+	l_k.at<double>(1,2) = i2c_buf_ptr->cyl;
+	l_k.at<double>(2,2) = 1;
+	std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
+
+	cam_info_[0].d.resize(8);
+	cam_info_[0].d[0] = i2c_buf_ptr->k1l;
+	cam_info_[0].d[1] = i2c_buf_ptr->k2l;
+	cam_info_[0].d[2] = i2c_buf_ptr->p1l;
+	cam_info_[0].d[3] = i2c_buf_ptr->p2l;
+	cam_info_[0].d[4] = i2c_buf_ptr->k3l;
+	cam_info_[0].d[5] = i2c_buf_ptr->k4l;
+	cam_info_[0].d[6] = i2c_buf_ptr->k5l;
+	cam_info_[0].d[7] = i2c_buf_ptr->k6l;
+
+	cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
+    std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
+
+	cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
+    cv::Mat l_p = l_k * l_p_eye;
+    std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
+
+	cv::Mat r_k= cv::Mat::zeros(3,3,CV_64F);
+	r_k.at<double>(0,0) = i2c_buf_ptr->fxr;
+	r_k.at<double>(0,2) = i2c_buf_ptr->cxr;
+	r_k.at<double>(1,1) = i2c_buf_ptr->fyr;
+	r_k.at<double>(1,2) = i2c_buf_ptr->cyr;
+	r_k.at<double>(2,2) = 1;
+	std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
+
+	cam_info_[1].d.resize(8);
+	cam_info_[1].d[0] = i2c_buf_ptr->k1r;
+	cam_info_[1].d[1] = i2c_buf_ptr->k2r;
+	cam_info_[1].d[2] = i2c_buf_ptr->p1r;
+	cam_info_[1].d[3] = i2c_buf_ptr->p2r;
+	cam_info_[1].d[4] = i2c_buf_ptr->k3r;
+	cam_info_[1].d[5] = i2c_buf_ptr->k4r;
+	cam_info_[1].d[6] = i2c_buf_ptr->k5r;
+	cam_info_[1].d[7] = i2c_buf_ptr->k6r;
+
+	cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
+	R.at<double>(0,0) = i2c_buf_ptr->r11;
+	R.at<double>(0,1) = i2c_buf_ptr->r12;
+	R.at<double>(0,2) = i2c_buf_ptr->r13;
+	R.at<double>(1,0) = i2c_buf_ptr->r21;
+	R.at<double>(1,1) = i2c_buf_ptr->r22;
+	R.at<double>(1,2) = i2c_buf_ptr->r23;
+	R.at<double>(2,0) = i2c_buf_ptr->r31;
+	R.at<double>(2,1) = i2c_buf_ptr->r32;
+	R.at<double>(2,2) = i2c_buf_ptr->r33;
+
+	cv::Mat T = cv::Mat::zeros(3, 1, CV_64F);
+	T.at<double>(0,0) = i2c_buf_ptr->tx;
+	T.at<double>(0,1) = i2c_buf_ptr->ty;
+	T.at<double>(0,2) = i2c_buf_ptr->tz;
+
+	cv::Mat RT;
+	cv::hconcat(R, T, RT);
+	cv::Mat P = r_k * RT;
+    std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
+    std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
+	return true;
+  }
+  return false;
+}
+
 }  // namespace mipi_cam

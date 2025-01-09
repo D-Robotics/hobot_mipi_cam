@@ -141,6 +141,13 @@ class MipiCamIml : public MipiCam {
  private:
   inline void NV12_TO_BGR24(unsigned char *_src, unsigned char *_RGBOut, int width, int height);
 
+  // gen camera calibration
+  bool getCamCalibrationIml(sensor_msgs::msg::CameraInfo& cam_info,
+                           const std::string &file_path);
+  
+  bool getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info_l,
+                sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
+
   typedef struct camera_image_s {
     int width;
     int height;
@@ -213,13 +220,13 @@ int MipiCamIml::init(struct NodePara &para) {
   if ( cap_info_.device_mode_ == "dual") {
     std::vector<sensor_msgs::msg::CameraInfo> cam_info_v;
     cam_info_v.resize(2);
-    if (getDualCamCalibration(cam_info_v[0], cam_info_v[1], nodePare_.camera_calibration_file_path_)) {
+    if (getDualCamCalibrationIml(cam_info_v[0], cam_info_v[1], nodePare_.camera_calibration_file_path_)) {
       mipiCap_ptr_->setCamInfo(cam_info_v);
     }
   } else {
     std::vector<sensor_msgs::msg::CameraInfo> cam_info_v;
     cam_info_v.resize(1);
-    if (getCamCalibration(cam_info_v[0], nodePare_.camera_calibration_file_path_)) {
+    if (getCamCalibrationIml(cam_info_v[0], nodePare_.camera_calibration_file_path_)) {
       mipiCap_ptr_->setCamInfo(cam_info_v);
     }
   }
@@ -538,6 +545,19 @@ bool MipiCamIml::getImageMem(
 
 bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
                                   const std::string &file_path) {
+  auto cal_v_ptr = mipiCap_ptr_->getCalCamInfo(); 
+  if (cal_v_ptr != nullptr && (cal_v_ptr->size() > 0)){
+    RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
+    const sensor_msgs::msg::CameraInfo& cameraInfo = cal_v_ptr->at(0);
+    memcpy( &cam_info, &cameraInfo, sizeof(sensor_msgs::msg::CameraInfo));
+    return true;
+  } else {
+    return getCamCalibrationIml(cam_info, file_path);
+  }                     
+}
+
+bool MipiCamIml::getCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info,
+                                  const std::string &file_path) {
   try {
     std::string cal_file;
     if ((file_path.length() == 0) || (file_path == "default")) {
@@ -618,6 +638,21 @@ bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
 }
 
 bool MipiCamIml::getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,sensor_msgs::msg::CameraInfo &cam_info_r,
+                                  const std::string &file_path) {
+  auto cal_v_ptr = mipiCap_ptr_->getCalCamInfo(); 
+  if (cal_v_ptr != nullptr && (cal_v_ptr->size() == 2)){
+    RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
+    const sensor_msgs::msg::CameraInfo& cal_l = cal_v_ptr->at(0);
+    memcpy( &cam_info_l, &cal_l, sizeof(sensor_msgs::msg::CameraInfo));
+    const sensor_msgs::msg::CameraInfo& cal_r = cal_v_ptr->at(1);
+    memcpy( &cam_info_r, &cal_r, sizeof(sensor_msgs::msg::CameraInfo));
+    return true;
+  } else {
+    return getDualCamCalibrationIml(cam_info_l, cam_info_r, file_path);
+  }                     
+}
+
+bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info_l,sensor_msgs::msg::CameraInfo &cam_info_r,
                                   const std::string &file_path) {
   RCLCPP_WARN(rclcpp::get_logger("mipi_cam"), "cal_file:%s", file_path.c_str());     
   try {
