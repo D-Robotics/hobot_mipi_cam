@@ -1759,15 +1759,14 @@ bool HobotMipiCapIml::getDualCamCalibrationFromEeprom() {
   if (readEeprom16(i2c_bus, i2c_addr, 0x0022, i2c_buf.data(), sizeof(CalDualCamInfo_ST)) == false) {
 	return false;
   }
-  if (readEeprom16(i2c_bus, i2c_addr, 0x015a, &chech_value, 1) == false) {
+  if (readEeprom16(i2c_bus, i2c_addr, 0x0022+sizeof(CalDualCamInfo_ST), &chech_value, 1) == false) {
 	return false;
   }
   int sum = 0;
   std::for_each(i2c_buf.begin(), i2c_buf.end(), [&sum](char c) {
 	sum += static_cast<int>(c);
   });
-  //if (((sum % 255) + 1) == chech_value) {
-  if (1) {
+  if (((sum % 255) + 1) == chech_value) {
 	cam_info_.resize(2);
 	CalDualCamInfo_ST* i2c_buf_ptr = (CalDualCamInfo_ST *)i2c_buf.data();
 	int width = (i2c_buf_ptr->h_v[0] << 8) | i2c_buf_ptr->h_v[1];
@@ -1846,6 +1845,5 @@ bool HobotMipiCapIml::getDualCamCalibrationFromEeprom() {
   }
   return false;
 }
-
 
 }  // namespace mipi_cam

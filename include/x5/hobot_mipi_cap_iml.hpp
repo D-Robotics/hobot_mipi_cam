@@ -90,6 +90,7 @@ typedef struct eeprom_id {
   char device_name[25];  // sensor名字
 } EEPROM_ID_T;
 
+#pragma pack(4)
 typedef struct cal_dualcam_info_st {
   double fxl;        
   double fyl;    
@@ -116,7 +117,7 @@ typedef struct cal_dualcam_info_st {
   double k6r;
   double p1r;
   double p2r;
-  double rmslr;
+  double rmsr;
   double r11;
   double r12;
   double r13;
@@ -132,6 +133,7 @@ typedef struct cal_dualcam_info_st {
   double epilines;
   char h_v[4];
 } CalDualCamInfo_ST;
+#pragma pack()
 
 class HobotMipiCapIml : public HobotMipiCap {
  public:
