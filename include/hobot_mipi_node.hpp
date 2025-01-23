@@ -96,7 +96,8 @@ class MipiCamNode : public rclcpp::Node {
   // parameters
   std::string frame_id_;
   std::string io_method_name_;  // hbmem zero mem copy
-  struct NodePara nodePare_;
+  //struct NodePara nodePare_;
+  std::shared_ptr<struct NodePara> nodePare_;
   int m_bIsInit;
 };
 }  // namespace mipi_cam

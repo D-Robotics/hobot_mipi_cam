@@ -856,6 +856,11 @@ int32_t vp_sensor_detect_2(int host, mipi_host_info_t* host_info)
 
 	// 如果该vcon使能了，检测该vcon上是否有连接 sensor
 	if (vcon_props.status[0] == 'o') { // okay
+		if(!mclk_is_not_configed) {
+			/* enable mclk */
+			write_mipi_host_freq(host, frequency);
+			enable_mipi_host_clock(host, 1);
+		}
 		for (j = 0; j < vp_get_sensors_list_number(); j++) {
 			// 从指定的vcon关联的i2c bus上读取 vp_sensor_config_list 中指定的 chip_id_reg 对应的寄存器值
 			/*enable gpio_oth, enable camera sensor gpio, maybe pwd/reset gpio */
@@ -886,11 +891,6 @@ int32_t vp_sensor_detect_2(int host, mipi_host_info_t* host_info)
 				return 0;
 			}
 		}
-		if(!mclk_is_not_configed) {
-			/* enable mclk */
-			write_mipi_host_freq(host, frequency);
-			enable_mipi_host_clock(host, 1);
-		}
 	}
 	return -1;
 
@@ -917,6 +917,11 @@ int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config,
 
 	// 如果该vcon使能了，检测该vcon上是否有连接 sensor
 	if (vcon_props.status[0] == 'o') { // okay
+		if(!mclk_is_not_configed) {
+			/* enable mclk */
+			write_mipi_host_freq(host, frequency);
+			enable_mipi_host_clock(host, 1);
+		}
 #if 1
 		// 检测该vcon上连接的 sensor
 		/*enable gpio_oth, enable camera sensor gpio, maybe pwd/reset gpio */
@@ -943,13 +948,6 @@ int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config,
 				sensor_config->sensor_name, vcon_props.rx_phy[1],
 				sensor_config->camera_config->addr, sensor_config->config_file);
 		}
-
-		if(!mclk_is_not_configed) {
-			/* enable mclk */
-			write_mipi_host_freq(host, frequency);
-			enable_mipi_host_clock(host, 1);
-		}
-
 	}
 
 	return ret;

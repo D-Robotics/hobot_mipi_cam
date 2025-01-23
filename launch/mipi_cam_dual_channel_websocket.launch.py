@@ -37,6 +37,21 @@ def generate_launch_description():
         'mipi_camera_calibration_file_path',
         default_value='default',
         description='mipi lpwm enable')
+    
+    mipi_image_width_arg = DeclareLaunchArgument(
+        'mipi_image_width',
+        default_value='1920',
+        description='mipi width')
+
+    mipi_image_height_arg = DeclareLaunchArgument(
+        'mipi_image_height',
+        default_value='1080',
+        description='mipi height')
+
+    mipi_rotation_arg = DeclareLaunchArgument(
+        'mipi_rotation',
+        default_value='0.0',
+        description='mipi camera out image rotation')
 
     mipi_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -44,17 +59,18 @@ def generate_launch_description():
                 get_package_share_directory('mipi_cam'),
                 'launch/mipi_cam_dual_channel.launch.py')),
         launch_arguments={
-            'mipi_image_width': '1920',
-            'mipi_image_height': '1080',
+            'mipi_image_width': LaunchConfiguration('mipi_image_width'),
+            'mipi_image_height': LaunchConfiguration('mipi_image_height'),
             'mipi_image_framerate': '10.0',
             'mipi_io_method': 'ros',
             'device_mode': 'dual',
             'dual_combine': '2',
-            'mipi_channel': '2',
-            'mipi_channel2': '0',
-            'mipi_lpwm_enable': 'False',
+            'mipi_channel': '0',
+            'mipi_channel2': '2',
+            'mipi_lpwm_enable': LaunchConfiguration('mipi_lpwm_enable'),
             'mipi_camera_calibration_file_path':  LaunchConfiguration('mipi_camera_calibration_file_path'),
             'mipi_gdc_bin_file': './sc230ai_gdc.bin',
+            'mipi_rotation': LaunchConfiguration('mipi_rotation'),
             'mipi_frame_ts_type': 'sensor'
         }.items()
     )
@@ -93,7 +109,11 @@ def generate_launch_description():
 
     return LaunchDescription([
         # 启动零拷贝环境配置node
+        mipi_lpwm_enable_arg,
         mipi_camera_calibration_file_path_arg,
+        mipi_image_width_arg,
+        mipi_image_height_arg,
+        mipi_rotation_arg,
         shared_mem_node,
         # image publish
         mipi_node,

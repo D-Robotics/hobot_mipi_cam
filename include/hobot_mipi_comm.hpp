@@ -37,6 +37,7 @@ struct NodePara {
   int image_width_;
   int image_height_;
   int framerate_;
+  double rotation_;
   std::string device_mode_; //"single":单目设备模式，"dual"：双目设备模式
   int dual_combine_; //当device_mode_=="dual"时生效，0：表示不支持拼接,输出左右图，1：标志支持拼接，并输出左右图+拼接图，2：表示支持拼接，只输出拼接图。
   // The type of timestamp for publishing messages
@@ -55,6 +56,7 @@ typedef struct {
   int fps;
   int channel_;
   int channel2_;
+  double rotation_;
   std::string device_mode_; //"single":单目设备模式，"dual"：双目设备模式
   int dual_combine_; //当device_mode_=="dual"时生效，0：表示不支持拼接,输出左右图，1：标志支持拼接，并输出左右图+拼接图，2：表示支持拼接，只输出拼接图。
   bool lpwm_enable_;

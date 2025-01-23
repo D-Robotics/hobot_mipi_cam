@@ -41,6 +41,7 @@ std::string getBoardType() {
   if (som_name.is_open()) {
     som_name >> std::hex >> board_type;
     auto_detect = true;
+    som_name.close();
   }
   std::string board_type_str;
   if (auto_detect) {

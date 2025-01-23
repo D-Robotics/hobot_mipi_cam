@@ -38,7 +38,7 @@ class MipiCam
   // 初始化摄像机
   // 输入参数：para是node传入的参数，包括sensor类型、名称，图像的宽、高等等。
   // 返回值：0，初始化成功，-1，初始化失败。
-  virtual int init(struct NodePara &para) = 0;
+  virtual int init(std::shared_ptr<struct NodePara> para) = 0;
 
   // 反初始化摄像机；
   // 返回值：0，反初始化成功；-1，反初始化失败。

@@ -41,6 +41,7 @@ std::string getBoardType() {
   if (board_id.is_open()) {
     board_id >> board_type;
     auto_detect = true;
+    board_id.close();
   }
   std::string board_type_str;
   if (auto_detect) {
