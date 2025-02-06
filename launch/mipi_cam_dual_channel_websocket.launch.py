@@ -40,12 +40,12 @@ def generate_launch_description():
     
     mipi_image_width_arg = DeclareLaunchArgument(
         'mipi_image_width',
-        default_value='1920',
+        default_value='1280',
         description='mipi width')
 
     mipi_image_height_arg = DeclareLaunchArgument(
         'mipi_image_height',
-        default_value='1080',
+        default_value='640',
         description='mipi height')
 
     mipi_rotation_arg = DeclareLaunchArgument(
@@ -61,7 +61,7 @@ def generate_launch_description():
         launch_arguments={
             'mipi_image_width': LaunchConfiguration('mipi_image_width'),
             'mipi_image_height': LaunchConfiguration('mipi_image_height'),
-            'mipi_image_framerate': '10.0',
+            'mipi_image_framerate': '30.0',
             'mipi_io_method': 'ros',
             'device_mode': 'dual',
             'dual_combine': '2',
