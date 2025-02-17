@@ -352,21 +352,21 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
 	do {
 		if (!rclcpp::ok()) break;
 		{
-			std::shared_ptr<VideoBuffer_ST> buff_ptr = nullptr;
+			std::shared_ptr<VideoBuffer_ST> buff_ptr = nullptr;      
 			std::unique_lock<std::mutex> lk(queue_mtx_);
 			if (channel == "combine") {
 				if (q_combine_buff_.size() > 0) {
-					buff_ptr = q_combine_buff_.front();
+					buff_ptr = q_combine_buff_.front();    
 					q_combine_buff_.pop();
 				}
-			} else if (channel == "right") {
-				if (q_v_buff_[1].size() > 0) {
-					buff_ptr = q_v_buff_[1].front();
+			} else if (channel == "right") {     			
+        if (q_v_buff_[1].size() > 0) {
+					buff_ptr = q_v_buff_[1].front();      
 					q_v_buff_[1].pop();
 				}
 			} else {
 				if (q_v_buff_[0].size() > 0) {
-					buff_ptr = q_v_buff_[0].front();
+					buff_ptr = q_v_buff_[0].front();       
 					q_v_buff_[0].pop();
 				}
 			}
@@ -390,6 +390,7 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
 				} else {
 					q_buff_empty_.push(buff_ptr);
 				}
+        
 				return 0;
 			} 
 		}
@@ -443,28 +444,27 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
 
 	//*timestamp = out_img.info.trig_tv.tv_sec * 1e9 + out_img.info.trig_tv.tv_usec * 1e3;
 	//*timestamp = out_img.info.tv.tv_sec * 1e9 + out_img.info.tv.tv_usec * 1e3;
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
 	struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-
-	uint64_t timestamp_1 = tv.tv_sec * 1e9 + tv.tv_usec * 1e3;
-	uint64_t timestamp_2 = ts.tv_sec * 1e9 + ts.tv_nsec;
-    RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
-            "capture timestamps= %lu, sys_timestamps= %lu, tv.sec=%d, tv.nsec=%d, trig_tv.sec=%d, trig_tv.nsec=%d", 
-			out_img.info.timestamps, out_img.info.sys_timestamps, out_img.info.tv.tv_sec, out_img.info.tv.tv_usec, out_img.info.trig_tv.tv_sec, out_img.info.trig_tv.tv_usec);
-	
-	RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
-            "system tv.sec=%d, tv.tv_usec=%d, ts.sec=%d, ts.nsec=%d", 
-			tv.tv_sec, tv.tv_usec, ts.tv_sec, ts.tv_nsec);
-
-	//*timestamp = out_img.info.timestamps + (timestamp_1 - timestamp_2);
+  clock_gettime(CLOCK_REALTIME, &ts);
+ 
 	*timestamp = out_img.info.sys_timestamps;
 	*frame_id = out_img.info.frame_id;
+ 
+  //  timestamps means kernel timestamp when the frame is obtained
+  //  sys_timestamps means kernel system timestamp when the frame is obtained
+  //  tv means hardware timestamp when the frame is obtained
+  //  trig_tv means hardware timestamp when the frame is triggered by the external trigger
+  double timestamps = out_img.info.timestamps * 1e-9;
+  double sys_timestamps = out_img.info.sys_timestamps * 1e-9;
+  double hw_timestamp = out_img.info.tv.tv_sec + (double)out_img.info.tv.tv_usec * 1e-6;
+  double tri_timestamp = out_img.info.trig_tv.tv_sec + (double)out_img.info.trig_tv.tv_usec * 1e-6;
+  double current_ts =  ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+  RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
+            "capture a frame, handle: %llu, id: %d, timestamps: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,\n"
+            "current timestamp: %f, laps ms: %fms.", 
+			                        handle, *frame_id, timestamps, sys_timestamps, hw_timestamp, tri_timestamp,
+                              current_ts, (current_ts - sys_timestamps) * 1e3);
 
-	RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
-		"capture laps ms= %d", ((timestamp_2 - out_img.info.timestamps)/1000000));
-	
 	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", image time sec:" << out_img.info.tv.tv_sec
 	//          << ", trig time sec:" << out_img.info.trig_tv.tv_sec 
 	//		  << ", image timestamps(/1e9) sec:" << out_img.info.timestamps / 1e9 <<  std::endl;
@@ -642,7 +642,7 @@ void HobotMipiCapIml::dualFrameTask() {
 						memcpy(combine_buff_ptr->buff + y_size * 2 + uv_size, buff_ptr[1]->buff + y_size, uv_size);
 
 #endif
-						std::unique_lock<std::mutex> lk(queue_mtx_);
+						std::unique_lock<std::mutex> lk(queue_mtx_);                                          
 						q_combine_buff_.push(combine_buff_ptr);
 
 					} else {

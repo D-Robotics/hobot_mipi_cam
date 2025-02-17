@@ -82,7 +82,7 @@ class MipiCamNode : public rclcpp::Node {
 
   std::shared_ptr<MipiCam> mipiCam_ptr_;
 
-  std::vector<rclcpp::TimerBase::SharedPtr> timer_;
+  std::vector<std::shared_ptr<std::thread>> timer_;
   int32_t mSendIdx = 0;
 
   rclcpp::TimerBase::SharedPtr timer_tmp_;

@@ -41,10 +41,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
 MipiCamNode::~MipiCamNode() {
   RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "shutting down");
   for (auto timer : timer_) {
-    if (!timer_.empty()) {
-      // 取消定时器
-      timer_.back()->cancel();
-    }
+    timer->join();
   }
   timer_.clear();
   if (mipiCam_ptr_) {
@@ -316,11 +313,9 @@ void MipiCamNode::init() {
       //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
       //  std::bind(&MipiCamNode::update, this, info));
       // std::bind(&MipiCamNode::update, this, info);
-      timer_.push_back(this->create_wall_timer(
-        std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-        [this, &info]() {
-          this->update(&info);
-        }));
+      timer_.emplace_back(
+        std::make_shared<std::thread>([this, &info]() { while(rclcpp::ok()) {this->update(&info);}})
+      );
     }
 
   } else if (io_method_name_.compare("shared_mem") == 0) {
@@ -328,11 +323,9 @@ void MipiCamNode::init() {
       //timer_.push_back(this->create_wall_timer(
       //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
       //  std::bind(&MipiCamNode::hbmemUpdate, this, info)));
-      timer_.push_back(this->create_wall_timer(
-        std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-        [this, &info]() {
-          this->hbmemUpdate(&info);
-        }));
+      timer_.emplace_back(
+        std::make_shared<std::thread>([this, &info]() { while(rclcpp::ok()) {this->hbmemUpdate(&info);}})
+      );  
     }
   }
 
