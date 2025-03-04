@@ -162,6 +162,7 @@ class MipiCamIml : public MipiCam {
   } camera_image_t;
 
   camera_image_t *image_nv12_ = nullptr;
+  std::mutex image_nv12_mtx_;
   bool lsInit_;
   bool is_capturing_;
   std::shared_ptr<HobotMipiCap> mipiCap_ptr_;
@@ -342,6 +343,7 @@ bool MipiCamIml::getImage(builtin_interfaces::msg::Time &stamp,
     data_size = nodePare_->image_width_ * nodePare_->image_height_ * 1.5;
   }
   if ((nodePare_->out_format_name_ == "bgr8") && image_nv12_) {
+    std::lock_guard<std::mutex> lck(image_nv12_mtx_);
     if (mipiCap_ptr_->getFrame(channel,
           reinterpret_cast<int *>(&width),
           reinterpret_cast<int *>(&height),
