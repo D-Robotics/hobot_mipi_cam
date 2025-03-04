@@ -447,9 +447,10 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
 	struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
  
-	*timestamp = out_img.info.sys_timestamps;
-	*frame_id = out_img.info.frame_id;
- 
+  int32_t exposure_time = (out_img.info.tv.tv_sec - out_img.info.trig_tv.tv_sec) * 1e9 + 
+                          (out_img.info.tv.tv_usec - out_img.info.trig_tv.tv_usec) * 1e3;  
+  out_img.info.sys_timestamps -= exposure_time;
+  
   //  timestamps means kernel timestamp when the frame is obtained
   //  sys_timestamps means kernel system timestamp when the frame is obtained
   //  tv means hardware timestamp when the frame is obtained
@@ -459,11 +460,15 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
   double hw_timestamp = out_img.info.tv.tv_sec + (double)out_img.info.tv.tv_usec * 1e-6;
   double tri_timestamp = out_img.info.trig_tv.tv_sec + (double)out_img.info.trig_tv.tv_usec * 1e-6;
   double current_ts =  ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+  
+ 	*timestamp = out_img.info.sys_timestamps;
+	*frame_id = out_img.info.frame_id;                        
+                          
   RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
-            "capture a frame, handle: %llu, id: %d, timestamps: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,\n"
-            "current timestamp: %f, laps ms: %fms.", 
+            "capture a frame, handle: %llu, id: %d, timestamps: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
+            "current timestamp: %f, laps ms: %fms, exposure_time: %fms.", 
 			                        handle, *frame_id, timestamps, sys_timestamps, hw_timestamp, tri_timestamp,
-                              current_ts, (current_ts - sys_timestamps) * 1e3);
+                              current_ts, (current_ts - sys_timestamps) * 1e3, exposure_time * 1e-6);
 
 	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", image time sec:" << out_img.info.tv.tv_sec
 	//          << ", trig time sec:" << out_img.info.trig_tv.tv_sec 
@@ -694,6 +699,17 @@ int HobotMipiCapIml::creat_camera_node(camera_config_t* camera_config,int64_t* c
 	return 0;
 }
 
+static void print_lpwm_attr(vin_node_attr_t *vin_node_attr) {
+  printf("lpwm_enable: %d\n", vin_node_attr->lpwm_attr.enable);
+  for (int i = 0; i < 4; ++i) {
+    printf("lpwm_index: %d, trigger_source: %d, trigger_mode: %d, period: %d, offset: %d, duty_time: %d, threshold: %d, adjust_step: %d\n",
+    i, vin_node_attr->lpwm_attr.lpwm_chn_attr[i].trigger_source, vin_node_attr->lpwm_attr.lpwm_chn_attr[i].trigger_mode,
+    vin_node_attr->lpwm_attr.lpwm_chn_attr[i].period, vin_node_attr->lpwm_attr.lpwm_chn_attr[i].offset,
+    vin_node_attr->lpwm_attr.lpwm_chn_attr[i].duty_time, vin_node_attr->lpwm_attr.lpwm_chn_attr[i].threshold,
+    vin_node_attr->lpwm_attr.lpwm_chn_attr[i].adjust_step);
+  }
+}
+
 int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 	if (pipe_contex == nullptr) {
 		return -1;
@@ -716,12 +732,13 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 		vin_attr_ex_mask = vin_attr_ex.vin_attr_ex_mask;
 	}
 
-
 	hw_id = sensor_config.vin_node_attr->cim_attr.mipi_rx;
+  sensor_config.vin_node_attr->cim_attr.func.ts_src = hw_id + 1;
 	ret = hbn_vnode_open(HB_VIN, hw_id, AUTO_ALLOC_ID, &pipe_contex->vin_node_handle);
 	ERR_CON_EQ(ret, 0);
 	// 设置基本属性
 	ret = hbn_vnode_set_attr(pipe_contex->vin_node_handle, sensor_config.vin_node_attr);
+  print_lpwm_attr(sensor_config.vin_node_attr);
 	ERR_CON_EQ(ret, 0);
 	// 设置输入通道的属性
 	ret = hbn_vnode_set_ichn_attr(pipe_contex->vin_node_handle, chn_id, sensor_config.vin_ichn_attr);

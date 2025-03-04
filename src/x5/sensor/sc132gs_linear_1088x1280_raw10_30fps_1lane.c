@@ -55,7 +55,7 @@ static vin_node_attr_t vin_node_attr = {
 			.time_stamp_en = 1,
 			.time_stamp_mode = 3,
 			.ts_src = 1,
-			.pps_src = 3,
+			.pps_src = 6,
 		},
 
 	},

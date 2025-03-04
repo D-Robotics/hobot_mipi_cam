@@ -425,8 +425,9 @@ bool MipiCamIml::getImage(builtin_interfaces::msg::Time &stamp,
              << ", height=" << height
              << ", step=" << step
              << ", sz=" << data_size
-             << ", ts=" << stamp.sec << "." << stamp.nanosec
-              << ", laps ms=" << msEnd - msStart);
+             << std::fixed
+             << ", ts=" << stamp.sec + stamp.nanosec * 1e-9
+             << ", laps ms=" << msEnd - msStart);
 
   return true;
 }
