@@ -33,17 +33,33 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     : m_bIsInit(0),
       Node("mipi_cam", node_options),
       camera_calibration_info_(new sensor_msgs::msg::CameraInfo()) {
-
+  nodePare_ = std::make_shared<struct NodePara>();
   getParams();
   init();
 }
 
 MipiCamNode::~MipiCamNode() {
   RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "shutting down");
+  for (auto timer : timer_) {
+    timer->join();
+  }
+  timer_.clear();
   if (mipiCam_ptr_) {
     mipiCam_ptr_->stop();
     mipiCam_ptr_->deInit();
-    mipiCam_ptr_ = nullptr;
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "shutting down end11111");
+    //mipiCam_ptr_ = nullptr;
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "shutting down end");
+  }
+  for (auto &pub : Pub_info_) {
+    pub.image_pub_.reset();
+    pub.info_pub_.reset();
+    pub.info_pub2_.reset();
+  }
+  for (auto &pub : Pub_hbmem_info_) {
+    pub.publisher_hbmem_.reset();
+    pub.info_pub_.reset();
+    pub.info_pub2_.reset();
   }
 }
 
@@ -67,7 +83,9 @@ void MipiCamNode::getParams() {
   this->declare_parameter("device_mode", "single");
   this->declare_parameter("dual_combine", 0);
   this->declare_parameter("lpwm_enable", false);
-  this->declare_parameter("frame_ts_type", nodePare_.frame_ts_type_);
+  this->declare_parameter("rotation", 0.0);
+  this->declare_parameter("gdc_enable", true);
+  this->declare_parameter("frame_ts_type", nodePare_->frame_ts_type_);
   auto parameters_client = std::make_shared<rclcpp::SyncParametersClient>(this);
   for (auto& parameter :
        parameters_client->get_parameters({"config_path",
@@ -86,21 +104,23 @@ void MipiCamNode::getParams() {
                                           "device_mode",
                                           "dual_combine",
                                           "lpwm_enable",
+                                          "rotation",
+                                          "gdc_enable",
                                           "frame_ts_type"
                                           })) {
     if (parameter.get_name() == "config_path") {
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "config_path value: %s",
                   parameter.value_to_string().c_str());
-      nodePare_.config_path_ = parameter.value_to_string();
+      nodePare_->config_path_ = parameter.value_to_string();
     } else if (parameter.get_name() == "channel") {
-      nodePare_.channel_ = parameter.as_int();
+      nodePare_->channel_ = parameter.as_int();
     } else if (parameter.get_name() == "channel2") {
-      nodePare_.channel2_ = parameter.as_int();
+      nodePare_->channel2_ = parameter.as_int();
     } else if (parameter.get_name() == "camera_info_url") {
-      nodePare_.camera_info_url_ = parameter.value_to_string();
+      nodePare_->camera_info_url_ = parameter.value_to_string();
     } else if (parameter.get_name() == "out_format") {
-      nodePare_.out_format_name_ = parameter.value_to_string();
+      nodePare_->out_format_name_ = parameter.value_to_string();
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "out_format value: %s",
                   parameter.value_to_string().c_str());
@@ -110,14 +130,14 @@ void MipiCamNode::getParams() {
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "framerate: %f",
                   parameter.as_double());
-      nodePare_.framerate_ = parameter.as_double();
+      nodePare_->framerate_ = parameter.as_double();
     } else if (parameter.get_name() == "image_height") {
-      nodePare_.image_height_ = parameter.as_int();
+      nodePare_->image_height_ = parameter.as_int();
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "image_height_ value: %s",
                   parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "image_width") {
-      nodePare_.image_width_ = parameter.as_int();
+      nodePare_->image_width_ = parameter.as_int();
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "image_width_ value: %s",
                   parameter.value_to_string().c_str());
@@ -127,40 +147,50 @@ void MipiCamNode::getParams() {
                   "io_method_name_: %s",
                   io_method_name_.c_str());
     } else if (parameter.get_name() == "video_device") {
-      nodePare_.video_device_name_ = parameter.value_to_string();
+      nodePare_->video_device_name_ = parameter.value_to_string();
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "video_device value: %s",
                   parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "camera_calibration_file_path") {
-      nodePare_.camera_calibration_file_path_ = parameter.value_to_string();
+      nodePare_->camera_calibration_file_path_ = parameter.value_to_string();
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "camera_calibration_file_path value: %s",
                   parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "gdc_bin_file") {
-      nodePare_.gdc_bin_file_ = parameter.value_to_string();
+      nodePare_->gdc_bin_file_ = parameter.value_to_string();
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "gdc_bin_file value: %s",
                   parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "device_mode") {
-      nodePare_.device_mode_ = parameter.value_to_string();
+      nodePare_->device_mode_ = parameter.value_to_string();
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "device_mode value: %s",
                   parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "dual_combine") {
-      nodePare_.dual_combine_ = parameter.as_int();
+      nodePare_->dual_combine_ = parameter.as_int();
       RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
                   "dual_combine value: %s",
                   parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "lpwm_enable") {
-      nodePare_.lpwm_enable_ = parameter.as_bool();
+      nodePare_->lpwm_enable_ = parameter.as_bool();
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "lpwm_enable value: %d",
                   parameter.as_bool());
+    } else if (parameter.get_name() == "rotation") {
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+                  "rotation: %f",
+                  parameter.as_double());
+      nodePare_->rotation_ = parameter.as_double();
+    } else if (parameter.get_name() == "gdc_enable") {
+      nodePare_->gdc_enable_ = parameter.as_bool();
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+                  "gdc_enable value: %d",
+                  parameter.as_bool());
     } else if (parameter.get_name() == "frame_ts_type") {
-      nodePare_.frame_ts_type_ = parameter.value_to_string();
+      nodePare_->frame_ts_type_ = parameter.value_to_string();
       RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
                   "frame_ts_type value: %s",
-                  nodePare_.frame_ts_type_.c_str());
+                  nodePare_->frame_ts_type_.c_str());
     } else {
       RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
                   "Invalid parameter name: %s",
@@ -171,7 +201,6 @@ void MipiCamNode::getParams() {
 
 void MipiCamNode::init() {
   if (m_bIsInit) return;
-
   mipiCam_ptr_ = MipiCam::create_mipicam();
   if (!mipiCam_ptr_ || mipiCam_ptr_->init(nodePare_)) {
      RCLCPP_ERROR_ONCE(rclcpp::get_logger("mipi_node"),
@@ -179,7 +208,6 @@ void MipiCamNode::init() {
               __func__);
     rclcpp::shutdown();
   }
-
   while (frame_id_ == "") {
     RCLCPP_WARN_ONCE(
         rclcpp::get_logger("mipi_node"),
@@ -192,35 +220,35 @@ void MipiCamNode::init() {
     rclcpp::get_logger("mipi_node"),
     "[MipiCamNode::%s]->Initing '%s' at %dx%d via %s at %i FPS",
     __func__,
-    nodePare_.config_path_.c_str(),
-    nodePare_.image_width_,
-    nodePare_.image_height_,
+    nodePare_->config_path_.c_str(),
+    nodePare_->image_width_,
+    nodePare_->image_height_,
     io_method_name_.c_str(),
-    nodePare_.framerate_);
+    nodePare_->framerate_);
 
   if (io_method_name_.compare("ros") == 0) {
-    if (nodePare_.device_mode_.compare("dual") == 0) {
+    if (nodePare_->device_mode_.compare("dual") == 0) {
 
-      if (nodePare_.dual_combine_ == 1) {
+      if (nodePare_->dual_combine_ == 1) {
         Pub_info_.resize(3);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_right_info", nodePare_.camera_calibration_file_path_);
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_right_info", nodePare_->camera_calibration_file_path_);
         init_publisher(Pub_info_[0], "image_left_raw", "left", frame_id_);
         init_publisher(Pub_info_[1], "image_right_raw", "right", frame_id_);
         init_publisher(Pub_info_[2], "image_combine_raw", "combine", frame_id_);
-      } else if (nodePare_.dual_combine_ == 2) {
+      } else if (nodePare_->dual_combine_ == 2) {
         Pub_info_.resize(1);
-        init_DualCalibration(&Pub_info_[0], "camera_left_info", "camera_right_info", nodePare_.camera_calibration_file_path_);
+        init_DualCalibration(&Pub_info_[0], "camera_left_info", "camera_right_info", nodePare_->camera_calibration_file_path_);
         init_publisher(Pub_info_[0], "image_combine_raw", "combine", frame_id_);
       } else {
         Pub_info_.resize(2);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_right_info", nodePare_.camera_calibration_file_path_);
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_right_info", nodePare_->camera_calibration_file_path_);
         init_publisher(Pub_info_[0], "image_left_raw", "left", frame_id_);
         init_publisher(Pub_info_[1], "image_right_raw", "right", frame_id_);        
       }
-    } else if ((nodePare_.device_mode_.compare("single") == 0) ||
-      (nodePare_.device_mode_.compare("") == 0)) {
+    } else if ((nodePare_->device_mode_.compare("single") == 0) ||
+      (nodePare_->device_mode_.compare("") == 0)) {
       Pub_info_.resize(1);
-      init_Calibration(&Pub_info_[0], "camera_info", nodePare_.camera_calibration_file_path_);
+      init_Calibration(&Pub_info_[0], "camera_info", nodePare_->camera_calibration_file_path_);
       init_publisher(Pub_info_[0], "image_raw", "single", frame_id_);
     } else {
       return;
@@ -241,28 +269,28 @@ void MipiCamNode::init() {
           << "Data transporting without zero-copy!");
       }
     }
-    if (nodePare_.device_mode_.compare("dual") == 0) {
+    if (nodePare_->device_mode_.compare("dual") == 0) {
 
-      if (nodePare_.dual_combine_ == 1) {
+      if (nodePare_->dual_combine_ == 1) {
         Pub_hbmem_info_.resize(3);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_left_info", nodePare_.camera_calibration_file_path_);
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_left_info", nodePare_->camera_calibration_file_path_);
         init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_left_img", "left");
         init_publisher_hbmem(Pub_hbmem_info_[1], "hbmem_right_img", "right");
         init_publisher_hbmem(Pub_hbmem_info_[2], "hbmem_combine_img", "combine");
-      } else if (nodePare_.dual_combine_ == 2) {
+      } else if (nodePare_->dual_combine_ == 2) {
         Pub_hbmem_info_.resize(1);
-        init_DualCalibration(&Pub_hbmem_info_[0], "camera_left_info", "camera_right_info", nodePare_.camera_calibration_file_path_);
+        init_DualCalibration(&Pub_hbmem_info_[0], "camera_left_info", "camera_right_info", nodePare_->camera_calibration_file_path_);
         init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_combine_img", "combine");
       } else {
         Pub_hbmem_info_.resize(2);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_left_info", nodePare_.camera_calibration_file_path_);
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "camera_left_info", "camera_left_info", nodePare_->camera_calibration_file_path_);
         init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_left_img", "left");
         init_publisher_hbmem(Pub_hbmem_info_[1], "hbmem_right_img", "right");
       }
-    } else if ((nodePare_.device_mode_.compare("single") == 0) ||
-      (nodePare_.device_mode_.compare("") == 0)) {
+    } else if ((nodePare_->device_mode_.compare("single") == 0) ||
+      (nodePare_->device_mode_.compare("") == 0)) {
       Pub_hbmem_info_.resize(1);
-      init_Calibration(&Pub_hbmem_info_[0], "camera_info", nodePare_.camera_calibration_file_path_);
+      init_Calibration(&Pub_hbmem_info_[0], "camera_info", nodePare_->camera_calibration_file_path_);
       init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_img", "single");
     } else {
       return;
@@ -273,14 +301,15 @@ void MipiCamNode::init() {
   }
 
   // start the camera
+
   if (0 != mipiCam_ptr_->start()) {
     RCLCPP_ERROR_ONCE(rclcpp::get_logger("mipi_node"),
                       "mipi camera start failed!");
     rclcpp::shutdown();
     return;
   }
-  const int period_ms = 1000.0 / nodePare_.framerate_;
 
+  const int period_ms = 1000.0 / nodePare_->framerate_;
 
   if (io_method_name_.compare("ros") == 0) {
     for (Publisher_info_st& info : Pub_info_) {
@@ -291,11 +320,9 @@ void MipiCamNode::init() {
       //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
       //  std::bind(&MipiCamNode::update, this, info));
       // std::bind(&MipiCamNode::update, this, info);
-      timer_.push_back(this->create_wall_timer(
-        std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-        [this, &info]() {
-          this->update(&info);
-        }));
+      timer_.emplace_back(
+        std::make_shared<std::thread>([this, &info]() { while(rclcpp::ok()) {this->update(&info);}})
+      );
     }
 
   } else if (io_method_name_.compare("shared_mem") == 0) {
@@ -303,11 +330,9 @@ void MipiCamNode::init() {
       //timer_.push_back(this->create_wall_timer(
       //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
       //  std::bind(&MipiCamNode::hbmemUpdate, this, info)));
-      timer_.push_back(this->create_wall_timer(
-        std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-        [this, &info]() {
-          this->hbmemUpdate(&info);
-        }));
+      timer_.emplace_back(
+        std::make_shared<std::thread>([this, &info]() { while(rclcpp::ok()) {this->hbmemUpdate(&info);}})
+      );  
     }
   }
 
@@ -334,7 +359,7 @@ void MipiCamNode::init_publisher_hbmem(Publisher_hbmem_info_st&  Pub_info, std::
 void MipiCamNode::init_Calibration(Publisher_info_base_st*  Pub_info,
                     std::string info_topic, std::string info_file){
   Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
-  if (!mipiCam_ptr_->getCamCalibration(*Pub_info->camera_calibration_info_, info_file)) {
+  if (!mipiCam_ptr_ || !mipiCam_ptr_->getCamCalibration(*Pub_info->camera_calibration_info_, info_file)) {
     Pub_info->camera_calibration_info_ = nullptr;
     RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
                 "get camera calibration parameters failed");
@@ -349,7 +374,7 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info,
                     std::string info_topic, std::string info_topic2, std::string info_file){
   Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
   Pub_info->camera_calibration_info2_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
-  if (!mipiCam_ptr_->getDualCamCalibration(*Pub_info->camera_calibration_info_, 
+  if (!mipiCam_ptr_ || !mipiCam_ptr_->getDualCamCalibration(*Pub_info->camera_calibration_info_, 
        *Pub_info->camera_calibration_info2_, info_file)) {
     Pub_info->camera_calibration_info_ = nullptr;
     Pub_info->camera_calibration_info2_ = nullptr;
@@ -369,7 +394,7 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info, Publis
                     std::string info_topic, std::string info_topic2, std::string info_file){
   Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
   Pub_info2->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
-  if (!mipiCam_ptr_->getDualCamCalibration(*Pub_info->camera_calibration_info_, 
+  if (!mipiCam_ptr_ || !mipiCam_ptr_->getDualCamCalibration(*Pub_info->camera_calibration_info_, 
        *Pub_info2->camera_calibration_info_, info_file)) {
     Pub_info->camera_calibration_info_ = nullptr;
     Pub_info2->camera_calibration_info_ = nullptr;
@@ -386,7 +411,7 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info, Publis
 
 
 void MipiCamNode::update(Publisher_info_st* pub_info) {
-  if (mipiCam_ptr_->isCapturing()) {
+  if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing()) {
     if (!mipiCam_ptr_->getImage(pub_info->img_->header.stamp,
                           pub_info->img_->encoding,
                           pub_info->img_->height,
@@ -398,7 +423,7 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
       return;
     }
     
-    if ("realtime" == nodePare_.frame_ts_type_) {
+    if ("realtime" == nodePare_->frame_ts_type_) {
       struct timespec ts;
       clock_gettime(CLOCK_REALTIME, &ts);
       pub_info->img_->header.stamp.sec = ts.tv_sec;
@@ -419,7 +444,7 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
 }
 
 void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
-  if (mipiCam_ptr_->isCapturing()) {
+  if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing()) {
     auto loanedMsg = pub_info->publisher_hbmem_->borrow_loaned_message();
     if (loanedMsg.is_valid()) {
       auto& msg = loanedMsg.get();
@@ -436,7 +461,7 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
         return;
       }
 
-      if ("realtime" == nodePare_.frame_ts_type_) {
+      if ("realtime" == nodePare_->frame_ts_type_) {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         msg.time_stamp.sec = ts.tv_sec;

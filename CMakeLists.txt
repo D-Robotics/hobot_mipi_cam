@@ -36,6 +36,9 @@ add_compile_options(-w)
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fsee -fomit-frame-pointer -fno-signed-zeros -fno-math-errno -funroll-loops")
+set(CMAKE_BUILD_TYPE "Release")
+
 ## pkg-config libraries
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)

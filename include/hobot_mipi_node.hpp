@@ -82,7 +82,7 @@ class MipiCamNode : public rclcpp::Node {
 
   std::shared_ptr<MipiCam> mipiCam_ptr_;
 
-  std::vector<rclcpp::TimerBase::SharedPtr> timer_;
+  std::vector<std::shared_ptr<std::thread>> timer_;
   int32_t mSendIdx = 0;
 
   rclcpp::TimerBase::SharedPtr timer_tmp_;
@@ -96,7 +96,8 @@ class MipiCamNode : public rclcpp::Node {
   // parameters
   std::string frame_id_;
   std::string io_method_name_;  // hbmem zero mem copy
-  struct NodePara nodePare_;
+  //struct NodePara nodePare_;
+  std::shared_ptr<struct NodePara> nodePare_;
   int m_bIsInit;
 };
 }  // namespace mipi_cam

@@ -54,13 +54,16 @@ typedef struct pipe_contex_s {
 	hbn_vnode_handle_t isp_node_handle;
 	hbn_vnode_handle_t vse_node_handle;
 	hbn_vnode_handle_t gdc_node_handle;
+  hbn_vnode_handle_t gdc_node_handle_r;
 	hbn_vnode_handle_t vpu_node_handle;
 	camera_handle_t cam_fd;
 	vp_sensor_config_t sensor_config;
   vp_csi_config_t csi_config;
   std::shared_ptr<GdcBinBuf_ST> gdc_bin;
+  std::shared_ptr<GdcBinBuf_ST> gdc_bin_r;
   int gdc_bin_buf_is_valid;
   int gdc_init_valid;
+  int gdc_init_valid_r;
   MIPI_CAP_INFO_ST *cap_info_;
 }pipe_contex_t;
 
@@ -206,12 +209,14 @@ class HobotMipiCapIml : public HobotMipiCap {
   int creat_isp_node(pipe_contex_t *pipe_contex);
   int creat_vin_node(pipe_contex_t *pipe_contex);
   int creat_gdc_node(pipe_contex_t *pipe_contex);
+  int creat_gdc_node_r(pipe_contex_t *pipe_contex);
   int creat_camera_node(camera_config_t* camera_config,int64_t* cam_fd);
   std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height,
 		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin(int gdc_width, int gdc_height,int out_width, int out_height,
        sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info);
+  std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
 
   bool m_inited_ = false;

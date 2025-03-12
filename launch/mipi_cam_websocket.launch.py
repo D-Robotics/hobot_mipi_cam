@@ -36,6 +36,18 @@ def generate_launch_description():
         'mipi_gdc_bin_file',
         default_value='default',
         description='mipi camera gdc file path')
+    mipi_rotation_arg = DeclareLaunchArgument(
+        'mipi_rotation',
+        default_value='0.0',
+        description='mipi camera out image rotation')
+    mipi_image_width_arg = DeclareLaunchArgument(
+            'mipi_image_width',
+            default_value='960',
+            description='mipi camera out image width')
+    mipi_image_height_arg = DeclareLaunchArgument(
+            'mipi_image_height',
+            default_value='544',
+            description='mipi camera out image height')
 
     mipi_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -43,13 +55,14 @@ def generate_launch_description():
                 get_package_share_directory('mipi_cam'),
                 'launch/mipi_cam.launch.py')),
         launch_arguments={
-            'mipi_image_width': '960',
-            'mipi_image_height': '544',
+            'mipi_image_width': LaunchConfiguration('mipi_image_width'),
+            'mipi_image_height': LaunchConfiguration('mipi_image_height'),
             'mipi_image_framerate': '30.0',
             'mipi_io_method': 'ros',
             'mipi_channel': '0',
             'mipi_camera_calibration_file_path': LaunchConfiguration('mipi_camera_calibration_file_path'),
             'mipi_gdc_bin_file': LaunchConfiguration('mipi_gdc_bin_file'),
+            'mipi_rotation': LaunchConfiguration('mipi_rotation'),
             'mipi_frame_ts_type': 'sensor'
         }.items()
     )
@@ -90,6 +103,9 @@ def generate_launch_description():
         # 启动零拷贝环境配置node
         mipi_camera_calibration_file_path_arg,
         mipi_camera_gdc_file_path_arg,
+        mipi_image_width_arg,
+        mipi_image_height_arg,
+        mipi_rotation_arg,
         shared_mem_node,
         # image publish
         mipi_node,

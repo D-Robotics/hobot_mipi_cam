@@ -55,7 +55,7 @@ static vin_node_attr_t vin_node_attr = {
 			.time_stamp_en = 1,
 			.time_stamp_mode = 3,
 			.ts_src = 1,
-			.pps_src = 3,
+			.pps_src = 6,
 		},
 
 	},
@@ -142,7 +142,7 @@ static isp_ochn_attr_t isp_ochn_attr = {
 vp_sensor_config_t sc132gs_linear_1088x1280_raw10_30fps_1lane = {
 	.chip_id_reg = 0x3107,
 	.chip_id = 0x0132,
-	.sensor_i2c_addr_list = {0x30, 0x32},
+	.sensor_i2c_addr_list = {0x30, 0x32, 0x33},
 	.sensor_name = "sc132gs-1280p",
 	.config_file = "linear_1088x1280_raw10_30fps_1lane.c",
 	.camera_config = &camera_config,

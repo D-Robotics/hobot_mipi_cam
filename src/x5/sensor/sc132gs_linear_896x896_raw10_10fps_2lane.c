@@ -57,7 +57,7 @@ static vin_node_attr_t vin_node_attr = {
 
 	},
 	.lpwm_attr = {
-		.enable = 1,
+		.enable = 0,
 		.lpwm_chn_attr = {
 			{	.trigger_source = 0,
 				.trigger_mode = 0,

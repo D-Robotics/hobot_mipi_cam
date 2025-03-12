@@ -72,6 +72,10 @@ def generate_launch_description():
             default_value='sensor',
             description='type(sensor/realtime) of timestamp for publishing messages'),
         DeclareLaunchArgument(
+            'mipi_rotation',
+            default_value='0.0',
+            description='mipi camera out image rotation'),
+        DeclareLaunchArgument(
             'mipi_gdc_bin_file',
             default_value='default',
             description='mipi camera gdc file path'),
@@ -99,6 +103,7 @@ def generate_launch_description():
                 {"channel": LaunchConfiguration('mipi_channel')},
                 {"video_device": LaunchConfiguration('mipi_video_device')},
                 {"frame_ts_type": LaunchConfiguration('mipi_frame_ts_type')},
+                {"rotation": LaunchConfiguration('mipi_rotation')},
                 {"gdc_bin_file": LaunchConfiguration('mipi_gdc_bin_file')},
             ],
             arguments=['--ros-args', '--log-level', 'warn']
