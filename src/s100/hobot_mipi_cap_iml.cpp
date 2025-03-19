@@ -482,7 +482,7 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
 	}
 	if (bufsize < *len) {
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-			"buf size(%d) < frame size(%d)", bufsize, *len);
+			"buf size(%d) < frame size(%d), stride(%d), width(%d), height(%d)", bufsize, *len, *stride, *width, *height);
 		hbn_vnode_releaseframe_group(handle, channel, &out_img);
 		*len = 0;
 		return -1;
@@ -789,19 +789,176 @@ int HobotMipiCapIml::creat_isp_node(pipe_contex_t *pipe_contex) {
 	return 0;
 }
 
+int HobotMipiCapIml::creat_ynr_node(pipe_contex_t *pipe_contex) {
+	if (pipe_contex == nullptr) {
+		return -1;
+	}
+	hbn_buf_alloc_attr_t alloc_attr = {0};
+	uint32_t chn_id = 0;
+	int ret = 0;
+	vp_sensor_config_t& sensor_config = pipe_contex->sensor_config;
+
+	ret = hbn_vnode_open(HB_YNR, 1, AUTO_ALLOC_ID, &pipe_contex->ynr_node_handle);
+	ERR_CON_EQ(ret, 0);
+	ret = hbn_vnode_set_attr(pipe_contex->ynr_node_handle, sensor_config.ynr_cfg);
+	ERR_CON_EQ(ret, 0);
+
+	struct hobot_ynr_channel_input_config ynr_ichn_cfg;
+	ynr_ichn_cfg.ch_img_width = sensor_config.ynr_cfg->ch_img_width;
+	ynr_ichn_cfg.ch_img_height = sensor_config.ynr_cfg->ch_img_height;
+	ret = hbn_vnode_set_ochn_attr(pipe_contex->ynr_node_handle, chn_id, &ynr_ichn_cfg);
+	ERR_CON_EQ(ret, 0);
+
+	struct hobot_ynr_channel_output_config ynr_ochn_cfg;
+	ynr_ochn_cfg.ch_nr3d_pix_out_dma_byps = 0;
+	ynr_ochn_cfg.ch_nr3d_debug_en = 0;
+	ret = hbn_vnode_set_ichn_attr(pipe_contex->ynr_node_handle, chn_id, &ynr_ochn_cfg);
+	ERR_CON_EQ(ret, 0);
+#if ngy
+	alloc_attr.buffers_num = 3;
+	alloc_attr.is_contig = 1;
+	alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN
+						| HB_MEM_USAGE_CPU_WRITE_OFTEN
+						| HB_MEM_USAGE_CACHED;
+	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->ynr_node_handle, chn_id, &alloc_attr);
+	ERR_CON_EQ(ret, 0);
+#endif
+	
+	return 0;
+}
+
+static int check_pym_config(int src_width, int src_height, int width, int height, 
+					int &bl_width, int &bl_height,int &bl_stride, int &roi_sel, int &roi_layer) {
+	if ((src_width & 1) || (src_height & 1) || (width & 1) || (height & 1)) {
+		std::cout << "width and height isn't charmonium, width:" << width << ",height:" << height << std::endl;
+		return -1;
+	}
+	roi_sel = 0;
+	roi_layer = 0;
+	bl_width = src_width;
+	bl_height = src_height;
+	bl_stride = src_width;
+	//int bl_width_0 = src_width;
+	//int bl_height_0 = src_height;
+	int bl_width_2 = (src_width >> 1) & ~1;
+	int bl_height_2 = (src_height >> 1) & ~1;
+	int bl_width_4 = (src_width >> 2) & ~1;
+	int bl_height_4 = (src_height >> 2) & ~1;
+	int bl_width_8 = (src_width >> 3) & ~1;
+	int bl_height_8 = (src_height >> 3) & ~1;
+	int bl_width_16 = (src_width >> 4) & ~1;
+	int bl_height_16 = (src_height >> 4) & ~1;
+	if ((width > src_width) || (height > src_height) || (width < bl_width_16) || (height < bl_height_16) || (height < 134)) {
+		std::cout << "width and height over rang, width:" << width << ",height:" << height << std::endl;
+		return -1;
+	} else if ((width <= src_width) && (height <= src_height) && (width > bl_width_2) && (height > bl_height_2)) {
+		roi_sel = 0;
+		roi_layer = 0;
+		bl_width = src_width;
+		bl_height = src_height;
+		bl_stride = src_width;
+	} else if ((width <= bl_width_2) && (height <= bl_height_2) && (width > bl_width_4) && (height > bl_height_4)) {
+		roi_sel = 1;
+		roi_layer = 0;
+		bl_width = bl_width_2;
+		bl_height = bl_height_2;
+		bl_stride = bl_width_2;
+	} else if ((width <= bl_width_4) && (height <= bl_height_4) && (width > bl_width_8) && (height > bl_height_8)) {
+		roi_sel = 1;
+		roi_layer = 1;
+		bl_width = bl_width_4;
+		bl_height = bl_height_4;
+		bl_stride = bl_width_4;
+	} else if ((width <= bl_width_8) && (height <= bl_height_8) && (width > bl_width_16) && (height > bl_height_16)) {
+		roi_sel = 1;
+		roi_layer = 2;
+		bl_width = bl_width_8;
+		bl_height = bl_height_8;
+		bl_stride = bl_width_8;
+	} else if ((width <= bl_width_16) && (height <= bl_height_16) && (height >= 134)) {
+		roi_sel = 1;
+		roi_layer = 3;
+		bl_width = bl_width_16;
+		bl_height = bl_height_16;
+		bl_stride = bl_width_16;
+	} else if ((width == bl_width_2) && (height > bl_height_2) && (height < src_height)) {
+		roi_sel = 0;
+		roi_layer = 0;
+		bl_width = src_width-2;
+		bl_height = src_height;
+		bl_stride = src_width;
+	} else if ((height == bl_height_2) && (width > bl_width_2) && (width < src_width)) {
+		roi_sel = 0;
+		roi_layer = 0;
+		bl_width = src_width;
+		bl_height = src_height-2;
+		bl_stride = src_width;
+	} else if ((width == bl_width_4) && (height > bl_height_4) && (height < bl_height_2)) {
+		roi_sel = 1;
+		roi_layer = 0;
+		bl_width = bl_width_2-2;
+		bl_height = bl_height_2;
+		bl_stride = bl_width_2;
+	} else if ((height == bl_height_4) && (width > bl_width_4) && (width < bl_width_2)) {
+		roi_sel = 1;
+		roi_layer = 0;
+		bl_width = bl_width_2;
+		bl_height = bl_height_2-2;
+		bl_stride = bl_width_2;
+	} else if ((width == bl_width_8) && (height > bl_height_8) && (height < bl_height_4)) {
+		roi_sel = 1;
+		roi_layer = 1;
+		bl_width = bl_width_4-2;
+		bl_height = bl_height_4;
+		bl_stride = bl_width_4;
+	} else if ((height == bl_height_8) && (width > bl_width_8) && (width < bl_width_4)) {
+		roi_sel = 1;
+		roi_layer = 1;
+		bl_width = bl_width_4;
+		bl_height = bl_height_4-2;
+		bl_stride = bl_width_4;
+	} else {
+		std::cout << "width and height over rang, width:" << width << ",height:" << height << std::endl;
+		return -1;
+	}
+	return 0;
+}
+
+
 int HobotMipiCapIml::creat_pym_node(pipe_contex_t *pipe_contex) {
 	if (pipe_contex == nullptr) {
 		return -1;
 	}
+#if 1
+	int src_width = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_width;
+	int src_height = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height;
+	int roi_sel = 0;
+	int roi_layer = 0;
+	int bl_width = src_width;
+	int bl_height = src_height;
+	int bl_stride = src_width;
+	if (check_pym_config(src_width, src_height, pipe_contex->cap_info_->width,
+			pipe_contex->cap_info_->height, bl_width, bl_height, bl_stride, roi_sel, roi_layer) == -1) {
+		return -1;
+	}
+	std::cout << "creat_pym_node--roi_sel:" << roi_sel <<",roi_layer:" <<roi_layer<< ",bl_width:"<<bl_width <<",bl_height:"<<bl_height<<std::endl;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_sel[0] = roi_sel;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_layer[0] = roi_layer;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].region_width = bl_width;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].region_height = bl_height;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].wstride_uv = pipe_contex->cap_info_->width;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].wstride_y = pipe_contex->cap_info_->width;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].out_width = pipe_contex->cap_info_->width;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].out_height = pipe_contex->cap_info_->height;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].vstride = pipe_contex->cap_info_->height;
+#endif
 	int ret = 0;
 	uint32_t chn_id = 0;
 	uint32_t hw_id = 0;
 	hbn_buf_alloc_attr_t alloc_attr = {0};
 	
-
 	ret = hbn_vnode_open(HB_PYM, hw_id, AUTO_ALLOC_ID, &pipe_contex->pym_node_handle);
 	ERR_CON_EQ(ret, 0);
-	
 
 	ret = hbn_vnode_set_attr(pipe_contex->pym_node_handle, pipe_contex->sensor_config.pym_cfg);
 	ERR_CON_EQ(ret, 0);
@@ -811,7 +968,7 @@ int HobotMipiCapIml::creat_pym_node(pipe_contex_t *pipe_contex) {
 
 
 
-	ret = hbn_vnode_set_ochn_attr(pipe_contex->pym_node_handle, 0, pipe_contex->sensor_config.pym_cfg);
+	ret = hbn_vnode_set_ochn_attr(pipe_contex->pym_node_handle, chn_id, pipe_contex->sensor_config.pym_cfg);
 	ERR_CON_EQ(ret, 0);
 	alloc_attr.buffers_num = 3;
 	alloc_attr.is_contig = 1;
@@ -819,7 +976,7 @@ int HobotMipiCapIml::creat_pym_node(pipe_contex_t *pipe_contex) {
 						| HB_MEM_USAGE_CPU_WRITE_OFTEN
 						| HB_MEM_USAGE_CACHED
 						| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
-	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->pym_node_handle, 0, &alloc_attr);
+	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->pym_node_handle, chn_id, &alloc_attr);
 	ERR_CON_EQ(ret, 0);
 
 	return 0;
@@ -1018,6 +1175,10 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ERR_CON_EQ(ret, 0);
 	ret = creat_isp_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
+#if 0
+	ret = creat_ynr_node(pipe_contex);
+	ERR_CON_EQ(ret, 0);
+#endif
 	creat_gdc_node_r(pipe_contex);
 	creat_gdc_node(pipe_contex);
 	ret = creat_pym_node(pipe_contex);
@@ -1032,6 +1193,11 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
 							pipe_contex->isp_node_handle);
 	ERR_CON_EQ(ret, 0);
+#if 0
+	ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+							pipe_contex->ynr_node_handle);
+	ERR_CON_EQ(ret, 0);
+#endif
 	if (pipe_contex->gdc_init_valid_r == 1) {
 		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
 							pipe_contex->gdc_node_handle_r);
@@ -1051,6 +1217,7 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 							pipe_contex->isp_node_handle,
 							0);
 	ERR_CON_EQ(ret, 0);
+#if 1
 	if ((pipe_contex->gdc_init_valid_r == 1) && (pipe_contex->gdc_init_valid == 1)) {
 		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc rotation and cal.\n");
 		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
@@ -1107,6 +1274,20 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 							0);
 		ERR_CON_EQ(ret, 0);
 	}
+#else
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->isp_node_handle,
+							1,
+							pipe_contex->ynr_node_handle,
+							0);
+		ERR_CON_EQ(ret, 0);
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->ynr_node_handle,
+							1,
+							pipe_contex->pym_node_handle,
+							0);
+		ERR_CON_EQ(ret, 0);
+#endif
 
 	ret = hbn_camera_attach_to_vin(pipe_contex->cam_fd,
 							pipe_contex->vin_node_handle);

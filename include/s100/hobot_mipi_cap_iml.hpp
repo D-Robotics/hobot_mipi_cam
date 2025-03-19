@@ -48,6 +48,7 @@ typedef struct pipe_contex_s {
 	hbn_vflow_handle_t vflow_fd;
 	hbn_vnode_handle_t vin_node_handle;
 	hbn_vnode_handle_t isp_node_handle;
+  hbn_vnode_handle_t ynr_node_handle;
 	hbn_vnode_handle_t pym_node_handle;
 	hbn_vnode_handle_t gdc_node_handle;
   hbn_vnode_handle_t gdc_node_handle_r;
@@ -203,6 +204,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
   int creat_pym_node(pipe_contex_t *pipe_contex);
   int creat_isp_node(pipe_contex_t *pipe_contex);
+  int creat_ynr_node(pipe_contex_t *pipe_contex);
   int creat_vin_node(pipe_contex_t *pipe_contex);
   int creat_gdc_node(pipe_contex_t *pipe_contex);
   int creat_gdc_node_r(pipe_contex_t *pipe_contex);
@@ -227,6 +229,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int pipeline_id_ = 0;
   std::vector<int> mipi_started_;
   std::vector<int> mipi_stoped_;
+  int pym_channel_ = 0;
   std::map<int, BOARD_CONFIG_ST> board_config_m_;
   std::map<int, std::vector<std::string>> host_sensor_m_;
   std::shared_ptr<std::thread> dual_frame_task_ = nullptr;

@@ -46,7 +46,7 @@ static camera_config_t imx219_camera_config = {
         .config_index = 0,
         .mipi_cfg = &imx219_mipi_config, // MIPI配置,NULL自动获取
         .end_flag = CAMERA_CONFIG_END_FLAG,
-        .calib_lname = "disable",
+        .calib_lname = "lib_imx219_linear.so",
 };
 
 static isp_cfg_t imx219_isp_config = {
@@ -57,7 +57,7 @@ static isp_cfg_t imx219_isp_config = {
             .ctx_id = -1, //#define AUTO_ALLOC_ID -1
         },
         .work_mode = 0,
-        .hdr_mode = 1,
+        .hdr_mode = 0,
         .size = {
             .width = 1920,
             .height = 1080,
@@ -192,10 +192,22 @@ static vin_attr_t imx219_vin_attr = {
     .magicNumber = MAGIC_NUMBER,
 };
 
+ynr_info_t imx219_ynr_config = {
+        /* 0 */
+        .hw_id = 1,
+        .link_mode = 1,
+        .slot_id = 4,
+        .ch_img_width = 1920,
+        .ch_img_height = 1080,
+        .nr2d_en = 1,
+        .nr3d_en = 1,
+        .debug_en = 0,
+};
+
 pym_cfg_t pym_common_config = {
         .hw_id = 1,
         .pym_mode = 3,
-        .slot_id = 0,
+        .slot_id = 4,
         .pingpong_ring = 0,
         .output_buf_num = 6,
         .fb_buf_num = 2,
@@ -219,7 +231,7 @@ pym_cfg_t pym_common_config = {
             .suffix_vb_val = 10,
             .prefix_vb_val = 0,
             .ds_roi_en = 1,
-            //.bl_max_layer_en = DEF_BL_MAX_EN,
+            .bl_max_layer_en = 5,
             .ds_roi_uv_bypass = 0,
             .ds_roi_sel = {
                 [0] = 0,
@@ -253,5 +265,6 @@ vp_sensor_config_t imx219_linear_1920x1080_raw10_30fps_2lane = {
 	.camera_config = &imx219_camera_config,
 	.vin_attr = &imx219_vin_attr,
 	.isp_cfg      = &imx219_isp_config,
+    .ynr_cfg      = &imx219_ynr_config,
 	.pym_cfg = &pym_common_config,
 };
