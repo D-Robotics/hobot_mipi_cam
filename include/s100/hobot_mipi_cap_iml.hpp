@@ -27,6 +27,7 @@
 #include "hbn_vpf_interface.h"
 #include "vp_sensors.h"
 #include "hb_gdc_cfg.h"
+#include "gdc_cfg.h"
 #include "codec_cfg.h"
 
 namespace mipi_cam {

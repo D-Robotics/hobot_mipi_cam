@@ -52,7 +52,7 @@ static camera_config_t imx219_camera_config = {
 static isp_cfg_t imx219_isp_config = {
     .isp_attr = {
         .channel = {
-            .hw_id = 0,
+            .hw_id = 1,
             .slot_id = 4,
             .ctx_id = -1, //#define AUTO_ALLOC_ID -1
         },
@@ -68,7 +68,7 @@ static isp_cfg_t imx219_isp_config = {
         .isp_combine = {
             .isp_channel_mode = 0, //ISP_CHANNEL_MODE_NORMAL
             .bind_channel = {
-                .bind_hw_id = 0,
+                .bind_hw_id = 1,
                 .bind_slot_id = 0,
             },
         },
@@ -107,7 +107,7 @@ static isp_cfg_t imx219_isp_config = {
         .out_buf_noinvalid = 1,
         .out_buf_noncached = 0,
         .output_raw_level = 0, //ISP_OUTPUT_RAW_LEVEL_SENSOR_DATA
-        .stream_output_mode = 0, //convert_isp_stream_output(1),
+        .stream_output_mode = 1, //convert_isp_stream_output(1),
         .axi_output_mode = 9, //convert_isp_axi_output(0),
         .buf_num = 3,
     }

@@ -153,39 +153,39 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
 	ERR_CON_EQ(ret, 0);
-	vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
-	if (cam_info_.size() != 2) {
-		getDualCamCalibrationFromEeprom();
-	}
-	gdc_bin_buf_.clear();
-#if ngy
-	if (cap_info_.rotation_ != 0) {
-		vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
-		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
-		if (gdc_bin) {
-			gdc_bin_buf_.push_back(gdc_bin);
-			pipe_contex[0].gdc_bin_r = gdc_bin;
-			pipe_contex[1].gdc_bin_r = gdc_bin;
+	if (cap_info_.gdc_enable_) {
+		vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
+		if (cam_info_.size() != 2) {
+			getDualCamCalibrationFromEeprom();
+		}
+		gdc_bin_buf_.clear();
+		if (cap_info_.rotation_ != 0) {
+			vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
+			auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_cfg->isp_attr.size.width, sensor_conf->isp_cfg->isp_attr.size.height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+			if (gdc_bin) {
+				gdc_bin_buf_.push_back(gdc_bin);
+				pipe_contex[0].gdc_bin_r = gdc_bin;
+				pipe_contex[1].gdc_bin_r = gdc_bin;
+			}
+		}
+		if (pipe_contex[0].gdc_bin_r != nullptr) {
+			auto gdc_bin = gen_gdc_bin_stereo(cap_info_.width, cap_info_.height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_);
+			if (gdc_bin.size() == 2) {
+				gdc_bin_buf_.push_back(gdc_bin[0]);
+				gdc_bin_buf_.push_back(gdc_bin[1]);
+				pipe_contex[0].gdc_bin = gdc_bin[0];
+				pipe_contex[1].gdc_bin = gdc_bin[1];
+			}		
+		} else {
+			auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_cfg->isp_attr.size.width, sensor_cof->isp_cfg->isp_attr.size.height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_);
+			if (gdc_bin.size() == 2) {
+				gdc_bin_buf_.push_back(gdc_bin[0]);
+				gdc_bin_buf_.push_back(gdc_bin[1]);
+				pipe_contex[0].gdc_bin = gdc_bin[0];
+				pipe_contex[1].gdc_bin = gdc_bin[1];
+			}			
 		}
 	}
-	if (pipe_contex[0].gdc_bin_r != nullptr) {
-		auto gdc_bin = gen_gdc_bin_stereo(cap_info_.width, cap_info_.height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_);
-		if (gdc_bin.size() == 2) {
-			gdc_bin_buf_.push_back(gdc_bin[0]);
-			gdc_bin_buf_.push_back(gdc_bin[1]);
-			pipe_contex[0].gdc_bin = gdc_bin[0];
-			pipe_contex[1].gdc_bin = gdc_bin[1];
-		}		
-	} else {
-		auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_);
-		if (gdc_bin.size() == 2) {
-			gdc_bin_buf_.push_back(gdc_bin[0]);
-			gdc_bin_buf_.push_back(gdc_bin[1]);
-			pipe_contex[0].gdc_bin = gdc_bin[0];
-			pipe_contex[1].gdc_bin = gdc_bin[1];
-		}			
-	}
-#endif
 	ret = create_and_run_vflow(&pipe_contex[0]);
 	ERR_CON_EQ(ret, 0);
 	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index]);
@@ -218,38 +218,38 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
 	ERR_CON_EQ(ret, 0);
-#if ngy
-	if (cap_info_.rotation_ != 0) {
-		vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
-		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
-		if (gdc_bin) {
-			gdc_bin_buf_.push_back(gdc_bin);
-			pipe_contex[0].gdc_bin_r = gdc_bin;
-		}
-	}
-	vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
-	if (cam_info_.size() > 0) {
-		sensor_msgs::msg::CameraInfo cal_cam_info;
-		if (pipe_contex[0].gdc_bin_r != nullptr) {
-			auto gdc_bin = gen_gdc_bin(cap_info_.width, cap_info_.height, cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info);
-			//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
+	if (cap_info_.gdc_enable_) {
+		if (cap_info_.rotation_ != 0) {
+			vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
+			auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_cfg->isp_attr.size.width, sensor_conf->isp_cfg->isp_attr.size.height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
 			if (gdc_bin) {
 				gdc_bin_buf_.push_back(gdc_bin);
-				pipe_contex[0].gdc_bin = gdc_bin;
-				cal_cam_info_.push_back(cal_cam_info);
-			}
-		} else {
-			auto gdc_bin = gen_gdc_bin(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info);
-			//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
-			if (gdc_bin) {
-				gdc_bin_buf_.push_back(gdc_bin);
-				pipe_contex[0].gdc_bin = gdc_bin;
-				cal_cam_info_.push_back(cal_cam_info);
+				pipe_contex[0].gdc_bin_r = gdc_bin;
 			}
 		}
+		vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
+		if (cam_info_.size() > 0) {
+			sensor_msgs::msg::CameraInfo cal_cam_info;
+			if (pipe_contex[0].gdc_bin_r != nullptr) {
+				auto gdc_bin = gen_gdc_bin(cap_info_.width, cap_info_.height, cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info);
+				//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
+				if (gdc_bin) {
+					gdc_bin_buf_.push_back(gdc_bin);
+					pipe_contex[0].gdc_bin = gdc_bin;
+					cal_cam_info_.push_back(cal_cam_info);
+				}
+			} else {
+				auto gdc_bin = gen_gdc_bin(sensor_cof->isp_cfg->isp_attr.size.width, sensor_cof->isp_cfg->isp_attr.size.height, cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info);
+				//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
+				if (gdc_bin) {
+					gdc_bin_buf_.push_back(gdc_bin);
+					pipe_contex[0].gdc_bin = gdc_bin;
+					cal_cam_info_.push_back(cal_cam_info);
+				}
+			}
 
+		}
 	}
-#endif 
 	ret = create_and_run_vflow(&pipe_contex[0]);
 	ERR_CON_EQ(ret, 0);
   }
@@ -458,9 +458,9 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
             "system tv.sec=%d, tv.tv_usec=%d, ts.sec=%d, ts.nsec=%d", 
 			tv.tv_sec, tv.tv_usec, ts.tv_sec, ts.tv_nsec);
 
-	//*timestamp = out_img.info.timestamps + (timestamp_1 - timestamp_2);
+	*timestamp = out_img.info.timestamps + (timestamp_1 - timestamp_2);
 	//*timestamp = out_img.info.sys_timestamps;
-	*timestamp = out_img.info.timestamps;
+	//*timestamp = out_img.info.timestamps;
 	*frame_id = out_img.info.frame_id;
 
 	RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
@@ -767,7 +767,7 @@ int HobotMipiCapIml::creat_isp_node(pipe_contex_t *pipe_contex) {
 	int ret = 0;
 	vp_sensor_config_t& sensor_config = pipe_contex->sensor_config;
 
-	ret = hbn_vnode_open(HB_ISP, 0, AUTO_ALLOC_ID, &pipe_contex->isp_node_handle);
+	ret = hbn_vnode_open(HB_ISP, 1, AUTO_ALLOC_ID, &pipe_contex->isp_node_handle);
 	ERR_CON_EQ(ret, 0);
 	ret = hbn_vnode_set_attr(pipe_contex->isp_node_handle, sensor_config.isp_cfg);
 	ERR_CON_EQ(ret, 0);
@@ -954,7 +954,7 @@ int HobotMipiCapIml::creat_pym_node(pipe_contex_t *pipe_contex) {
 #endif
 	int ret = 0;
 	uint32_t chn_id = 0;
-	uint32_t hw_id = 0;
+	uint32_t hw_id = 1;
 	hbn_buf_alloc_attr_t alloc_attr = {0};
 	
 	ret = hbn_vnode_open(HB_PYM, hw_id, AUTO_ALLOC_ID, &pipe_contex->pym_node_handle);
@@ -983,20 +983,19 @@ int HobotMipiCapIml::creat_pym_node(pipe_contex_t *pipe_contex) {
 }
 
 int HobotMipiCapIml::creat_gdc_node_r(pipe_contex_t *pipe_contex) {
-#if 0
 	if ((pipe_contex == nullptr) || (pipe_contex->gdc_bin_r == nullptr)) {
 		return -1;
 	}
 	int ret = 0;
 	uint32_t chn_id = 0;
-	isp_ichn_attr_t isp_ichn_attr;
+	isp_cfg_t isp_attr;
 	pipe_contex->gdc_init_valid_r = 0;
-	ret = hbn_vnode_get_ichn_attr(pipe_contex->isp_node_handle, chn_id, &isp_ichn_attr);
-	ERR_CON_EQ(ret, 0);
-	//int input_width = isp_ichn_attr.width;
-	//int input_height = isp_ichn_attr.height;
-	int input_width;
-	int input_height;
+	//ret = hbn_vnode_get_attr(pipe_contex->isp_node_handle, chn_id, &isp_attr);
+	//ERR_CON_EQ(ret, 0);
+	int input_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+	int input_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+	//int input_width;
+	//int input_height;
 
 	uint32_t hw_id = 0;
 	ret = hbn_vnode_open(HB_GDC, hw_id, AUTO_ALLOC_ID, &pipe_contex->gdc_node_handle_r);
@@ -1007,8 +1006,8 @@ int HobotMipiCapIml::creat_gdc_node_r(pipe_contex_t *pipe_contex) {
 	gdc_attr.binary_ion_id = pipe_contex->gdc_bin_r->bin_buf->share_id;
 	gdc_attr.binary_offset = pipe_contex->gdc_bin_r->bin_buf->offset;
 	gdc_attr.total_planes = 2;
-	gdc_attr.div_width = 0;
-	gdc_attr.div_height = 0;
+	gdc_attr.div_width = input_width;
+	gdc_attr.div_height = input_height;
 	ret = hbn_vnode_set_attr(pipe_contex->gdc_node_handle_r, &gdc_attr);
 	ERR_CON_EQ(ret, 0);
 	//uint32_t chn_id = 0;
@@ -1040,13 +1039,9 @@ int HobotMipiCapIml::creat_gdc_node_r(pipe_contex_t *pipe_contex) {
 	pipe_contex->gdc_init_valid_r = 1;
 
 	return 0;
-#else
-	return -1;
-#endif
 }
 
 int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
-#if 0
 	if (pipe_contex == nullptr) {
 		return -1;
 	}
@@ -1131,9 +1126,6 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 	pipe_contex->gdc_init_valid = 1;
 
 	return 0;
-#else
-	return -1;
-#endif
 }
 
 int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
@@ -1179,8 +1171,10 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ret = creat_ynr_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
 #endif
-	creat_gdc_node_r(pipe_contex);
-	creat_gdc_node(pipe_contex);
+	if (cap_info_.gdc_enable_) {
+		creat_gdc_node_r(pipe_contex);
+		creat_gdc_node(pipe_contex);
+	}
 	ret = creat_pym_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
 
@@ -1547,7 +1541,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info) {
 	std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf;
 
-#if 0
+#if 1
 	if (gdc_width <= 0 || gdc_height<= 0 || out_width <= 0 || out_height <= 0 || cam_info.size() != 2) {
 		return gdc_bin_buf;
 	}
@@ -1666,11 +1660,19 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	uint64_t bin_buf_size;
 	int64_t alloc_flags = 0;
 	int offset = 0;
+#if 0
 	auto ret = hbn_gen_gdc_bin(&gdc_param, &wnds, 1, (uint32_t**)&bin_buf_ptr, &bin_buf_size);
 	if (ret != 0 || bin_buf_ptr == nullptr) {
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_gen_gdc_bin failed, ret = %d\n", ret);
 		return gdc_bin_buf;
 	}
+#else
+	auto ret = hbn_gen_gdc_cfg(&gdc_param, &wnds, 1, (void**)&bin_buf_ptr, &bin_buf_size);
+	if (ret != 0 || bin_buf_ptr == nullptr) {
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_gen_gdc_bin failed, ret = %d\n", ret);
+		return gdc_bin_buf;
+	}
+#endif
 
     hb_mem_common_buf_t *bin_buf = new hb_mem_common_buf_t;
 	memset(bin_buf, 0, sizeof(hb_mem_common_buf_t));
@@ -1678,18 +1680,21 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 				HB_MEM_USAGE_CPU_WRITE_OFTEN | HB_MEM_USAGE_CACHED;
 	ret = hb_mem_alloc_com_buf(bin_buf_size, alloc_flags, bin_buf);
 	if (ret != 0 || bin_buf->virt_addr == NULL) {
-        hbn_free_gdc_bin(bin_buf_ptr);
+        //hbn_free_gdc_bin(bin_buf_ptr);
+		hbn_free_gdc_cfg(bin_buf_ptr);
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hb_mem_alloc_com_buf for bin failed, ret = %d\n", ret);
 		return gdc_bin_buf;
 	}
 	memcpy(bin_buf->virt_addr, bin_buf_ptr, bin_buf_size);
 	ret = hb_mem_flush_buf(bin_buf->fd, offset, bin_buf_size);
 	if (ret != 0 || bin_buf->virt_addr == NULL) {
-        hbn_free_gdc_bin(bin_buf_ptr);
+        //hbn_free_gdc_bin(bin_buf_ptr);
+		hbn_free_gdc_cfg(bin_buf_ptr);
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hb_mem_flush_buf for bin failed, ret = %d\n", ret);
 		return gdc_bin_buf;
 	}
-	hbn_free_gdc_bin(bin_buf_ptr);
+	//hbn_free_gdc_bin(bin_buf_ptr);
+	hbn_free_gdc_cfg(bin_buf_ptr);
 	auto gdc_bin_ptr = std::make_shared<GdcBinBuf_ST>();
 	gdc_bin_ptr->bin_buf = bin_buf;
 	gdc_bin_ptr->bin_buf_size = bin_buf_size;
@@ -1708,11 +1713,19 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	wnds.custom.points = bin_map.data();
 
 	bin_buf_ptr = nullptr;
+#if 0
 	ret = hbn_gen_gdc_bin(&gdc_param, &wnds, 1, (uint32_t**)&bin_buf_ptr, &bin_buf_size);
 	if (ret != 0 || bin_buf_ptr == nullptr) {
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_gen_gdc_bin failed, ret = %d\n", ret);
 		return gdc_bin_buf;
 	}
+#else
+	ret = hbn_gen_gdc_cfg(&gdc_param, &wnds, 1, (void**)&bin_buf_ptr, &bin_buf_size);
+	if (ret != 0 || bin_buf_ptr == nullptr) {
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_gen_gdc_bin failed, ret = %d\n", ret);
+		return gdc_bin_buf;
+	}
+#endif
 
     bin_buf = new hb_mem_common_buf_t;
 	memset(bin_buf, 0, sizeof(hb_mem_common_buf_t));
@@ -1720,7 +1733,8 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 				HB_MEM_USAGE_CPU_WRITE_OFTEN | HB_MEM_USAGE_CACHED;
 	ret = hb_mem_alloc_com_buf(bin_buf_size, alloc_flags, bin_buf);
 	if (ret != 0 || bin_buf->virt_addr == NULL) {
-        hbn_free_gdc_bin(bin_buf_ptr);
+        //hbn_free_gdc_bin(bin_buf_ptr);
+		hbn_free_gdc_cfg(bin_buf_ptr);
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),"hb_mem_alloc_com_buf for bin failed, ret = %d\n", ret);
 		return gdc_bin_buf;
 	}
@@ -1728,11 +1742,13 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	memcpy(bin_buf->virt_addr, bin_buf_ptr, bin_buf_size);
 	ret = hb_mem_flush_buf(bin_buf->fd, offset, bin_buf_size);
 	if (ret != 0 || bin_buf->virt_addr == NULL) {
-        hbn_free_gdc_bin(bin_buf_ptr);
+        //hbn_free_gdc_bin(bin_buf_ptr);
+		hbn_free_gdc_cfg(bin_buf_ptr);
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),"hb_mem_flush_buf for bin failed, ret = %d\n", ret);
 		return gdc_bin_buf;
 	}
-	hbn_free_gdc_bin(bin_buf_ptr);
+	//hbn_free_gdc_bin(bin_buf_ptr);
+	hbn_free_gdc_cfg(bin_buf_ptr);
 	gdc_bin_ptr = std::make_shared<GdcBinBuf_ST>();
 	gdc_bin_ptr->bin_buf = bin_buf;
 	gdc_bin_ptr->bin_buf_size = bin_buf_size;
@@ -1804,7 +1820,6 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 
 std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int gdc_width, int gdc_height,int out_width, int out_height,
        sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info) {
-#if 0
 	if (gdc_width <= 0 || gdc_height<= 0 || out_width <= 0 || out_height <= 0 ||  cam_info == nullptr || cal_cam_info == nullptr) {
 		return nullptr;
 	}
@@ -1916,7 +1931,7 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int gdc_width, int gd
 	int64_t alloc_flags = 0;
 	int offset = 0;
 
-	auto ret = hbn_gen_gdc_bin(&gdc_param, &wnds, 1, (uint32_t**)&bin_buf_ptr, &bin_buf_size);
+	auto ret = hbn_gen_gdc_cfg(&gdc_param, &wnds, 1, (void**)&bin_buf_ptr, &bin_buf_size);
 	if (ret != 0 || bin_buf_ptr == nullptr) {
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_gen_gdc_bin failed, ret = %d\n", ret);
 		return nullptr;
@@ -1928,18 +1943,21 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int gdc_width, int gd
 				HB_MEM_USAGE_CPU_WRITE_OFTEN | HB_MEM_USAGE_CACHED;
 	ret = hb_mem_alloc_com_buf(bin_buf_size, alloc_flags, bin_buf);
 	if (ret != 0 || bin_buf->virt_addr == NULL) {
-        hbn_free_gdc_bin(bin_buf_ptr);
+        //hbn_free_gdc_bin(bin_buf_ptr);
+		hbn_free_gdc_cfg(bin_buf_ptr);
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hb_mem_alloc_com_buf for bin failed, ret = %d\n", ret);
 		return nullptr;
 	}
 	memcpy(bin_buf->virt_addr, bin_buf_ptr, bin_buf_size);
 	ret = hb_mem_flush_buf(bin_buf->fd, offset, bin_buf_size);
 	if (ret != 0 || bin_buf->virt_addr == NULL) {
-        hbn_free_gdc_bin(bin_buf_ptr);
+        //hbn_free_gdc_bin(bin_buf_ptr);
+		hbn_free_gdc_cfg(bin_buf_ptr);
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hb_mem_flush_buf for bin failed, ret = %d\n", ret);
 		return nullptr;
 	}
-	hbn_free_gdc_bin(bin_buf_ptr);
+	//hbn_free_gdc_bin(bin_buf_ptr);
+	hbn_free_gdc_cfg(bin_buf_ptr);
 	auto gdc_bin_ptr = std::make_shared<GdcBinBuf_ST>();
 	gdc_bin_ptr->bin_buf = bin_buf;
 	gdc_bin_ptr->bin_buf_size = bin_buf_size;
@@ -1957,14 +1975,10 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int gdc_width, int gd
 	std::copy(new_P.ptr<double>(0), new_P.ptr<double>(0) + new_P.total(), cal_cam_info->p.begin());
 
 	return gdc_bin_ptr;
-#else
-	return nullptr;
-#endif
 }
 
 std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height,
        double rotation) {
-#if 0
 	if (gdc_width <= 0 || gdc_height<= 0 || out_width <= 0 || out_height <= 0) {
 		return nullptr;
 	}
@@ -2013,38 +2027,36 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin_rotation(int gdc_widt
 	uint64_t bin_buf_size;
 	int64_t alloc_flags = 0;
 	int offset = 0;
-
-	auto ret = hbn_gen_gdc_bin(&gdc_param, &wnds, 1, (uint32_t**)&bin_buf_ptr, &bin_buf_size);
+	auto ret = hbn_gen_gdc_cfg(&gdc_param, &wnds, 1, (void **)&bin_buf_ptr, &bin_buf_size);
 	if (ret != 0 || bin_buf_ptr == nullptr) {
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_gen_gdc_bin failed, ret = %d\n", ret);
 		return nullptr;
 	}
-
     hb_mem_common_buf_t *bin_buf = new hb_mem_common_buf_t;
 	memset(bin_buf, 0, sizeof(hb_mem_common_buf_t));
 	alloc_flags = HB_MEM_USAGE_MAP_INITIALIZED | HB_MEM_USAGE_PRIV_HEAP_2_RESERVERD | HB_MEM_USAGE_CPU_READ_OFTEN |
 				HB_MEM_USAGE_CPU_WRITE_OFTEN | HB_MEM_USAGE_CACHED;
 	ret = hb_mem_alloc_com_buf(bin_buf_size, alloc_flags, bin_buf);
 	if (ret != 0 || bin_buf->virt_addr == NULL) {
-        hbn_free_gdc_bin(bin_buf_ptr);
+        //hbn_free_gdc_bin(bin_buf_ptr);
+		hbn_free_gdc_cfg(bin_buf_ptr);
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hb_mem_alloc_com_buf for bin failed, ret = %d\n", ret);
 		return nullptr;
 	}
 	memcpy(bin_buf->virt_addr, bin_buf_ptr, bin_buf_size);
 	ret = hb_mem_flush_buf(bin_buf->fd, offset, bin_buf_size);
 	if (ret != 0 || bin_buf->virt_addr == NULL) {
-        hbn_free_gdc_bin(bin_buf_ptr);
+        //hbn_free_gdc_bin(bin_buf_ptr);
+		hbn_free_gdc_cfg(bin_buf_ptr);
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hb_mem_flush_buf for bin failed, ret = %d\n", ret);
 		return nullptr;
 	}
-	hbn_free_gdc_bin(bin_buf_ptr);
+	//hbn_free_gdc_bin(bin_buf_ptr);
+	hbn_free_gdc_cfg(bin_buf_ptr);
 	auto gdc_bin_ptr = std::make_shared<GdcBinBuf_ST>();
 	gdc_bin_ptr->bin_buf = bin_buf;
 	gdc_bin_ptr->bin_buf_size = bin_buf_size;
 	return gdc_bin_ptr;
-#else
-	return nullptr;
-#endif
 }
 
 std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin_json(std::string file) {
@@ -2066,18 +2078,21 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin_json(std::string file
 				HB_MEM_USAGE_CPU_WRITE_OFTEN | HB_MEM_USAGE_CACHED;
 	ret = hb_mem_alloc_com_buf(bin_buf_size, alloc_flags, bin_buf);
 	if (ret != 0 || bin_buf->virt_addr == NULL) {
-        hbn_free_gdc_bin(bin_buf_ptr);
+        //hbn_free_gdc_bin(bin_buf_ptr);
+		hbn_free_gdc_cfg(bin_buf_ptr);
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hb_mem_alloc_com_buf for bin failed, ret = %d\n", ret);
 		return nullptr;
 	}
 	memcpy(bin_buf->virt_addr, bin_buf_ptr, bin_buf_size);
 	ret = hb_mem_flush_buf(bin_buf->fd, offset, bin_buf_size);
 	if (ret != 0 || bin_buf->virt_addr == NULL) {
-        hbn_free_gdc_bin(bin_buf_ptr);
+        //hbn_free_gdc_bin(bin_buf_ptr);
+		hbn_free_gdc_cfg(bin_buf_ptr);
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hb_mem_flush_buf for bin failed, ret = %d\n", ret);
 		return nullptr;
 	}
-	hbn_free_gdc_bin(bin_buf_ptr);
+	//hbn_free_gdc_bin(bin_buf_ptr);
+	hbn_free_gdc_cfg(bin_buf_ptr);
 	auto gdc_bin_ptr = std::make_shared<GdcBinBuf_ST>();
 	gdc_bin_ptr->bin_buf = bin_buf;
 	gdc_bin_ptr->bin_buf_size = bin_buf_size;
