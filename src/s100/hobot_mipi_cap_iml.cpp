@@ -12,11 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "hobot_mipi_comm.hpp"
-#include "hobot_mipi_cap_iml.hpp"
-#include "sensor_msgs/msg/camera_info.hpp"
-#include "opencv2/opencv.hpp"
-
 #include <string>
 #include <fstream>
 #include <iostream>
@@ -34,6 +29,11 @@
 #include <sys/types.h>
 
 #include <sys/select.h>
+
+#include "hobot_mipi_comm.hpp"
+#include "hobot_mipi_cap_iml.hpp"
+#include "sensor_msgs/msg/camera_info.hpp"
+#include "opencv2/opencv.hpp"
 
 #include "hb_media_codec.h"
 #include "hb_media_error.h"

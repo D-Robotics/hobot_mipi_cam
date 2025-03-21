@@ -113,6 +113,7 @@ elseif(PLATFORM_S100)
   )
   include_directories(include 
     src/s100/sensor
+    ${CMAKE_SYSROOT}/usr/include/cjson
   )
 else()
   message("invalid platform, build platform X3 default")

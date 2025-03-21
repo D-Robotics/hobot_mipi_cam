@@ -7,6 +7,7 @@ extern "C" {
 
 
 #include <string.h>
+#include <stdint.h>
 
 #include "hbn_vin_cfg.h"
 #include "hbn_isp_cfg.h"

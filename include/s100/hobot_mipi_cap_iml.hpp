@@ -21,6 +21,7 @@
 #include <queue>
 #include <thread>
 #include <mutex>
+#include <stdint.h>
 #include "hobot_mipi_cap.hpp"
 #include "hobot_mipi_comm.hpp"
 #include "hb_camera_interface.h"
