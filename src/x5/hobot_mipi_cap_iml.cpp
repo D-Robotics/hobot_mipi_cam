@@ -79,11 +79,14 @@ int HobotMipiCapIml::initEnv() {
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cam"), "host %d", host);
   }
 
+
   listMipiHost(mipi_hosts, mipi_started_, mipi_stoped_);
+#if 0
   if (mipi_started_.size() > 0) { //暂时不能同时启动多个mipi_cam进程
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "The device has already been started\n");
     return -1;
   }
+#endif
   if (mipi_stoped_.size() == 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "There are no available host.\n");
     return -1;
@@ -865,7 +868,7 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	vse_ochn_attr.target_w = pipe_contex->cap_info_->width;
 	vse_ochn_attr.target_h = pipe_contex->cap_info_->height;
 
-	vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
+	//vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
 	vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
 
 	ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 0, &vse_ochn_attr);
@@ -1047,6 +1050,8 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 		} else {
 			pipe_contex->sensor_config.camera_config->sensor_mode = 1;
 			pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 0;
+			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+		    pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
 		}
 	} else {
 		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
