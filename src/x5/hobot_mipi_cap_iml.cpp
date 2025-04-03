@@ -447,7 +447,11 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
  
   int32_t exposure_time = (out_img.info.tv.tv_sec - out_img.info.trig_tv.tv_sec) * 1e9 + 
                           (out_img.info.tv.tv_usec - out_img.info.trig_tv.tv_usec) * 1e3;  
-  out_img.info.sys_timestamps -= exposure_time;
+
+  if (out_img.info.trig_tv.tv_sec != 0 && 
+      out_img.info.trig_tv.tv_usec != 0) {
+      out_img.info.sys_timestamps -= exposure_time;
+  }
   
   //  timestamps means kernel timestamp when the frame is obtained
   //  sys_timestamps means kernel system timestamp when the frame is obtained
