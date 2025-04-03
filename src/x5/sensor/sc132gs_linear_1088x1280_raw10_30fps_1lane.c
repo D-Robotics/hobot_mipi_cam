@@ -61,6 +61,8 @@ static vin_node_attr_t vin_node_attr = {
 	},
 	.lpwm_attr = {
 		.enable = 1,
+   //  for external gpio trigger mode, trigger_source = 7, trigger_mode = 1;
+   //  for self mode, trigger_source = 0, trigger_mode = 0;
 		.lpwm_chn_attr = {
 			{	.trigger_source = 0,
 				.trigger_mode = 0,
