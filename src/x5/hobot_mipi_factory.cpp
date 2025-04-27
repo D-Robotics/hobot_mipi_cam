@@ -26,6 +26,8 @@ std::shared_ptr<HobotMipiCap> createMipiCap(const std::string &dev_name) {
     cap_ptr = std::make_shared<HobotMipiCapIml>();
   } else if (dev_name == "X5_RDK") {
     cap_ptr = std::make_shared<HobotMipiCapIml>();
+  } else if (dev_name == "X5_RDK module") {
+    cap_ptr = std::make_shared<HobotMipiCapIml>();
   } else {
     cap_ptr = std::make_shared<HobotMipiCapIml>();
     RCLCPP_ERROR(rclcpp::get_logger("mipi_factory"),
@@ -52,6 +54,9 @@ std::string getBoardType() {
       case 301:
       case 302:
         board_type_str = "X5_RDK";
+        break;
+      case 502:
+        board_type_str = "X5_RDK module";
         break;
       default:
         RCLCPP_INFO(rclcpp::get_logger("mipi_factory"),
