@@ -846,6 +846,9 @@ int32_t vp_sensor_detect_2(int host, mipi_host_info_t* host_info)
 
 	struct vcon_properties vcon_props;
 
+	if (check_mipi_host_status(host) == 0) {
+		return -1;
+	}
 	int mclk_is_not_configed = vp_sensor_mipi_host_mclk_is_not_configed(host);
 	read_vcon_info_from_device_tree(host, &vcon_props);
 
