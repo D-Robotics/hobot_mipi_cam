@@ -422,13 +422,14 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
       RCLCPP_ERROR(rclcpp::get_logger("mipi_node"), "grab failed");
       return;
     }
-    
+#if 0
     if ("realtime" == nodePare_->frame_ts_type_) {
       struct timespec ts;
       clock_gettime(CLOCK_REALTIME, &ts);
       pub_info->img_->header.stamp.sec = ts.tv_sec;
       pub_info->img_->header.stamp.nanosec = ts.tv_nsec;
     }
+#endif
     save_jpg(pub_info->img_->header.stamp,pub_info->img_->encoding,pub_info->img_->width,pub_info->img_->height,(void *)&pub_info->img_->data[0]);
     save_yuv(pub_info->img_->header.stamp, (void *)&pub_info->img_->data[0], pub_info->img_->data.size());
     pub_info->image_pub_->publish(*pub_info->img_);
@@ -460,13 +461,14 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
                     "hbmemUpdate grab img failed");
         return;
       }
-
+#if 0
       if ("realtime" == nodePare_->frame_ts_type_) {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         msg.time_stamp.sec = ts.tv_sec;
         msg.time_stamp.nanosec = ts.tv_nsec;
       }
+#endif
       std::string encode(msg.encoding.begin(), msg.encoding.end());
       save_jpg(msg.time_stamp,encode,msg.width,msg.height,(void *)&msg.data);
       save_yuv(msg.time_stamp, (void *)&msg.data, msg.data_size);

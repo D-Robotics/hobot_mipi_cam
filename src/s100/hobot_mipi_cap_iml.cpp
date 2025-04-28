@@ -458,7 +458,11 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
             "system tv.sec=%d, tv.tv_usec=%d, ts.sec=%d, ts.nsec=%d", 
 			tv.tv_sec, tv.tv_usec, ts.tv_sec, ts.tv_nsec);
 
-	*timestamp = out_img.info.timestamps + (timestamp_1 - timestamp_2);
+	if ("realtime" == cap_info_.frame_ts_type_) {
+		*timestamp = out_img.info.timestamps + (timestamp_1 - timestamp_2);
+	} else {
+		*timestamp = out_img.info.timestamps;
+	} 
 	//*timestamp = out_img.info.sys_timestamps;
 	//*timestamp = out_img.info.timestamps;
 	*frame_id = out_img.info.frame_id;

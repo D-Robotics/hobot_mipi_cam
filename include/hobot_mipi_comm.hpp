@@ -63,6 +63,7 @@ typedef struct {
   bool lpwm_enable_;
   bool gdc_enable_;
   std::string gdc_bin_file_;
+  std::string frame_ts_type_ {"sensor"};
 } MIPI_CAP_INFO_ST;
 
 typedef struct sensor_id {

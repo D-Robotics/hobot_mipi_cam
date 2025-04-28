@@ -488,8 +488,14 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
       usleep(10 * 1000);
       continue;
     }
-    timestamp = pym_buf.pym_img_info.tv.tv_sec * 1e9
+    if ("realtime" == cap_info_.frame_ts_type_) {
+      struct timespec ts;
+      clock_gettime(CLOCK_REALTIME, &ts);     
+      timestamp = ts.tv_sec * 1e9 + ts.tv_nsec;
+    } else {
+      timestamp = pym_buf.pym_img_info.tv.tv_sec * 1e9
               + pym_buf.pym_img_info.tv.tv_usec * 1e3;
+    }
     address_info_t *pym_addr;
     if (use_ds_roi_) {
       pym_addr = &pym_buf.ds_roi[ds_pym_layer_];
@@ -549,8 +555,15 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
       usleep(10 * 1000);
       continue;
     }
-    timestamp = pym_common_buf.pym_img_info.tv.tv_sec * 1e9
+    if ("realtime" == cap_info_.frame_ts_type_) {
+      struct timespec ts;
+      clock_gettime(CLOCK_REALTIME, &ts);     
+      timestamp = ts.tv_sec * 1e9 + ts.tv_nsec;
+    } else {
+      timestamp = pym_common_buf.pym_img_info.tv.tv_sec * 1e9
                 + pym_common_buf.pym_img_info.tv.tv_usec * 1e3;
+    }  
+    
     address_info_t *pym_info = &(pym_common_buf.pym[0]);
     stride = pym_info->stride_size;
     width = pym_info->width;
@@ -604,7 +617,13 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
       usleep(10 * 1000);
       continue;
     }
-    timestamp = isp_buf.img_info.tv.tv_sec * 1e9 + isp_buf.img_info.tv.tv_usec * 1e3;
+    if ("realtime" == cap_info_.frame_ts_type_) {
+      struct timespec ts;
+      clock_gettime(CLOCK_REALTIME, &ts);     
+      timestamp = ts.tv_sec * 1e9 + ts.tv_nsec;
+    } else {
+      timestamp = isp_buf.img_info.tv.tv_sec * 1e9 + isp_buf.img_info.tv.tv_usec * 1e3;
+    } 
     stride = isp_buf.img_addr.stride_size;
     width = isp_buf.img_addr.width;
     height = isp_buf.img_addr.height;
