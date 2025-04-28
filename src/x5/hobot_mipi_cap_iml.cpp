@@ -466,8 +466,12 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
   double tri_timestamp = out_img.info.trig_tv.tv_sec + (double)out_img.info.trig_tv.tv_usec * 1e-6;
   double current_ts =  ts.tv_sec + (double)ts.tv_nsec * 1e-9;
   
- 	*timestamp = out_img.info.sys_timestamps;
-	*frame_id = out_img.info.frame_id;                        
+  *frame_id = out_img.info.frame_id;
+  if ("realtime" == cap_info_.frame_ts_type_) {
+	*timestamp = out_img.info.timestamps;
+  } else {
+	*timestamp = out_img.info.sys_timestamps;
+  }                       
                           
   RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
             "capture a frame, handle: %llu, id: %d, timestamps: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"

@@ -1,4 +1,8 @@
 # Changelog for package mipi_cam
+tros_2.3.8 (2025-04-27)
+------------------
+1. 增加X5 RDK module的硬件平台。
+
 tros_2.3.6 (2025-01-09)
 ------------------
 1. 增加读取eeprom标定数据生成gdc bin文件功能。

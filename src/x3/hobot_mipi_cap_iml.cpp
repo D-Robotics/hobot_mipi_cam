@@ -324,7 +324,13 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
       usleep(10 * 1000);
       continue;
     }
-    timestamp = vOut.img_info.tv.tv_sec * 1e9 + vOut.img_info.tv.tv_usec * 1e3;
+    if ("realtime" == cap_info_.frame_ts_type_) {
+      struct timespec ts;
+      clock_gettime(CLOCK_REALTIME, &ts);     
+      timestamp = ts.tv_sec * 1e9 + ts.tv_nsec;
+    } else {
+      timestamp = vOut.img_info.tv.tv_sec * 1e9 + vOut.img_info.tv.tv_usec * 1e3;
+    } 
     size = vOut.img_addr.stride_size * vOut.img_addr.height;
     stride = vOut.img_addr.stride_size;
     width = vOut.img_addr.width;
@@ -346,7 +352,9 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
     stAeParam.IntegrationOpType = static_cast<ISP_OP_TYPE_E>(0);
     ret = HB_ISP_GetAeParam(vin_info_.pipe_id, &stAeParam);
     if (ret == 0) {
-      timestamp += stAeParam.u32IntegrationTime / 2 * 1e3;
+      if ("realtime" != cap_info_.frame_ts_type_) {
+        timestamp += stAeParam.u32IntegrationTime / 2 * 1e3;
+      }
     }
     if (stride == width) {
       memcpy(frame_buf, vOut.img_addr.addr[0], width * height);
