@@ -95,6 +95,13 @@ static vin_node_attr_t sc230ai_vin_node_attr = {
 	},
 };
 
+static vin_attr_ex_t vin_attr_ex = {
+        .vin_attr_ex_mask = 0x80,
+        .mclk_ex_attr = {
+                .mclk_freq = 24000000,
+        },
+};
+
 static vin_ichn_attr_t sc230ai_vin_ichn_attr = {
 	.width = SENSOR_WIDTH,
 	.height = SENSOR_HEIGHT,
@@ -146,6 +153,7 @@ vp_sensor_config_t sc230ai_linear_1920x1080_raw10_30fps_1lane = {
 	.vin_ichn_attr = &sc230ai_vin_ichn_attr,
 	.vin_node_attr = &sc230ai_vin_node_attr,
 	.vin_ochn_attr = &sc230ai_vin_ochn_attr,
+	.vin_attr_ex   = &vin_attr_ex,
 	.isp_attr      = &sc230ai_isp_attr,
 	.isp_ichn_attr = &sc230ai_isp_ichn_attr,
 	.isp_ochn_attr = &sc230ai_isp_ochn_attr,

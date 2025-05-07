@@ -39,7 +39,7 @@ static camera_config_t imx219_camera_config = {
 	.gpio_enable_bit = 0x01,
 	.gpio_level_bit = 0x00,
 	.mipi_cfg = &imx219_mipi_config,
-	.calib_lname = "/usr/hobot/bin/imx219_tuning_1920x1080.json",
+	.calib_lname = "/usr/hobot/bin/imx219_1920x1080_tuning.json",
 };
 
 static vin_node_attr_t imx219_vin_node_attr = {
@@ -60,6 +60,14 @@ static vin_node_attr_t imx219_vin_node_attr = {
 
 	},
 };
+
+static vin_attr_ex_t vin_attr_ex = {
+        .vin_attr_ex_mask = 0x80,
+        .mclk_ex_attr = {
+                .mclk_freq = 24000000,
+        },
+};
+
 
 static vin_ichn_attr_t imx219_vin_ichn_attr = {
 	.width = SENSOR_WIDTH,
@@ -112,6 +120,7 @@ vp_sensor_config_t imx219_linear_1920x1080_raw10_30fps_2lane = {
 	.vin_ichn_attr = &imx219_vin_ichn_attr,
 	.vin_node_attr = &imx219_vin_node_attr,
 	.vin_ochn_attr = &imx219_vin_ochn_attr,
+	.vin_attr_ex   = &vin_attr_ex,
 	.isp_attr      = &imx219_isp_attr,
 	.isp_ichn_attr = &imx219_isp_ichn_attr,
 	.isp_ochn_attr = &imx219_isp_ochn_attr,
