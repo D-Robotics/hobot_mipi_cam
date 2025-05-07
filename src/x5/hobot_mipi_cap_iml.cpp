@@ -735,8 +735,8 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 			pipe_contex->csi_config.index);
 		vin_attr_ex.vin_attr_ex_mask = 0x00;
 	}else{
-		vin_attr_ex.vin_attr_ex_mask = 0x80;	//bit7 for mclk
-		vin_attr_ex.mclk_ex_attr.mclk_freq = 24000000; // 24MHz
+		vin_attr_ex.vin_attr_ex_mask = sensor_config.vin_attr_ex->vin_attr_ex_mask;	//bit7 for mclk
+		vin_attr_ex.mclk_ex_attr.mclk_freq = sensor_config.vin_attr_ex->mclk_ex_attr.mclk_freq; // 24MHz
 		vin_attr_ex_mask = vin_attr_ex.vin_attr_ex_mask;
 	}
 
@@ -759,7 +759,9 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 	alloc_attr_raw.is_contig = 1;
 	alloc_attr_raw.flags = HB_MEM_USAGE_CPU_READ_OFTEN
 						| HB_MEM_USAGE_CPU_WRITE_OFTEN
-						| HB_MEM_USAGE_CACHED;
+						| HB_MEM_USAGE_CACHED
+						| HB_MEM_USAGE_HW_CIM
+						| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
 	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vin_node_handle, chn_id, &alloc_attr_raw);
 	ERR_CON_EQ(ret, 0);
 
@@ -801,7 +803,9 @@ int HobotMipiCapIml::creat_isp_node(pipe_contex_t *pipe_contex) {
 	alloc_attr.is_contig = 1;
 	alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN
 						| HB_MEM_USAGE_CPU_WRITE_OFTEN
-						| HB_MEM_USAGE_CACHED;
+						| HB_MEM_USAGE_CACHED
+						| HB_MEM_USAGE_HW_ISP
+						| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
 	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->isp_node_handle, chn_id, &alloc_attr);
 	ERR_CON_EQ(ret, 0);
 	

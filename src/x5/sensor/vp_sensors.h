@@ -70,6 +70,7 @@ typedef struct vp_sensor_config_s {
 	vin_node_attr_t *vin_node_attr;
 	vin_ichn_attr_t *vin_ichn_attr;
 	vin_ochn_attr_t *vin_ochn_attr;
+	vin_attr_ex_t *vin_attr_ex;
 	isp_attr_t      *isp_attr;
 	isp_ichn_attr_t *isp_ichn_attr;
 	isp_ochn_attr_t *isp_ochn_attr;
