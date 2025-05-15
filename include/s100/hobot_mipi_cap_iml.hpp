@@ -232,6 +232,9 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<int> mipi_started_;
   std::vector<int> mipi_stoped_;
   int pym_channel_ = 0;
+  int vin_online_isp = 0;
+  int isp_online_ynr = 1;
+  int ynr_online_pym = 1;
   std::map<int, BOARD_CONFIG_ST> board_config_m_;
   std::map<int, std::vector<std::string>> host_sensor_m_;
   std::shared_ptr<std::thread> dual_frame_task_ = nullptr;

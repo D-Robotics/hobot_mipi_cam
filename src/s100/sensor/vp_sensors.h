@@ -21,10 +21,9 @@ extern "C" {
 #include "hb_comm_isp.h"
 #include "hbn_pym_cfg.h"
 #include "hbn_ynr_cfg.h"
-#include "hb_camera_data_config.h"
+#include "ynr_cfg.h"
 #include "hbn_vpf_data_info.h"
 #include "hb_camera_interface.h"
-#include "hbn_vpf_interface.h"
 #include "hb_deserial_interface.h"
 
 // Todo: remove define variable
@@ -83,7 +82,7 @@ typedef struct vp_sensor_config_s {
 	camera_config_t *camera_config;
 	vin_attr_t *vin_attr;
 	isp_cfg_t      *isp_cfg;
-	ynr_info_t      *ynr_cfg;
+	struct ynr_init_attr *ynr_attr;
 	pym_cfg_t *pym_cfg;
 } vp_sensor_config_t;
 

@@ -53,7 +53,7 @@ static isp_cfg_t sc132gs_isp_config = {
     .isp_attr = {
         .channel = {
             .hw_id = 1,
-            .slot_id = 4,
+            .slot_id = 5,
             .ctx_id = -1, //#define AUTO_ALLOC_ID -1
         },
         .work_mode = 0,
@@ -192,22 +192,30 @@ static vin_attr_t sc132gs_vin_attr = {
     .magicNumber = MAGIC_NUMBER,
 };
 
-ynr_info_t sc132gs_ynr_config = {
-        /* 0 */
-        .hw_id = 1,
-        .link_mode = 1,
-        .slot_id = 4,
-        .ch_img_width = SENSOR_WIDTH,
-        .ch_img_height = SENSOR_HEIGHT,
-        .nr2d_en = 1,
-        .nr3d_en = 1,
-        .debug_en = 0,
+struct ynr_init_attr sc132gs_ynr_attr = {
+	.work_mode = 1,
+	.slot_id = 4,
+
+	.width = SENSOR_WIDTH,
+	.height = SENSOR_HEIGHT,
+	.nr_static_switch = 0b11, // (nr3d_en << 1) | (nr2d_en);
+	.in_stride = {
+		SENSOR_WIDTH, SENSOR_HEIGHT
+	},
+	.nr2d_en = 1,
+	.nr3d_en = 1,
+
+	.dma_output_en = 1, // nr3d_en
+
+	.debug_en = 0,    
 };
+
+
 
 pym_cfg_t sc132gs_pym_common_config = {
         .hw_id = 1,
-        .pym_mode = 3,
-        .slot_id = 4,
+        .pym_mode = 1,
+        .slot_id = 5,
         .pingpong_ring = 0,
         .output_buf_num = 6,
         .fb_buf_num = 2,
@@ -265,6 +273,6 @@ vp_sensor_config_t sc132gs_linear_1088x1280_raw10_30fps_1lane = {
 	.camera_config = &sc132gs_camera_config,
 	.vin_attr = &sc132gs_vin_attr,
 	.isp_cfg      = &sc132gs_isp_config,
-    .ynr_cfg      = &sc132gs_ynr_config,
+    .ynr_attr      = &sc132gs_ynr_attr,
 	.pym_cfg = &sc132gs_pym_common_config,
 };
