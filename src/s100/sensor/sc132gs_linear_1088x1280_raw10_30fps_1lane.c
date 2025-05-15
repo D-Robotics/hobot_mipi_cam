@@ -5,7 +5,7 @@
 #define SENSOE_FPS 30
 #define RAW10 0x2B
 
-// imx219 的sample配置
+// sc132gs 的sample配置
 static mipi_config_t sc132gs_mipi_config = {
     .rx_enable = 1,
     .rx_attr = {
@@ -160,7 +160,7 @@ static vin_attr_t sc132gs_vin_attr = {
             .ddr_en = 1,
             .vin_basic_attr = {
                 .format = 43,
-                .wstride = 0,
+                .wstride = 1376,
                 .pack_mode = 1,
             },
             .pingpong_ring = 1,
@@ -197,8 +197,8 @@ ynr_info_t sc132gs_ynr_config = {
         .hw_id = 1,
         .link_mode = 1,
         .slot_id = 4,
-        .ch_img_width = 1920,
-        .ch_img_height = 1080,
+        .ch_img_width = SENSOR_WIDTH,
+        .ch_img_height = SENSOR_HEIGHT,
         .nr2d_en = 1,
         .nr3d_en = 1,
         .debug_en = 0,
@@ -226,10 +226,10 @@ pym_cfg_t sc132gs_pym_common_config = {
             .src_in_height = SENSOR_HEIGHT,
             .src_in_stride_y = SENSOR_WIDTH,
             .src_in_stride_uv = SENSOR_WIDTH,
-            .suffix_hb_val = 100,
+            .suffix_hb_val = 68,
             .prefix_hb_val = 2,
-            .suffix_vb_val = 10,
-            .prefix_vb_val = 0,
+            .suffix_vb_val = 20,
+            .prefix_vb_val = 2,
             .ds_roi_en = 1,
             .bl_max_layer_en = 5,
             .ds_roi_uv_bypass = 0,

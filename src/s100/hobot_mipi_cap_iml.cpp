@@ -1171,7 +1171,7 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ERR_CON_EQ(ret, 0);
 	ret = creat_isp_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
-#if 0
+#if 1
 	ret = creat_ynr_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
 #endif
@@ -1181,7 +1181,6 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	}
 	ret = creat_pym_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
-
 	// 创建HBN flow
 	ret = hbn_vflow_create(&pipe_contex->vflow_fd);
 	ERR_CON_EQ(ret, 0);
@@ -1191,7 +1190,7 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
 							pipe_contex->isp_node_handle);
 	ERR_CON_EQ(ret, 0);
-#if 0
+#if 1
 	ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
 							pipe_contex->ynr_node_handle);
 	ERR_CON_EQ(ret, 0);
@@ -1209,9 +1208,10 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
 							pipe_contex->pym_node_handle);
 	ERR_CON_EQ(ret, 0);
+
 	ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 							pipe_contex->vin_node_handle,
-							isp_bind,
+							0,
 							pipe_contex->isp_node_handle,
 							0);
 	ERR_CON_EQ(ret, 0);
@@ -1275,13 +1275,13 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 #else
 		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 							pipe_contex->isp_node_handle,
-							1,
+							0,
 							pipe_contex->ynr_node_handle,
 							0);
 		ERR_CON_EQ(ret, 0);
 		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 							pipe_contex->ynr_node_handle,
-							1,
+							0,
 							pipe_contex->pym_node_handle,
 							0);
 		ERR_CON_EQ(ret, 0);
