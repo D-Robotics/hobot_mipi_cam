@@ -55,6 +55,7 @@ typedef struct pipe_contex_s {
 	hbn_vnode_handle_t gdc_node_handle;
   hbn_vnode_handle_t gdc_node_handle_r;
 	hbn_vnode_handle_t vpu_node_handle;
+  hbn_vnode_handle_t stream_handle;
 	camera_handle_t cam_fd;
 	vp_sensor_config_t sensor_config;
   vp_csi_config_t csi_config;
@@ -63,6 +64,7 @@ typedef struct pipe_contex_s {
   int gdc_bin_buf_is_valid;
   int gdc_init_valid;
   int gdc_init_valid_r;
+  int stream_group;
   MIPI_CAP_INFO_ST *cap_info_;
 }pipe_contex_t;
 
@@ -200,6 +202,10 @@ class HobotMipiCapIml : public HobotMipiCap {
   void dualFrameTask();
 
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* width,
+		int* height, int* stride, void* frame_buf, unsigned int bufsize, unsigned int* len,
+        uint64_t *timestamp, uint32_t* frame_id, bool gray = false);
+
+  int getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, int* width,
 		int* height, int* stride, void* frame_buf, unsigned int bufsize, unsigned int* len,
         uint64_t *timestamp, uint32_t* frame_id, bool gray = false);
 
