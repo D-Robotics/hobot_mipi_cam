@@ -100,6 +100,10 @@ def generate_launch_description():
             default_value='0.0',
             description='mipi camera out image rotation'),
         DeclareLaunchArgument(
+            'mipi_cal_rotation',
+            default_value='0.0',
+            description='mipi camera calibration rotation'),
+        DeclareLaunchArgument(
             'mipi_gdc_enable',
             default_value='True',
             description='mipi camera gdc enable'),
@@ -138,6 +142,7 @@ def generate_launch_description():
                 {"channel2": LaunchConfiguration('mipi_channel2')},
                 {"frame_ts_type": LaunchConfiguration('mipi_frame_ts_type')},
                 {"rotation": LaunchConfiguration('mipi_rotation')},
+                {"cal_rotation": LaunchConfiguration('mipi_cal_rotation')},
                 {"gdc_enable": LaunchConfiguration('mipi_gdc_enable')},
                 {"frame_id": LaunchConfiguration('frame_id')},
             ],

@@ -2172,6 +2172,9 @@ int HobotMipiCapIml::detectEeprom(std::string &device, int &i2c_bus, uint16_t &i
   char checksum;
   std::string chip_type;
 
+  std::cout << "====================" << std::endl;
+  std::cout << "detectEeprom start" << std::endl;
+
   for (auto num : i2c_buss) {
     for (auto eeprom_id : eeprom_id_list) {
       if (readEeprom16(num, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 1)) {
