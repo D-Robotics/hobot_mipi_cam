@@ -163,13 +163,15 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		if (cam_info_.size() != 2) {
 			getDualCamCalibrationFromEeprom();
 		}
-		auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
-		                                 cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
-		if (gdc_bin.size() == 2) {
-			gdc_bin_buf_.push_back(gdc_bin[0]);
-			gdc_bin_buf_.push_back(gdc_bin[1]);
-			pipe_contex[0].gdc_bin = gdc_bin[0];
-			pipe_contex[1].gdc_bin = gdc_bin[1];
+		if (cal_tpye_ == 0) {
+			auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
+											cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
+			if (gdc_bin.size() == 2) {
+				gdc_bin_buf_.push_back(gdc_bin[0]);
+				gdc_bin_buf_.push_back(gdc_bin[1]);
+				pipe_contex[0].gdc_bin = gdc_bin[0];
+				pipe_contex[1].gdc_bin = gdc_bin[1];
+			}
 		}
 	}
 	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
@@ -198,16 +200,23 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	if (cap_info_.gdc_enable_) {
 		vp_sensor_config_t *sensor_cof = &pipe_contex[1].sensor_config;
 		if (cam_info_.size() != 2) {
-			getDualCamCalibrationFromEeprom();
+			if (!getDualCamCalibrationFromEeprom()) {
+				if (sensor_cof->sensor_name == "sc230ai-30fps") {
+					getDualCamCalibrationFromEeprom_230ai();
+				}
+			}
 		}
-		auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
-		                                 cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
-		if (gdc_bin.size() == 2) {
-			gdc_bin_buf_.push_back(gdc_bin[0]);
-			gdc_bin_buf_.push_back(gdc_bin[1]);
-			pipe_contex[0].gdc_bin = gdc_bin[0];
-			pipe_contex[1].gdc_bin = gdc_bin[1];
+		if (cal_tpye_ == 0) {
+			auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
+											cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
+			if (gdc_bin.size() == 2) {
+				gdc_bin_buf_.push_back(gdc_bin[0]);
+				gdc_bin_buf_.push_back(gdc_bin[1]);
+				pipe_contex[0].gdc_bin = gdc_bin[0];
+				pipe_contex[1].gdc_bin = gdc_bin[1];
+			}
 		}
+
 	}
 	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
 		vp_sensor_config_t *sensor_conf = &pipe_contex[1].sensor_config;
@@ -260,13 +269,15 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
 		if (cam_info_.size() > 0) {
 			sensor_msgs::msg::CameraInfo cal_cam_info;
-			auto gdc_bin = gen_gdc_bin(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height,
-			                           &cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_);
-			//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
-			if (gdc_bin) {
-				gdc_bin_buf_.push_back(gdc_bin);
-				pipe_contex[0].gdc_bin = gdc_bin;
-				cal_cam_info_.push_back(cal_cam_info);
+			if (cal_tpye_ == 0) {
+				auto gdc_bin = gen_gdc_bin(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height,
+										&cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_);
+				//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
+				if (gdc_bin) {
+					gdc_bin_buf_.push_back(gdc_bin);
+					pipe_contex[0].gdc_bin = gdc_bin;
+					cal_cam_info_.push_back(cal_cam_info);
+				}
 			}
 		}
 	}
@@ -1496,7 +1507,6 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
     cv::Mat Rl, Rr, Pl, Pr, Q;
     cv::Mat Kl, Kr, Dl, Dr, R_rl, t_rl;
     cv::Mat undistmap1l, undistmap2l, undistmap1r, undistmap2r;
-
 	gdc_width_scale = in_gdc_width / static_cast<float>(cam_info[0].width);
 	gdc_height_scale = in_gdc_height / static_cast<float>(cam_info[0].height);
 
@@ -1523,7 +1533,6 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	Kl.at<double>(0, 2) *= gdc_width_scale;
 	Kl.at<double>(1, 1) *= gdc_height_scale;
 	Kl.at<double>(1, 2) *= gdc_height_scale;
-
 	Kr.at<double>(0, 0) *= gdc_width_scale;
 	Kr.at<double>(0, 2) *= gdc_width_scale;
 	Kr.at<double>(1, 1) *= gdc_height_scale;
@@ -1539,7 +1548,6 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0 ,cv::Size(out_gdc_width, out_gdc_height));
 	cv::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
 	cv::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1r, undistmap2r);
-
 	int rotation_diff_int = rotation_diff;
 	cv::Mat tmp;
 	cv::Mat rotation_1l;
@@ -2403,7 +2411,254 @@ int HobotMipiCapIml::detectEeprom(std::string &device, int &i2c_bus, uint16_t &i
   return -1;
 }
 
+int HobotMipiCapIml::detectEeprom_drobot(std::string &device, int &i2c_bus, uint16_t &i2c_addr) {
+
+  // mipi sensor的信息数组
+  EEPROM_DETECT_T eeprom_detect_list[] = {
+    {1, 0x50, I2C_ADDR_16, 0x00, "SZYGSJKJ", "yuguang"},  // P24C64G-C4H-MIR
+  };
+  std::vector<int> i2c_buss= {0,1,2,3,4,5,6,7,8,9,10};
+
+  char buf[9] = {0};
+  std::vector<char> buf_type;
+  buf_type.resize(0x1f);
+  char check_0;
+  char checksum;
+  std::string chip_type;
+  
+  for (auto num : i2c_buss) {
+    for (auto eeprom_id : eeprom_detect_list) {
+      if (readEeprom16(num, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 8)) {
+		std::string buf_str = buf;
+		std::cout << "EEPROM FLAG:" << buf_str << std::endl;
+		if (eeprom_id.check_str == buf_str) {
+			i2c_bus = num;
+			i2c_addr = eeprom_id.i2c_dev_addr;
+			device = eeprom_id.device_name;
+			return 0;
+		}
+      }
+    }
+  }
+  return -1;
+}
+
+
 bool HobotMipiCapIml::getDualCamCalibrationFromEeprom() {
+  int i2c_bus;
+  uint16_t i2c_addr;
+  std::string device;
+  std::vector<char> i2c_buf;
+  i2c_buf.resize(sizeof(CalDualCamInfo_ST));
+  char chech_value;
+  if (detectEeprom_drobot(device, i2c_bus, i2c_addr) == -1) {
+	return false;
+  }
+  if (device == "yuguang") {
+	getDualCamCalibration_yugang(i2c_bus, i2c_addr);
+  }
+  return false;
+}
+
+bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) {
+  std::string device;
+  std::vector<char> head_buf;
+  head_buf.resize(sizeof(EepromDrobotHead_ST));
+  char chech_value;
+  if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(), sizeof(EepromDrobotHead_ST)) == false) {
+	return false;
+  }
+  int chech_index = sizeof(EepromDrobotHead_ST) - 1;
+  chech_value = head_buf[chech_index];
+  head_buf[chech_index] = 0;
+  int sum = 0;
+  
+  std::for_each(head_buf.begin(), head_buf.end(), [&sum](char c) {
+	sum += static_cast<int>(c);
+  });
+  if (((sum % 255) + 1) == chech_value) {
+	EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
+	std::cout << "====EepromDrobotHead======" << std::endl;
+	std::cout << "flag:" << head_buf_ptr->flag << std::endl;
+	printf("camType:%d\n", head_buf_ptr->camType);
+	printf("cal_tpye:%d\n", head_buf_ptr->cal_tpye);
+	printf("ver_main:%d\n", head_buf_ptr->ver_main);
+	printf("ver_min:%d\n", head_buf_ptr->ver_min);
+	printf("angle:%d\n", head_buf_ptr->angle);
+	printf("d_num:%d\n", head_buf_ptr->d_num);
+
+	if (head_buf_ptr->angle == 0x00) {
+		cap_info_.cal_rotation_ = 0.0;
+	} else if (head_buf_ptr->angle == 0x01) {
+		cap_info_.cal_rotation_ = 90.0;
+	} else if (head_buf_ptr->angle == 0x02) {
+		cap_info_.cal_rotation_ = 180.0;
+	} else if (head_buf_ptr->angle == 0x03) {
+		cap_info_.cal_rotation_ = 270.0;
+	}
+
+	if (head_buf_ptr->cal_tpye == 0x00) {
+		cal_tpye_ = 0; //针孔标定
+	} else if (head_buf_ptr->cal_tpye == 0x01) {
+		cal_tpye_ = 1; //鱼眼标定
+	} 
+
+	if (head_buf_ptr->camType == 0x01) {
+		cam_info_.resize(2);
+		CalDualMDInfo_ST m_d_info_l, m_d_info_r;
+		CalDualRTInfo_ST r_t_info;
+		if (readEeprom16(i2c_bus, i2c_addr, 0x0010, (char*)&m_d_info_l, sizeof(CalDualMDInfo_ST)) == false) {
+			return false;
+		}
+		if (readEeprom16(i2c_bus, i2c_addr, 0x0048, (char*)&m_d_info_r, sizeof(CalDualMDInfo_ST)) == false) {
+			return false;
+		}
+		if (readEeprom16(i2c_bus, i2c_addr, 0x008C, (char*)&r_t_info, sizeof(CalDualRTInfo_ST)) == false) {
+			return false;
+		}
+		
+		std::cout << "===========================" << std::endl;
+		std::cout << "m_d_info_l" << std::endl;
+		printf("width:%d\n",m_d_info_l.width);
+		printf("height:%d\n",m_d_info_l.height);
+		printf("fx:%f\n",m_d_info_l.fx);
+		printf("cx:%f\n",m_d_info_l.cx);
+		printf("fy:%f\n",m_d_info_l.fy);
+		printf("cy:%f\n",m_d_info_l.cy);
+
+		// printf("k1:%f\n",m_d_info_l.k1);
+		// printf("k2:%f\n",m_d_info_l.k2);
+		// printf("p1:%f\n",m_d_info_l.p1);
+		// printf("p2:%f\n",m_d_info_l.p2);
+		// printf("k3:%f\n",m_d_info_l.k3);
+		// printf("k4:%f\n",m_d_info_l.k4);
+		// printf("k5:%f\n",m_d_info_l.k5);
+		// printf("k6:%f\n",m_d_info_l.k6);
+
+		std::cout << "===========================" << std::endl;
+		std::cout << "m_d_info_r" << std::endl;
+		printf("width:%d\n",m_d_info_r.width);
+		printf("height:%d\n",m_d_info_r.height);
+		printf("fx:%f\n",m_d_info_r.fx);
+		printf("cx:%f\n",m_d_info_r.cx);
+		printf("fy:%f\n",m_d_info_r.fy);
+		printf("cy:%f\n",m_d_info_r.cy);
+		// printf("k1:%f\n",m_d_info_r.k1);
+		// printf("k2:%f\n",m_d_info_r.k2);
+		// printf("p1:%f\n",m_d_info_r.p1);
+		// printf("p2:%f\n",m_d_info_r.p2);
+		// printf("k3:%f\n",m_d_info_r.k3);
+		// printf("k4:%f\n",m_d_info_r.k4);
+		// printf("k5:%f\n",m_d_info_r.k5);
+		// printf("k6:%f\n",m_d_info_r.k6);
+
+		std::cout << "===========================" << std::endl;
+		std::cout << "r_t_info" << std::endl;
+		printf("r11:%f\n",r_t_info.r11);
+		printf("r12:%f\n",r_t_info.r12);
+		printf("r13:%f\n",r_t_info.r13);
+		printf("r21:%f\n",r_t_info.r21);
+		printf("r22:%f\n",r_t_info.r22);
+		printf("r23:%f\n",r_t_info.r23);
+		printf("r31:%f\n",r_t_info.r31);
+		printf("r32:%f\n",r_t_info.r32);
+		printf("r33:%f\n",r_t_info.r33);
+		printf("tx:%f\n",r_t_info.tx);
+		printf("ty:%f\n",r_t_info.ty);
+		printf("tz:%f\n",r_t_info.tz);
+
+		cam_info_[0].width = m_d_info_l.width;
+		cam_info_[0].height = m_d_info_l.height;
+		cam_info_[1].width = m_d_info_r.width;
+		cam_info_[1].height = m_d_info_r.height;
+
+		cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
+		l_k.at<double>(0,0) = m_d_info_l.fx;
+		l_k.at<double>(0,2) = m_d_info_l.cx;
+		l_k.at<double>(1,1) = m_d_info_l.fy;
+		l_k.at<double>(1,2) = m_d_info_l.cy;
+		l_k.at<double>(2,2) = 1;
+		std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
+		
+		int d_num = 8;
+		if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
+			d_num = head_buf_ptr->d_num;
+		}
+		cam_info_[0].d.resize(d_num);
+		for (int i = 0; i < d_num; i++) {
+			cam_info_[0].d[i] = m_d_info_l.d[i];
+		}
+		// cam_info_[0].d[0] = m_d_info_l.k1;
+		// cam_info_[0].d[1] = m_d_info_l.k2;
+		// cam_info_[0].d[2] = m_d_info_l.p1;
+		// cam_info_[0].d[3] = m_d_info_l.p2;
+		// cam_info_[0].d[4] = m_d_info_l.k3;
+		// cam_info_[0].d[5] = m_d_info_l.k4;
+		// cam_info_[0].d[6] = m_d_info_l.k5;
+		// cam_info_[0].d[7] = m_d_info_l.k6;
+
+		cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
+		std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
+
+		cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
+		cv::Mat l_p = l_k * l_p_eye;
+		std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
+
+
+
+		cv::Mat r_k= cv::Mat::zeros(3,3,CV_64F);
+		r_k.at<double>(0,0) = m_d_info_r.fx;
+		r_k.at<double>(0,2) = m_d_info_r.cx;
+		r_k.at<double>(1,1) = m_d_info_r.fy;
+		r_k.at<double>(1,2) = m_d_info_r.cy;
+		r_k.at<double>(2,2) = 1;
+		std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
+
+		// cam_info_[1].d.resize(8);
+		// cam_info_[1].d[0] = m_d_info_r.k1;
+		// cam_info_[1].d[1] = m_d_info_r.k2;
+		// cam_info_[1].d[2] = m_d_info_r.p1;
+		// cam_info_[1].d[3] = m_d_info_r.p2;
+		// cam_info_[1].d[4] = m_d_info_r.k3;
+		// cam_info_[1].d[5] = m_d_info_r.k4;
+		// cam_info_[1].d[6] = m_d_info_r.k5;
+		// cam_info_[1].d[7] = m_d_info_r.k6;
+
+		cam_info_[1].d.resize(d_num);
+		for (int i = 0; i < d_num; i++) {
+			cam_info_[1].d[i] = m_d_info_r.d[i];
+		}
+
+		cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
+		R.at<double>(0,0) = r_t_info.r11;
+		R.at<double>(0,1) = r_t_info.r12;
+		R.at<double>(0,2) = r_t_info.r13;
+		R.at<double>(1,0) = r_t_info.r21;
+		R.at<double>(1,1) = r_t_info.r22;
+		R.at<double>(1,2) = r_t_info.r23;
+		R.at<double>(2,0) = r_t_info.r31;
+		R.at<double>(2,1) = r_t_info.r32;
+		R.at<double>(2,2) = r_t_info.r33;
+
+		cv::Mat T = cv::Mat::zeros(3, 1, CV_64F);
+		T.at<double>(0,0) = r_t_info.tx;
+		T.at<double>(0,1) = r_t_info.ty;
+		T.at<double>(0,2) = r_t_info.tz;
+
+		cv::Mat RT;
+		cv::hconcat(R, T, RT);
+		cv::Mat P = r_k * RT;
+		std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
+		std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
+		return true;
+	}
+
+  }
+  return false;
+}
+
+
+bool HobotMipiCapIml::getDualCamCalibrationFromEeprom_230ai() {
   int i2c_bus;
   uint16_t i2c_addr;
   std::string device;
@@ -2503,5 +2758,6 @@ bool HobotMipiCapIml::getDualCamCalibrationFromEeprom() {
   }
   return false;
 }
+
 
 }  // namespace mipi_cam
