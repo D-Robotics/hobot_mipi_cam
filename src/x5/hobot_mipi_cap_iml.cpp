@@ -153,40 +153,34 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	pipe_contex[0].cap_info_ = &cap_info_;
 	pipe_contex[1].cap_info_ = &cap_info_;
 	//copy_config(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index]);
+#if 0
 	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
 	ERR_CON_EQ(ret, 0);
+	gdc_bin_buf_.clear();
 	if (cap_info_.gdc_enable_) {
 		vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
 		if (cam_info_.size() != 2) {
 			getDualCamCalibrationFromEeprom();
 		}
-		gdc_bin_buf_.clear();
-		if (cap_info_.rotation_ != 0) {
-			vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
-			auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
-			if (gdc_bin) {
-				gdc_bin_buf_.push_back(gdc_bin);
-				pipe_contex[0].gdc_bin_r = gdc_bin;
-				pipe_contex[1].gdc_bin_r = gdc_bin;
+		if (cal_tpye_ == 0) {
+			auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
+											cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
+			if (gdc_bin.size() == 2) {
+				gdc_bin_buf_.push_back(gdc_bin[0]);
+				gdc_bin_buf_.push_back(gdc_bin[1]);
+				pipe_contex[0].gdc_bin = gdc_bin[0];
+				pipe_contex[1].gdc_bin = gdc_bin[1];
 			}
 		}
-		if (pipe_contex[0].gdc_bin_r != nullptr) {
-			auto gdc_bin = gen_gdc_bin_stereo(cap_info_.width, cap_info_.height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_);
-			if (gdc_bin.size() == 2) {
-				gdc_bin_buf_.push_back(gdc_bin[0]);
-				gdc_bin_buf_.push_back(gdc_bin[1]);
-				pipe_contex[0].gdc_bin = gdc_bin[0];
-				pipe_contex[1].gdc_bin = gdc_bin[1];
-			}		
-		} else {
-			auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_);
-			if (gdc_bin.size() == 2) {
-				gdc_bin_buf_.push_back(gdc_bin[0]);
-				gdc_bin_buf_.push_back(gdc_bin[1]);
-				pipe_contex[0].gdc_bin = gdc_bin[0];
-				pipe_contex[1].gdc_bin = gdc_bin[1];
-			}			
+	}
+	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
+		vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
+		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+		if (gdc_bin) {
+			gdc_bin_buf_.push_back(gdc_bin);
+			pipe_contex[0].gdc_bin_r = gdc_bin;
+			pipe_contex[1].gdc_bin_r = gdc_bin;
 		}
 	}
 
@@ -198,7 +192,51 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ERR_CON_EQ(ret, 0);
 	ret = create_and_run_vflow(&pipe_contex[1]);
 	ERR_CON_EQ(ret, 0);
+#else
+	memcpy(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index], sizeof(vp_sensor_config_t));
+	ret = vp_sensor_fixed_mipi_host_1(v_host_info[1].host_num, &pipe_contex[1].sensor_config, &pipe_contex[1].csi_config);
+	ERR_CON_EQ(ret, 0);
+	gdc_bin_buf_.clear();
+	if (cap_info_.gdc_enable_) {
+		vp_sensor_config_t *sensor_cof = &pipe_contex[1].sensor_config;
+		if (cam_info_.size() != 2) {
+			if (!getDualCamCalibrationFromEeprom()) {
+				if (sensor_cof->sensor_name == "sc230ai-30fps") {
+					getDualCamCalibrationFromEeprom_230ai();
+				}
+			}
+		}
+		if (cal_tpye_ == 0) {
+			auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
+											cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
+			if (gdc_bin.size() == 2) {
+				gdc_bin_buf_.push_back(gdc_bin[0]);
+				gdc_bin_buf_.push_back(gdc_bin[1]);
+				pipe_contex[0].gdc_bin = gdc_bin[0];
+				pipe_contex[1].gdc_bin = gdc_bin[1];
+			}
+		}
 
+	}
+	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
+		vp_sensor_config_t *sensor_conf = &pipe_contex[1].sensor_config;
+		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+		if (gdc_bin) {
+			gdc_bin_buf_.push_back(gdc_bin);
+			pipe_contex[0].gdc_bin_r = gdc_bin;
+			pipe_contex[1].gdc_bin_r = gdc_bin;
+		}
+	}
+
+	ret = create_and_run_vflow(&pipe_contex[1]);
+	ERR_CON_EQ(ret, 0);
+	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index]);
+	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
+	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
+	ERR_CON_EQ(ret, 0);
+	ret = create_and_run_vflow(&pipe_contex[0]);
+	ERR_CON_EQ(ret, 0);
+#endif
     //n2d_pipe_contex.cap_info_ = &cap_info_;
 	//ret = create_and_run_n2d_vflow(&n2d_pipe_contex);
 	//ERR_CON_EQ(ret, 0);
@@ -226,28 +264,14 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
 	ERR_CON_EQ(ret, 0);
+	gdc_bin_buf_.clear();
 	if (cap_info_.gdc_enable_) {
-		if (cap_info_.rotation_ != 0) {
-			vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
-			auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
-			if (gdc_bin) {
-				gdc_bin_buf_.push_back(gdc_bin);
-				pipe_contex[0].gdc_bin_r = gdc_bin;
-			}
-		}
 		vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
 		if (cam_info_.size() > 0) {
 			sensor_msgs::msg::CameraInfo cal_cam_info;
-			if (pipe_contex[0].gdc_bin_r != nullptr) {
-				auto gdc_bin = gen_gdc_bin(cap_info_.width, cap_info_.height, cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info);
-				//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
-				if (gdc_bin) {
-					gdc_bin_buf_.push_back(gdc_bin);
-					pipe_contex[0].gdc_bin = gdc_bin;
-					cal_cam_info_.push_back(cal_cam_info);
-				}
-			} else {
-				auto gdc_bin = gen_gdc_bin(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info);
+			if (cal_tpye_ == 0) {
+				auto gdc_bin = gen_gdc_bin(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height,
+										&cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_);
 				//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
 				if (gdc_bin) {
 					gdc_bin_buf_.push_back(gdc_bin);
@@ -255,9 +279,18 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 					cal_cam_info_.push_back(cal_cam_info);
 				}
 			}
-
 		}
 	}
+	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
+		vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
+		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+		if (gdc_bin) {
+			gdc_bin_buf_.push_back(gdc_bin);
+			pipe_contex[0].gdc_bin_r = gdc_bin;
+		}
+	}
+
+
 	ret = create_and_run_vflow(&pipe_contex[0]);
 	ERR_CON_EQ(ret, 0);
   }
@@ -468,9 +501,9 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
   
   *frame_id = out_img.info.frame_id;
   if ("realtime" == cap_info_.frame_ts_type_) {
-	*timestamp = out_img.info.timestamps;
-  } else {
 	*timestamp = out_img.info.sys_timestamps;
+  } else {
+	*timestamp = out_img.info.timestamps;
   }                       
                           
   RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
@@ -1080,10 +1113,10 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ERR_CON_EQ(ret, 0);
 	ret = creat_isp_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
-	if (cap_info_.gdc_enable_) {
+	//if (cap_info_.gdc_enable_) {
 	  creat_gdc_node_r(pipe_contex);
 	  creat_gdc_node(pipe_contex);
-	}
+	//}
 	ret = creat_vse_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
 
@@ -1430,24 +1463,52 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::get_gdc_bin(std::string gdc_bin_f
 	return bin_buf_ptr;
 }
 
-std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height,
-		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info) {
+double  width_tmp;
+double  heigh_tmp;
+
+static int save_gdc_bin = 0;
+
+std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(int in_width, int in_height,int out_width, int out_height,
+		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
+		double rotation, double cal_rotate) {
 	std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf;
-	if (gdc_width <= 0 || gdc_height<= 0 || out_width <= 0 || out_height <= 0 || cam_info.size() != 2) {
+	if (in_width <= 0 || in_height<= 0 || out_width <= 0 || out_height <= 0 || cam_info.size() != 2) {
 		return gdc_bin_buf;
 	}
+	if (!((rotation == 0.0) || (rotation == 90.0) || (rotation == 180.0) || (rotation == 270.0) ||
+	   (cal_rotate == 0.0) || (cal_rotate == 90.0) || (cal_rotate == 180.0) || (cal_rotate == 270.0))) {
+		return gdc_bin_buf;
+	}
+
+	float gdc_width_scale, gdc_height_scale;
+	int in_gdc_width, in_gdc_height;
+
+	if ((cal_rotate == 90.0) || (cal_rotate == 270.0)) {
+		in_gdc_width = in_height;
+		in_gdc_height = in_width;
+	} else {
+		in_gdc_width = in_width;
+		in_gdc_height = in_height;	
+	}
+
+	double rotation_diff = rotation > cal_rotate ? rotation - cal_rotate : 360 + rotation - cal_rotate;
+	int out_gdc_width, out_gdc_height;
+
+	if ((rotation_diff == 90.0) || (rotation_diff == 270.0)) {
+		out_gdc_width = out_height;
+		out_gdc_height = out_width;
+	} else {
+		out_gdc_width = out_width;
+		out_gdc_height = out_height;	
+	}	
+
     // cam param
 	cal_cam_info.clear();
     cv::Mat Rl, Rr, Pl, Pr, Q;
     cv::Mat Kl, Kr, Dl, Dr, R_rl, t_rl;
     cv::Mat undistmap1l, undistmap2l, undistmap1r, undistmap2r;
-	float camera_cx, camera_cy, camera_fx, camera_fy, base_line;
-	float gdc_width_scale, gdc_height_scale, out_width_scale, out_height_scale;
-
-	gdc_width_scale = gdc_width / static_cast<float>(cam_info[0].width);
-	gdc_height_scale = gdc_height / static_cast<float>(cam_info[0].height);
-	out_width_scale = out_width / static_cast<float>(gdc_width);
-	out_height_scale = out_height / static_cast<float>(gdc_height);
+	gdc_width_scale = in_gdc_width / static_cast<float>(cam_info[0].width);
+	gdc_height_scale = in_gdc_height / static_cast<float>(cam_info[0].height);
 
 	Dl = cv::Mat(1, cam_info[0].d.size(), CV_64F, cam_info[0].d.data()).clone();
 	Kl = cv::Mat(3, 3, CV_64F, cam_info[0].k.data()).clone();
@@ -1472,38 +1533,89 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	Kl.at<double>(0, 2) *= gdc_width_scale;
 	Kl.at<double>(1, 1) *= gdc_height_scale;
 	Kl.at<double>(1, 2) *= gdc_height_scale;
-
 	Kr.at<double>(0, 0) *= gdc_width_scale;
 	Kr.at<double>(0, 2) *= gdc_width_scale;
 	Kr.at<double>(1, 1) *= gdc_height_scale;
 	Kr.at<double>(1, 2) *= gdc_height_scale;
+	std::cout << "gdc_width_scale"<<gdc_width_scale << std::endl;
+	std::cout << "gdc_height_scale" <<gdc_height_scale << std::endl;
     std::cout << "Kl:\n" << Kl << std::endl;
 	std::cout << "Dl:\n" << Dl << std::endl;
 	std::cout << "Kr:\n" << Kr << std::endl;
 	std::cout << "Dr:\n" << Dr << std::endl;
 	std::cout << "R_rl:\n" << R_rl << std::endl;
 	std::cout << "t_rl:\n" << t_rl << std::endl;
-	cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(gdc_width, gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0 ,cv::Size(out_width, out_height));
-	cv::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_width, out_height), CV_32FC1, undistmap1l, undistmap2l);
-	cv::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(out_width, out_height), CV_32FC1, undistmap1r, undistmap2r);
+	cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0 ,cv::Size(out_gdc_width, out_gdc_height));
+	cv::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
+	cv::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1r, undistmap2r);
+	int rotation_diff_int = rotation_diff;
+	cv::Mat tmp;
+	cv::Mat rotation_1l;
+	cv::Mat rotation_2l;
+	cv::Mat rotation_1r;
+	cv::Mat rotation_2r;
+    switch(rotation_diff_int) {	
+        case 90:
+    		cv::transpose(undistmap1l, tmp);
+    		cv::flip(tmp, rotation_1l, 1); // 垂直翻转
+    		cv::transpose(undistmap2l, tmp);
+    		cv::flip(tmp, rotation_2l, 1); // 垂直翻转
+
+    		cv::transpose(undistmap1r, tmp);
+    		cv::flip(tmp, rotation_1r, 1); // 垂直翻转
+    		cv::transpose(undistmap2r, tmp);
+    		cv::flip(tmp, rotation_2r, 1); // 垂直翻转
+            break;
+        case 180:
+			cv::flip(undistmap1l, rotation_1l, -1);
+			cv::flip(undistmap2l, rotation_2l, -1);
+
+			cv::flip(undistmap1r, rotation_1r, -1);
+			cv::flip(undistmap2r, rotation_2r, -1);
+			break;
+        case 270:
+    		cv::transpose(undistmap1l, tmp);
+    		cv::flip(tmp, rotation_1l, 0); // 垂直翻转
+    		cv::transpose(undistmap2l, tmp);
+    		cv::flip(tmp, rotation_2l, 0); // 垂直翻转
+
+			cv::transpose(undistmap1r, tmp);
+    		cv::flip(tmp, rotation_1r, 0); // 垂直翻转
+    		cv::transpose(undistmap2r, tmp);
+    		cv::flip(tmp, rotation_2r, 0); // 垂直翻转
+			break;
+		default:
+			rotation_1l = undistmap1l;
+			rotation_2l = undistmap2l;
+
+			rotation_1r = undistmap1r;
+			rotation_2r = undistmap2r;
+			break;
+    }
+
+	std::cout << "Rl:\n" << Rl << std::endl;
+	std::cout << "Rr:\n" << Rr << std::endl;
+	std::cout << "Pl:\n" << Pl << std::endl;
+	std::cout << "Pr:\n" << Pr << std::endl;
 
 	param_t gdc_param;
 	memset(&gdc_param, 0, sizeof(param_t));
 	gdc_param.format = FMT_SEMIPLANAR_420;
-	gdc_param.in.w = gdc_width;
-	gdc_param.in.h = gdc_height;
+	gdc_param.in.w = in_width;
+	gdc_param.in.h = in_height;
 	gdc_param.out.w = out_width;
 	gdc_param.out.h = out_height;
 	gdc_param.x_offset = 0;
 	gdc_param.y_offset = 0;
-	gdc_param.diameter = gdc_height;
+	gdc_param.diameter = in_height;
 	gdc_param.fov = 180;
 
 	window_t  wnds;
 	memset(&wnds, 0, sizeof(window_t));
 	wnds.strength = 1.0;
 	wnds.strengthY = 1.0;
-	wnds.angle = 0;
+	wnds.angle = rotation;
+	//wnds.angle = 0;
 	wnds.elevation = 0;
 	wnds.azimuth = 0;
 	wnds.keep_ratio = 1;
@@ -1520,8 +1632,8 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	wnds.out_r.h = out_height;
 	wnds.input_roi_r.x = 0;
 	wnds.input_roi_r.y = 0;
-	wnds.input_roi_r.w = gdc_width;
-	wnds.input_roi_r.h = gdc_height;
+	wnds.input_roi_r.w = in_width;
+	wnds.input_roi_r.h = in_height;
 	wnds.pan = 0;
 	wnds.tilt = 0;
 	wnds.zoom = 1;
@@ -1536,17 +1648,58 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	wnds.custom.centery = out_height / 2 - 1;
 
 	std::vector<point_t> bin_map(out_width * out_height);
-	std::transform(undistmap1l.ptr<float>(), undistmap1l.ptr<float>() + undistmap1l.total(),
-			undistmap2l.ptr<float>(), bin_map.begin(),
+	width_tmp = in_width;
+	heigh_tmp = in_height;
+	int cal_rotate_int = cal_rotate;
+    switch(cal_rotate_int) {	
+        case 90:
+            std::transform(rotation_1l.ptr<float>(), rotation_1l.ptr<float>() + rotation_1l.total(),
+				rotation_2l.ptr<float>(), bin_map.begin(),
+				[](float x, float y) {
+					point_t p;
+					p.x = static_cast<double>(y);
+					p.y = heigh_tmp - static_cast<double>(x)-1;
+					p.x = p.x<0?0:p.x;
+					p.y = p.y<0?0:p.y;
+					return p;
+				});
+            break;
+        case 180:
+            std::transform(rotation_1l.ptr<float>(), rotation_1l.ptr<float>() + rotation_1l.total(),
+				rotation_2l.ptr<float>(), bin_map.begin(),
+				[](float x, float y) {
+					point_t p;
+					p.x = width_tmp - static_cast<double>(x)-1;
+					p.y = heigh_tmp - static_cast<double>(y)-1;
+					p.x = p.x<0?0:p.x;
+					p.y = p.y<0?0:p.y;
+					return p;
+				});
+			break;
+        case 270:
+			std::transform(rotation_1l.ptr<float>(), rotation_1l.ptr<float>() + rotation_1l.total(),
+				rotation_2l.ptr<float>(), bin_map.begin(),
+				[](float x, float y) {
+					point_t p;
+					p.x = width_tmp - static_cast<double>(y)-1;
+					p.y = static_cast<double>(x);
+					p.x = p.x<0?0:p.x;
+					p.y = p.y<0?0:p.y;
+					return p;
+				});
+			break;
+		default:
+			std::transform(rotation_1l.ptr<float>(), rotation_1l.ptr<float>() + rotation_1l.total(),
+			rotation_2l.ptr<float>(), bin_map.begin(),
 			[](float x, float y) {
 				point_t p;
-				p.x = static_cast<double>(x);
-				p.y = static_cast<double>(y);
+				p.x = static_cast<double>(x<0?0:x);
+				p.y = static_cast<double>(y<0?0:y);
 				return p;
 			});
-
+			break;
+    }
 	wnds.custom.points = bin_map.data();
-
 	uint32_t *bin_buf_ptr = nullptr;
 	uint64_t bin_buf_size;
 	int64_t alloc_flags = 0;
@@ -1557,6 +1710,17 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 		return gdc_bin_buf;
 	}
 
+	std::cout << "left_camera_gdc---bin_buf_size:" << bin_buf_size << std::endl;
+	if (save_gdc_bin) {
+		std::ofstream outfile_;
+		if (!outfile_.is_open()) {
+			outfile_.open("./left_camera_gdc.bin", std::ios::app | std::ios::out | std::ios::binary);
+		}
+		if (outfile_.is_open()) {
+			outfile_.write(reinterpret_cast<char *>(bin_buf_ptr), bin_buf_size);
+		}
+		outfile_.close();
+	}
     hb_mem_common_buf_t *bin_buf = new hb_mem_common_buf_t;
 	memset(bin_buf, 0, sizeof(hb_mem_common_buf_t));
 	alloc_flags = HB_MEM_USAGE_MAP_INITIALIZED | HB_MEM_USAGE_PRIV_HEAP_2_RESERVERD | HB_MEM_USAGE_CPU_READ_OFTEN |
@@ -1581,24 +1745,73 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	gdc_bin_buf.push_back(gdc_bin_ptr);
 
 
-	std::transform(undistmap1r.ptr<float>(), undistmap1r.ptr<float>() + undistmap1r.total(),
-			undistmap2r.ptr<float>(), bin_map.begin(),
+    switch(cal_rotate_int) {	
+        case 90:
+            std::transform(rotation_1r.ptr<float>(), rotation_1r.ptr<float>() + rotation_1r.total(),
+				rotation_2r.ptr<float>(), bin_map.begin(),
+				[](float x, float y) {
+					point_t p;
+					p.x = static_cast<double>(y);
+					p.y = heigh_tmp - static_cast<double>(x)-1;
+					p.x = p.x<0?0:p.x;
+					p.y = p.y<0?0:p.y;
+					return p;
+				});
+            break;
+        case 180:
+            std::transform(rotation_1r.ptr<float>(), rotation_1r.ptr<float>() + rotation_1r.total(),
+				rotation_2r.ptr<float>(), bin_map.begin(),
+				[](float x, float y) {
+					point_t p;
+					p.x = width_tmp - static_cast<double>(x)-1;
+					p.y = heigh_tmp - static_cast<double>(y)-1;
+					p.x = p.x<0?0:p.x;
+					p.y = p.y<0?0:p.y;
+					return p;
+				});
+			break;
+        case 270:
+			std::transform(rotation_1r.ptr<float>(), rotation_1r.ptr<float>() + rotation_1r.total(),
+				rotation_2r.ptr<float>(), bin_map.begin(),
+				[](float x, float y) {
+					point_t p;
+					p.x = width_tmp - static_cast<double>(y)-1;
+					p.y = static_cast<double>(x);
+					p.x = p.x<0?0:p.x;
+					p.y = p.y<0?0:p.y;
+					return p;
+				});
+			break;
+		default:
+			std::transform(rotation_1r.ptr<float>(), rotation_1r.ptr<float>() + rotation_1r.total(),
+			rotation_2r.ptr<float>(), bin_map.begin(),
 			[](float x, float y) {
 				point_t p;
-				p.x = static_cast<double>(x);
-				p.y = static_cast<double>(y);
+				p.x = static_cast<double>(x<0?0:x);
+				p.y = static_cast<double>(y<0?0:y);
 				return p;
 			});
+			break;
+    }
 
 	wnds.custom.points = bin_map.data();
-
 	bin_buf_ptr = nullptr;
 	ret = hbn_gen_gdc_bin(&gdc_param, &wnds, 1, (uint32_t**)&bin_buf_ptr, &bin_buf_size);
 	if (ret != 0 || bin_buf_ptr == nullptr) {
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_gen_gdc_bin failed, ret = %d\n", ret);
 		return gdc_bin_buf;
 	}
-
+	std::cout << "right_camera_gdc---bin_buf_size:" << bin_buf_size << std::endl;
+	if (save_gdc_bin) {
+		std::ofstream outfile_;
+		if (!outfile_.is_open()) {
+			outfile_.open("./right_camera_gdc.bin", std::ios::app | std::ios::out | std::ios::binary);
+		}
+		if (outfile_.is_open()) {
+			outfile_.write(reinterpret_cast<char *>(bin_buf_ptr), bin_buf_size);
+		}
+		outfile_.close();
+	}
     bin_buf = new hb_mem_common_buf_t;
 	memset(bin_buf, 0, sizeof(hb_mem_common_buf_t));
 	alloc_flags = HB_MEM_USAGE_MAP_INITIALIZED | HB_MEM_USAGE_PRIV_HEAP_2_RESERVERD | HB_MEM_USAGE_CPU_READ_OFTEN |
@@ -1623,7 +1836,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	gdc_bin_ptr->bin_buf_size = bin_buf_size;
 	gdc_bin_buf.push_back(gdc_bin_ptr);
 	
-
+	float camera_cx, camera_cy, camera_fx, camera_fy, base_line;
 	camera_fx = Q.at<double>(2, 3);
 	camera_fy = Q.at<double>(2, 3);
 	camera_cx = -Q.at<double>(0, 3);
@@ -1636,6 +1849,21 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	K.at<double>(1, 1) = camera_fy;
 	K.at<double>(1, 2) = camera_cy;
 	K.at<double>(2, 2) = 1;
+
+	double tmp_t = 0;
+    switch(rotation_diff_int) {	
+        case 90:
+		case 270:
+			tmp_t = K.at<double>(0,0);
+			K.at<double>(0,0) = K.at<double>(1,1);
+			K.at<double>(1,1) = tmp_t;
+			tmp_t = K.at<double>(0,2);
+			K.at<double>(0,2) = out_height - K.at<double>(1,2);
+			K.at<double>(1,2) = tmp_t;
+            break;
+		default:
+			break;
+    }
 
 	RT = cv::Mat::eye(3, 4, CV_64F);
 	cv::Mat P = K * RT;
@@ -1681,20 +1909,44 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 			<< std::endl;
 
 	return gdc_bin_buf;
-
-
 }
 
-std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int gdc_width, int gdc_height,int out_width, int out_height,
-       sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info) {
-	if (gdc_width <= 0 || gdc_height<= 0 || out_width <= 0 || out_height <= 0 ||  cam_info == nullptr || cal_cam_info == nullptr) {
+std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int in_width, int in_height,int out_width, int out_height,
+       sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info,
+	   double rotation, double cal_rotate) {
+	if (in_width <= 0 || in_height<= 0 || out_width <= 0 || out_height <= 0 ||  cam_info == nullptr || cal_cam_info == nullptr) {
 		return nullptr;
 	}
-	float gdc_width_scale, gdc_height_scale, out_width_scale, out_height_scale;
-	gdc_width_scale = gdc_width / static_cast<float>(cam_info->width);
-	gdc_height_scale = gdc_height / static_cast<float>(cam_info->height);
-	out_width_scale = out_width / static_cast<float>(gdc_width);
-	out_height_scale = out_height /  static_cast<float>(gdc_height);
+	cv::Mat rot_mat;
+
+	if (!((rotation == 0.0) || (rotation == 90.0) || (rotation == 180.0) || (rotation == 270.0) ||
+	   (cal_rotate == 0.0) || (cal_rotate == 90.0) || (cal_rotate == 180.0) || (cal_rotate == 270.0))) {
+		return nullptr;
+	}
+	float gdc_width_scale, gdc_height_scale;
+	int in_gdc_width, in_gdc_height;
+
+	if ((cal_rotate == 90.0) || (cal_rotate == 270.0)) {
+		in_gdc_width = in_height;
+		in_gdc_height = in_width;
+	} else {
+		in_gdc_width = in_width;
+		in_gdc_height = in_height;	
+	}
+
+	double rotation_diff = rotation > cal_rotate ? rotation - cal_rotate : 360 + rotation - cal_rotate;
+	int out_gdc_width, out_gdc_height;
+
+	if ((rotation_diff == 90.0) || (rotation_diff == 270.0)) {
+		out_gdc_width = out_height;
+		out_gdc_height = out_width;
+	} else {
+		out_gdc_width = out_width;
+		out_gdc_height = out_height;	
+	}	
+
+	gdc_width_scale = in_gdc_width / static_cast<float>(cam_info->width);
+	gdc_height_scale = in_gdc_height / static_cast<float>(cam_info->height);
 	cv::Mat K, D, R, T, P;
 	D = cv::Mat(1, cam_info->d.size(), CV_64F, cam_info->d.data()).clone();
 	K = cv::Mat(3, 3, CV_64F, cam_info->k.data()).clone();
@@ -1708,23 +1960,30 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int gdc_width, int gd
 	K.at<double>(1, 1) *= gdc_height_scale;
 	K.at<double>(1, 2) *= gdc_height_scale;	
 
+	std::cout << "gdc_width_scale"<<gdc_width_scale << std::endl;
+	std::cout << "gdc_height_scale" <<gdc_height_scale << std::endl;
+    std::cout << "K:\n" << K << std::endl;
+	std::cout << "D:\n" << D << std::endl;
+	std::cout << "R:\n" << R << std::endl;
+	std::cout << "T:\n" << T << std::endl;
+
     param_t gdc_param;
 	memset(&gdc_param, 0, sizeof(param_t));
 	gdc_param.format = FMT_SEMIPLANAR_420;
-	gdc_param.in.w = gdc_width;
-	gdc_param.in.h = gdc_height;
-	gdc_param.out.w = gdc_width;
-	gdc_param.out.h = gdc_height;
+	gdc_param.in.w = in_width;
+	gdc_param.in.h = in_height;
+	gdc_param.out.w = out_width;
+	gdc_param.out.h = out_height;
 	gdc_param.x_offset = 0;
 	gdc_param.y_offset = 0;
-	gdc_param.diameter = gdc_height;
+	gdc_param.diameter = in_height;
 	gdc_param.fov = 180;
 
 	window_t  wnds;
 	memset(&wnds, 0, sizeof(window_t));
 	wnds.strength = 1.0;
 	wnds.strengthY = 1.0;
-	wnds.angle = 0;
+	wnds.angle = rotation;
 	wnds.elevation = 0;
 	wnds.azimuth = 0;
 	wnds.keep_ratio = 1;
@@ -1737,12 +1996,12 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int gdc_width, int gd
 
 	wnds.out_r.x = 0;
 	wnds.out_r.y = 0;
-	wnds.out_r.w = gdc_width;
-	wnds.out_r.h = gdc_height;
+	wnds.out_r.w = out_width;
+	wnds.out_r.h = out_height;
 	wnds.input_roi_r.x = 0;
 	wnds.input_roi_r.y = 0;
-	wnds.input_roi_r.w = gdc_width;
-	wnds.input_roi_r.h = gdc_height;
+	wnds.input_roi_r.w = in_width;
+	wnds.input_roi_r.h = in_height;
 	wnds.pan = 0;
 	wnds.tilt = 0;
 	wnds.zoom = 1;
@@ -1750,24 +2009,95 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int gdc_width, int gd
 	wnds.custom.full_tile_calc = 1;
 	wnds.custom.tile_incr_x = 50;
 	wnds.custom.tile_incr_y = 50;
-	wnds.custom.w = gdc_width - 1;
-	wnds.custom.h = gdc_height - 1;
-	wnds.custom.centerx = gdc_width / 2 - 1;
-	wnds.custom.centery = gdc_height / 2 - 1;
+	wnds.custom.w = out_width - 1;
+	wnds.custom.h = out_height - 1;
+	wnds.custom.centerx = out_width / 2 - 1;
+	wnds.custom.centery = out_height / 2 - 1;
 
 	cv::Mat undistmap1l, undistmap2l;
-	cv::Mat new_K = cv::getOptimalNewCameraMatrix(K, D, cv::Size(gdc_width, gdc_height), 0, cv::Size(gdc_width, gdc_height));
-	cv::initUndistortRectifyMap(K, D, cv::Mat(), new_K, cv::Size(gdc_width, gdc_height), CV_32FC1, undistmap1l, undistmap2l);
+	cv::Mat new_K = cv::getOptimalNewCameraMatrix(K, D, cv::Size(in_width, in_height), 0, cv::Size(out_gdc_width, out_gdc_height), nullptr, true);
+	cv::initUndistortRectifyMap(K, D, cv::Mat(), new_K, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
+	
 
-	std::vector<point_t> bin_map(gdc_width * gdc_height);
-	std::transform(undistmap1l.ptr<float>(), undistmap1l.ptr<float>() + undistmap1l.total(),
-			undistmap2l.ptr<float>(), bin_map.begin(),
+	int rotation_diff_int = rotation_diff;
+	cv::Mat tmp;
+	cv::Mat rotation_1;
+	cv::Mat rotation_2;
+    switch(rotation_diff_int) {	
+        case 90:
+    		cv::transpose(undistmap1l, tmp);
+    		cv::flip(tmp, rotation_1, 1); // 垂直翻转
+    		cv::transpose(undistmap2l, tmp);
+    		cv::flip(tmp, rotation_2, 1); // 垂直翻转
+            break;
+        case 180:
+			cv::flip(undistmap1l, rotation_1, -1);
+			cv::flip(undistmap2l, rotation_2, -1);
+			break;
+        case 270:
+    		cv::transpose(undistmap1l, tmp);
+    		cv::flip(tmp, rotation_1, 0); // 垂直翻转
+    		cv::transpose(undistmap2l, tmp);
+    		cv::flip(tmp, rotation_2, 0); // 垂直翻转
+			break;
+		default:
+			rotation_1 = undistmap1l;
+			rotation_2 = undistmap2l;
+			break;
+    }
+	std::vector<point_t> bin_map(out_width * out_height);
+	width_tmp = in_width;
+	heigh_tmp = in_height;
+	int cal_rotate_int = cal_rotate;
+    switch(cal_rotate_int) {	
+        case 90:
+            std::transform(rotation_1.ptr<float>(), rotation_1.ptr<float>() + rotation_1.total(),
+				rotation_2.ptr<float>(), bin_map.begin(),
+				[](float x, float y) {
+					point_t p;
+					p.x = static_cast<double>(y);
+					p.y = heigh_tmp - static_cast<double>(x)-1;
+					p.x = p.x<0?0:p.x;
+					p.y = p.y<0?0:p.y;
+					return p;
+				});
+            break;
+        case 180:
+            std::transform(rotation_1.ptr<float>(), rotation_1.ptr<float>() + rotation_1.total(),
+				rotation_2.ptr<float>(), bin_map.begin(),
+				[](float x, float y) {
+					point_t p;
+					p.x = width_tmp - static_cast<double>(x)-1;
+					p.y = heigh_tmp - static_cast<double>(y)-1;
+					p.x = p.x<0?0:p.x;
+					p.y = p.y<0?0:p.y;
+					return p;
+				});
+			break;
+        case 270:
+			std::transform(rotation_1.ptr<float>(), rotation_1.ptr<float>() + rotation_1.total(),
+				rotation_2.ptr<float>(), bin_map.begin(),
+				[](float x, float y) {
+					point_t p;
+					p.x = width_tmp - static_cast<double>(y)-1;
+					p.y = static_cast<double>(x);
+					p.x = p.x<0?0:p.x;
+					p.y = p.y<0?0:p.y;
+					return p;
+				});
+			break;
+		default:
+			std::transform(rotation_1.ptr<float>(), rotation_1.ptr<float>() + rotation_1.total(),
+			rotation_2.ptr<float>(), bin_map.begin(),
 			[](float x, float y) {
 				point_t p;
-				p.x = static_cast<double>(x);
-				p.y = static_cast<double>(y);
+				p.x = static_cast<double>(x<0?0:x);
+				p.y = static_cast<double>(y<0?0:y);
 				return p;
 			});
+			break;
+    }
+
 
 	wnds.custom.points = bin_map.data();
 
@@ -1778,11 +2108,11 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int gdc_width, int gd
 		std::ostringstream stream;
 		stream << "1" << std::endl;
 		stream << "50 50" << std::endl;
-		stream << gdc_height << " " << gdc_width << std::endl;
+		stream << out_height << " " << out_width << std::endl;
 		stream << wnds.custom.centery << " " << wnds.custom.centerx << std::endl;
 		point_t *tmp_ptr = bin_map.data();
-		for (int i = 0; i < gdc_height; i++) {
-			for (int j = 0; j < gdc_width; j++) {
+		for (int i = 0; i < out_height; i++) {
+			for (int j = 0; j < out_width; j++) {
 				stream << tmp_ptr->y << ":" << tmp_ptr->x << " ";
 				tmp_ptr++;
 			}
@@ -1829,15 +2159,42 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int gdc_width, int gd
 	cal_cam_info->width = out_width;
     cal_cam_info->height = out_height;
     cal_cam_info->d.resize(cam_info->d.size(),0.0);
-	new_K.at<double>(0, 0) *= out_width_scale;
-	new_K.at<double>(0, 2) *= out_width_scale;
-	new_K.at<double>(1, 1) *= out_height_scale;
-	new_K.at<double>(1, 2) *= out_height_scale;	
+
+
+	double tmp_t = 0;
+    switch(rotation_diff_int) {	
+        case 90:
+		case 270:
+			tmp_t = new_K.at<double>(0,0);
+			new_K.at<double>(0,0) = new_K.at<double>(1,1);
+			new_K.at<double>(1,1) = tmp_t;
+			tmp_t = new_K.at<double>(0,2);
+			new_K.at<double>(0,2) = out_height - new_K.at<double>(1,2);
+			new_K.at<double>(1,2) = tmp_t;
+            break;
+		default:
+			break;
+    }
+
+	// new_K.at<double>(0, 0) *= out_width_scale;
+	// new_K.at<double>(0, 2) *= out_width_scale;
+	// new_K.at<double>(1, 1) *= out_height_scale;
+	// new_K.at<double>(1, 2) *= out_height_scale;	
 	std::copy(new_K.ptr<double>(0), new_K.ptr<double>(0) + new_K.total(), cal_cam_info->k.begin());
-    cal_cam_info->r = cam_info->r;
+    
+	cal_cam_info->r[0] = 1.0;
+    cal_cam_info->r[1] = 0.0;
+    cal_cam_info->r[2] = 0.0;
+    cal_cam_info->r[3] = 0.0;
+    cal_cam_info->r[4] = 1.0;
+    cal_cam_info->r[5] = 0.0;
+    cal_cam_info->r[6] = 0.0;
+    cal_cam_info->r[7] = 0.0;
+    cal_cam_info->r[8] = 1.0;
+
+	RT = cv::Mat::eye(3, 4, CV_64F);
 	cv::Mat new_P = new_K * RT;
 	std::copy(new_P.ptr<double>(0), new_P.ptr<double>(0) + new_P.total(), cal_cam_info->p.begin());
-
 	return gdc_bin_ptr;
 }
 
@@ -1846,7 +2203,6 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin_rotation(int gdc_widt
 	if (gdc_width <= 0 || gdc_height<= 0 || out_width <= 0 || out_height <= 0) {
 		return nullptr;
 	}
-	std::cout << "gen_gdc_bin_rotation---gdc_width:"<<gdc_width<<",gdc_height:"<<gdc_height<<",out_width:"<<out_width<<",out_height:"<<out_height<<",rotation:"<<rotation<<std::endl;
     param_t gdc_param;
 	memset(&gdc_param, 0, sizeof(param_t));
 	gdc_param.format = FMT_SEMIPLANAR_420;
@@ -2055,7 +2411,254 @@ int HobotMipiCapIml::detectEeprom(std::string &device, int &i2c_bus, uint16_t &i
   return -1;
 }
 
+int HobotMipiCapIml::detectEeprom_drobot(std::string &device, int &i2c_bus, uint16_t &i2c_addr) {
+
+  // mipi sensor的信息数组
+  EEPROM_DETECT_T eeprom_detect_list[] = {
+    {1, 0x50, I2C_ADDR_16, 0x00, "SZYGSJKJ", "yuguang"},  // P24C64G-C4H-MIR
+  };
+  std::vector<int> i2c_buss= {0,1,2,3,4,5,6,7,8,9,10};
+
+  char buf[9] = {0};
+  std::vector<char> buf_type;
+  buf_type.resize(0x1f);
+  char check_0;
+  char checksum;
+  std::string chip_type;
+  
+  for (auto num : i2c_buss) {
+    for (auto eeprom_id : eeprom_detect_list) {
+      if (readEeprom16(num, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 8)) {
+		std::string buf_str = buf;
+		std::cout << "EEPROM FLAG:" << buf_str << std::endl;
+		if (eeprom_id.check_str == buf_str) {
+			i2c_bus = num;
+			i2c_addr = eeprom_id.i2c_dev_addr;
+			device = eeprom_id.device_name;
+			return 0;
+		}
+      }
+    }
+  }
+  return -1;
+}
+
+
 bool HobotMipiCapIml::getDualCamCalibrationFromEeprom() {
+  int i2c_bus;
+  uint16_t i2c_addr;
+  std::string device;
+  std::vector<char> i2c_buf;
+  i2c_buf.resize(sizeof(CalDualCamInfo_ST));
+  char chech_value;
+  if (detectEeprom_drobot(device, i2c_bus, i2c_addr) == -1) {
+	return false;
+  }
+  if (device == "yuguang") {
+	getDualCamCalibration_yugang(i2c_bus, i2c_addr);
+  }
+  return false;
+}
+
+bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) {
+  std::string device;
+  std::vector<char> head_buf;
+  head_buf.resize(sizeof(EepromDrobotHead_ST));
+  char chech_value;
+  if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(), sizeof(EepromDrobotHead_ST)) == false) {
+	return false;
+  }
+  int chech_index = sizeof(EepromDrobotHead_ST) - 1;
+  chech_value = head_buf[chech_index];
+  head_buf[chech_index] = 0;
+  int sum = 0;
+  
+  std::for_each(head_buf.begin(), head_buf.end(), [&sum](char c) {
+	sum += static_cast<int>(c);
+  });
+  if (((sum % 255) + 1) == chech_value) {
+	EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
+	std::cout << "====EepromDrobotHead======" << std::endl;
+	std::cout << "flag:" << head_buf_ptr->flag << std::endl;
+	printf("camType:%d\n", head_buf_ptr->camType);
+	printf("cal_tpye:%d\n", head_buf_ptr->cal_tpye);
+	printf("ver_main:%d\n", head_buf_ptr->ver_main);
+	printf("ver_min:%d\n", head_buf_ptr->ver_min);
+	printf("angle:%d\n", head_buf_ptr->angle);
+	printf("d_num:%d\n", head_buf_ptr->d_num);
+
+	if (head_buf_ptr->angle == 0x00) {
+		cap_info_.cal_rotation_ = 0.0;
+	} else if (head_buf_ptr->angle == 0x01) {
+		cap_info_.cal_rotation_ = 90.0;
+	} else if (head_buf_ptr->angle == 0x02) {
+		cap_info_.cal_rotation_ = 180.0;
+	} else if (head_buf_ptr->angle == 0x03) {
+		cap_info_.cal_rotation_ = 270.0;
+	}
+
+	if (head_buf_ptr->cal_tpye == 0x00) {
+		cal_tpye_ = 0; //针孔标定
+	} else if (head_buf_ptr->cal_tpye == 0x01) {
+		cal_tpye_ = 1; //鱼眼标定
+	} 
+
+	if (head_buf_ptr->camType == 0x01) {
+		cam_info_.resize(2);
+		CalDualMDInfo_ST m_d_info_l, m_d_info_r;
+		CalDualRTInfo_ST r_t_info;
+		if (readEeprom16(i2c_bus, i2c_addr, 0x0010, (char*)&m_d_info_l, sizeof(CalDualMDInfo_ST)) == false) {
+			return false;
+		}
+		if (readEeprom16(i2c_bus, i2c_addr, 0x0048, (char*)&m_d_info_r, sizeof(CalDualMDInfo_ST)) == false) {
+			return false;
+		}
+		if (readEeprom16(i2c_bus, i2c_addr, 0x008C, (char*)&r_t_info, sizeof(CalDualRTInfo_ST)) == false) {
+			return false;
+		}
+		
+		std::cout << "===========================" << std::endl;
+		std::cout << "m_d_info_l" << std::endl;
+		printf("width:%d\n",m_d_info_l.width);
+		printf("height:%d\n",m_d_info_l.height);
+		printf("fx:%f\n",m_d_info_l.fx);
+		printf("cx:%f\n",m_d_info_l.cx);
+		printf("fy:%f\n",m_d_info_l.fy);
+		printf("cy:%f\n",m_d_info_l.cy);
+
+		// printf("k1:%f\n",m_d_info_l.k1);
+		// printf("k2:%f\n",m_d_info_l.k2);
+		// printf("p1:%f\n",m_d_info_l.p1);
+		// printf("p2:%f\n",m_d_info_l.p2);
+		// printf("k3:%f\n",m_d_info_l.k3);
+		// printf("k4:%f\n",m_d_info_l.k4);
+		// printf("k5:%f\n",m_d_info_l.k5);
+		// printf("k6:%f\n",m_d_info_l.k6);
+
+		std::cout << "===========================" << std::endl;
+		std::cout << "m_d_info_r" << std::endl;
+		printf("width:%d\n",m_d_info_r.width);
+		printf("height:%d\n",m_d_info_r.height);
+		printf("fx:%f\n",m_d_info_r.fx);
+		printf("cx:%f\n",m_d_info_r.cx);
+		printf("fy:%f\n",m_d_info_r.fy);
+		printf("cy:%f\n",m_d_info_r.cy);
+		// printf("k1:%f\n",m_d_info_r.k1);
+		// printf("k2:%f\n",m_d_info_r.k2);
+		// printf("p1:%f\n",m_d_info_r.p1);
+		// printf("p2:%f\n",m_d_info_r.p2);
+		// printf("k3:%f\n",m_d_info_r.k3);
+		// printf("k4:%f\n",m_d_info_r.k4);
+		// printf("k5:%f\n",m_d_info_r.k5);
+		// printf("k6:%f\n",m_d_info_r.k6);
+
+		std::cout << "===========================" << std::endl;
+		std::cout << "r_t_info" << std::endl;
+		printf("r11:%f\n",r_t_info.r11);
+		printf("r12:%f\n",r_t_info.r12);
+		printf("r13:%f\n",r_t_info.r13);
+		printf("r21:%f\n",r_t_info.r21);
+		printf("r22:%f\n",r_t_info.r22);
+		printf("r23:%f\n",r_t_info.r23);
+		printf("r31:%f\n",r_t_info.r31);
+		printf("r32:%f\n",r_t_info.r32);
+		printf("r33:%f\n",r_t_info.r33);
+		printf("tx:%f\n",r_t_info.tx);
+		printf("ty:%f\n",r_t_info.ty);
+		printf("tz:%f\n",r_t_info.tz);
+
+		cam_info_[0].width = m_d_info_l.width;
+		cam_info_[0].height = m_d_info_l.height;
+		cam_info_[1].width = m_d_info_r.width;
+		cam_info_[1].height = m_d_info_r.height;
+
+		cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
+		l_k.at<double>(0,0) = m_d_info_l.fx;
+		l_k.at<double>(0,2) = m_d_info_l.cx;
+		l_k.at<double>(1,1) = m_d_info_l.fy;
+		l_k.at<double>(1,2) = m_d_info_l.cy;
+		l_k.at<double>(2,2) = 1;
+		std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
+		
+		int d_num = 8;
+		if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
+			d_num = head_buf_ptr->d_num;
+		}
+		cam_info_[0].d.resize(d_num);
+		for (int i = 0; i < d_num; i++) {
+			cam_info_[0].d[i] = m_d_info_l.d[i];
+		}
+		// cam_info_[0].d[0] = m_d_info_l.k1;
+		// cam_info_[0].d[1] = m_d_info_l.k2;
+		// cam_info_[0].d[2] = m_d_info_l.p1;
+		// cam_info_[0].d[3] = m_d_info_l.p2;
+		// cam_info_[0].d[4] = m_d_info_l.k3;
+		// cam_info_[0].d[5] = m_d_info_l.k4;
+		// cam_info_[0].d[6] = m_d_info_l.k5;
+		// cam_info_[0].d[7] = m_d_info_l.k6;
+
+		cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
+		std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
+
+		cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
+		cv::Mat l_p = l_k * l_p_eye;
+		std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
+
+
+
+		cv::Mat r_k= cv::Mat::zeros(3,3,CV_64F);
+		r_k.at<double>(0,0) = m_d_info_r.fx;
+		r_k.at<double>(0,2) = m_d_info_r.cx;
+		r_k.at<double>(1,1) = m_d_info_r.fy;
+		r_k.at<double>(1,2) = m_d_info_r.cy;
+		r_k.at<double>(2,2) = 1;
+		std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
+
+		// cam_info_[1].d.resize(8);
+		// cam_info_[1].d[0] = m_d_info_r.k1;
+		// cam_info_[1].d[1] = m_d_info_r.k2;
+		// cam_info_[1].d[2] = m_d_info_r.p1;
+		// cam_info_[1].d[3] = m_d_info_r.p2;
+		// cam_info_[1].d[4] = m_d_info_r.k3;
+		// cam_info_[1].d[5] = m_d_info_r.k4;
+		// cam_info_[1].d[6] = m_d_info_r.k5;
+		// cam_info_[1].d[7] = m_d_info_r.k6;
+
+		cam_info_[1].d.resize(d_num);
+		for (int i = 0; i < d_num; i++) {
+			cam_info_[1].d[i] = m_d_info_r.d[i];
+		}
+
+		cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
+		R.at<double>(0,0) = r_t_info.r11;
+		R.at<double>(0,1) = r_t_info.r12;
+		R.at<double>(0,2) = r_t_info.r13;
+		R.at<double>(1,0) = r_t_info.r21;
+		R.at<double>(1,1) = r_t_info.r22;
+		R.at<double>(1,2) = r_t_info.r23;
+		R.at<double>(2,0) = r_t_info.r31;
+		R.at<double>(2,1) = r_t_info.r32;
+		R.at<double>(2,2) = r_t_info.r33;
+
+		cv::Mat T = cv::Mat::zeros(3, 1, CV_64F);
+		T.at<double>(0,0) = r_t_info.tx;
+		T.at<double>(0,1) = r_t_info.ty;
+		T.at<double>(0,2) = r_t_info.tz;
+
+		cv::Mat RT;
+		cv::hconcat(R, T, RT);
+		cv::Mat P = r_k * RT;
+		std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
+		std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
+		return true;
+	}
+
+  }
+  return false;
+}
+
+
+bool HobotMipiCapIml::getDualCamCalibrationFromEeprom_230ai() {
   int i2c_bus;
   uint16_t i2c_addr;
   std::string device;
@@ -2155,5 +2758,6 @@ bool HobotMipiCapIml::getDualCamCalibrationFromEeprom() {
   }
   return false;
 }
+
 
 }  // namespace mipi_cam

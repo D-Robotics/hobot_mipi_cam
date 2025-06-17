@@ -53,6 +53,11 @@ def generate_launch_description():
         default_value='0.0',
         description='mipi camera out image rotation')
 
+    mipi_cal_rotation_arg = DeclareLaunchArgument(
+        'mipi_cal_rotation',
+        default_value='0.0',
+        description='mipi camera calibration rotation')
+
     mipi_gdc_enable_arg = DeclareLaunchArgument(
         'mipi_gdc_enable',
         default_value='True',
@@ -70,12 +75,13 @@ def generate_launch_description():
             'mipi_io_method': 'ros',
             'device_mode': 'dual',
             'dual_combine': '2',
-            'mipi_channel': '0',
-            'mipi_channel2': '2',
+            'mipi_channel': '2',
+            'mipi_channel2': '0',
             'mipi_lpwm_enable': LaunchConfiguration('mipi_lpwm_enable'),
             'mipi_camera_calibration_file_path':  LaunchConfiguration('mipi_camera_calibration_file_path'),
             'mipi_gdc_bin_file': './sc230ai_gdc.bin',
             'mipi_rotation': LaunchConfiguration('mipi_rotation'),
+            'mipi_cal_rotation': LaunchConfiguration('mipi_cal_rotation'),
             'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
             'mipi_frame_ts_type': 'sensor'
         }.items()
@@ -120,6 +126,7 @@ def generate_launch_description():
         mipi_image_width_arg,
         mipi_image_height_arg,
         mipi_rotation_arg,
+        mipi_cal_rotation_arg,
         mipi_gdc_enable_arg,
         shared_mem_node,
         # image publish

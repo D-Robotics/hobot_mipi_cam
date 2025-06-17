@@ -84,6 +84,7 @@ void MipiCamNode::getParams() {
   this->declare_parameter("dual_combine", 0);
   this->declare_parameter("lpwm_enable", false);
   this->declare_parameter("rotation", 0.0);
+  this->declare_parameter("cal_rotation", 0.0);
   this->declare_parameter("gdc_enable", true);
   this->declare_parameter("frame_ts_type", nodePare_->frame_ts_type_);
   auto parameters_client = std::make_shared<rclcpp::SyncParametersClient>(this);
@@ -105,6 +106,7 @@ void MipiCamNode::getParams() {
                                           "dual_combine",
                                           "lpwm_enable",
                                           "rotation",
+                                           "cal_rotation",
                                           "gdc_enable",
                                           "frame_ts_type"
                                           })) {
@@ -181,6 +183,11 @@ void MipiCamNode::getParams() {
                   "rotation: %f",
                   parameter.as_double());
       nodePare_->rotation_ = parameter.as_double();
+    } else if (parameter.get_name() == "cal_rotation") {
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+                  "cal_rotation: %f",
+                  parameter.as_double());
+      nodePare_->cal_rotation_ = parameter.as_double();
     } else if (parameter.get_name() == "gdc_enable") {
       nodePare_->gdc_enable_ = parameter.as_bool();
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
