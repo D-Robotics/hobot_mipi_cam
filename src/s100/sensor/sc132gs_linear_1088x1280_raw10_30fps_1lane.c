@@ -1,20 +1,20 @@
 #include "vp_sensors.h"
 
-#define SENSOR_WIDTH  1920
-#define SENSOR_HEIGHT  1080
+#define SENSOR_WIDTH  1088
+#define SENSOR_HEIGHT  1280
 #define SENSOE_FPS 30
 #define RAW10 0x2B
 
-// imx219 的sample配置
-static mipi_config_t imx219_mipi_config = {
+// sc132gs 的sample配置
+static mipi_config_t sc132gs_mipi_config = {
     .rx_enable = 1,
     .rx_attr = {
         .phy = 0,
-        .lane = 2,
-        .datatype = 0x12b,
-        .fps = 30,
-        .mclk = 24,
-        .mipiclk = 1728,
+        .lane = 1,
+        .datatype = RAW10,
+        .fps = SENSOE_FPS,
+        .mclk = 1,
+        .mipiclk = 1200,
         .width = 0,
         .height = 0,
         .linelenth = 0,
@@ -24,43 +24,43 @@ static mipi_config_t imx219_mipi_config = {
         .channel_sel = {0},
     },
 
-    .rx_ex_mask = 0x40,
+    .rx_ex_mask = 0x1,
     .rx_attr_ex = {
-        .stop_check_instart = 1,
+        .nocheck = 1,
     },
 
     .end_flag = MIPI_CONFIG_END_FLAG,
 };
 
-static camera_config_t imx219_camera_config = {
+static camera_config_t sc132gs_camera_config = {
         /* 0 */
-        .name = "imx219",
-        .addr = 0x10,
+        .name = "sc132gs",
+        .addr = 0x33,
         .eeprom_addr = 0x51,
         .serial_addr = 0x40,
         .sensor_mode = 1,
-        .fps = 30,
-        .width = 1920,
-        .height = 1080,
+        .fps = SENSOE_FPS,
+        .width = SENSOR_WIDTH,
+        .height = SENSOR_HEIGHT,
         .extra_mode = 0,
         .config_index = 0,
-        .mipi_cfg = &imx219_mipi_config, // MIPI配置,NULL自动获取
+        .mipi_cfg = &sc132gs_mipi_config, // MIPI配置,NULL自动获取
         .end_flag = CAMERA_CONFIG_END_FLAG,
-        .calib_lname = "lib_imx219_linear.so",
+        .calib_lname = "lib_sc132gs_linear.so",
 };
 
-static isp_cfg_t imx219_isp_config = {
+static isp_cfg_t sc132gs_isp_config = {
     .isp_attr = {
         .channel = {
             .hw_id = 1,
-            .slot_id = 4,
+            .slot_id = 5,
             .ctx_id = -1, //#define AUTO_ALLOC_ID -1
         },
         .work_mode = 0,
         .hdr_mode = 0,
         .size = {
-            .width = 1920,
-            .height = 1080,
+            .width = SENSOR_WIDTH,
+            .height = SENSOR_HEIGHT,
         },
         .frame_rate = 30,
         .sched_mode = 1,
@@ -113,7 +113,7 @@ static isp_cfg_t imx219_isp_config = {
     }
 };
 
-static vin_attr_t imx219_vin_attr = {
+static vin_attr_t sc132gs_vin_attr = {
     .vin_node_attr = {
         .vcon_attr = {
             .bus_main = 2,
@@ -144,8 +144,8 @@ static vin_attr_t imx219_vin_attr = {
     },
 
     .vin_ichn_attr = {
-        .width =  1920,
-        .height = 1080,
+        .width =  SENSOR_WIDTH,
+        .height = SENSOR_HEIGHT,
         .format = 43,
     },
 
@@ -160,7 +160,7 @@ static vin_attr_t imx219_vin_attr = {
             .ddr_en = 1,
             .vin_basic_attr = {
                 .format = 43,
-                .wstride = 0,
+                .wstride = 1376,
                 .pack_mode = 1,
             },
             .pingpong_ring = 1,
@@ -192,7 +192,7 @@ static vin_attr_t imx219_vin_attr = {
     .magicNumber = MAGIC_NUMBER,
 };
 
-struct ynr_init_attr imx219_ynr_attr = {
+struct ynr_init_attr sc132gs_ynr_attr = {
 	.work_mode = 1,
 	.slot_id = 4,
 
@@ -211,10 +211,11 @@ struct ynr_init_attr imx219_ynr_attr = {
 };
 
 
-pym_cfg_t pym_common_config = {
+
+pym_cfg_t sc132gs_pym_common_config = {
         .hw_id = 1,
-        .pym_mode = 3,
-        .slot_id = 4,
+        .pym_mode = 1,
+        .slot_id = 5,
         .pingpong_ring = 0,
         .output_buf_num = 6,
         .fb_buf_num = 2,
@@ -229,14 +230,14 @@ pym_cfg_t pym_common_config = {
         .chn_ctrl = {
             //.pixel_num_before_sol = DEF_PIX_NUM_BF_SOL,
             .invalid_head_lines = 0,
-            .src_in_width = 1920,
-            .src_in_height = 1080,
-            .src_in_stride_y = 1920,
-            .src_in_stride_uv = 1920,
-            .suffix_hb_val = 100,
+            .src_in_width = SENSOR_WIDTH,
+            .src_in_height = SENSOR_HEIGHT,
+            .src_in_stride_y = SENSOR_WIDTH,
+            .src_in_stride_uv = SENSOR_WIDTH,
+            .suffix_hb_val = 68,
             .prefix_hb_val = 2,
-            .suffix_vb_val = 10,
-            .prefix_vb_val = 0,
+            .suffix_vb_val = 20,
+            .prefix_vb_val = 2,
             .ds_roi_en = 1,
             .bl_max_layer_en = 5,
             .ds_roi_uv_bypass = 0,
@@ -250,28 +251,28 @@ pym_cfg_t pym_common_config = {
                 [0] = {
                     .start_left = 0,
                     .start_top = 0,
-                    .region_width = 1920,
-                    .region_height = 1080,
-                    .wstride_uv = 1920,
-                    .wstride_y = 1920,
-                    .out_width = 1920,
-                    .out_height = 1080,
-                    .vstride = 1080, //.out_height,
+                    .region_width = SENSOR_WIDTH,
+                    .region_height = SENSOR_HEIGHT,
+                    .wstride_uv = SENSOR_WIDTH,
+                    .wstride_y = SENSOR_WIDTH,
+                    .out_width = SENSOR_WIDTH,
+                    .out_height = SENSOR_HEIGHT,
+                    .vstride = SENSOR_HEIGHT, //.out_height,
                 },
             },
         },
     .magicNumber = MAGIC_NUMBER,
 };
 
-vp_sensor_config_t imx219_linear_1920x1080_raw10_30fps_2lane = {
-	.chip_id_reg = 0x0000,
-	.chip_id = 0x0219,
-	.sensor_i2c_addr_list = {0x10},
-	.sensor_name = "imx219-30fps",
-	.config_file = "linear_1920x1080_raw10_30fps_2lane.c",
-	.camera_config = &imx219_camera_config,
-	.vin_attr = &imx219_vin_attr,
-	.isp_cfg      = &imx219_isp_config,
-    .ynr_attr      = &imx219_ynr_attr,
-	.pym_cfg = &pym_common_config,
+vp_sensor_config_t sc132gs_linear_1088x1280_raw10_30fps_1lane = {
+	.chip_id_reg = 0x3107,
+	.chip_id = 0x0132,
+	.sensor_i2c_addr_list = {0x30, 0x32, 0x33},
+	.sensor_name = "sc132gs",
+	.config_file = "linear_1088x1280_raw10_30fps_1lane.c",
+	.camera_config = &sc132gs_camera_config,
+	.vin_attr = &sc132gs_vin_attr,
+	.isp_cfg      = &sc132gs_isp_config,
+    .ynr_attr      = &sc132gs_ynr_attr,
+	.pym_cfg = &sc132gs_pym_common_config,
 };
