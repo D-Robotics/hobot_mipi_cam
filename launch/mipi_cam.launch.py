@@ -57,7 +57,7 @@ def generate_launch_description():
             description='mipi camera out image framerate'),
         DeclareLaunchArgument(
             'mipi_channel',
-            default_value='2',
+            default_value='0',
             description='mipi camera host channel'),
         DeclareLaunchArgument(
             'mipi_io_method',
