@@ -166,8 +166,8 @@ typedef struct cal_dualcam_info_st {
 #if 0
 #pragma pack(4)
 typedef struct cal_dual_M_D_st {
-  int height;
   int width;
+  int height;
   float fx;
   float fy;
   float cx;
@@ -186,8 +186,8 @@ typedef struct cal_dual_M_D_st {
 
 #pragma pack(4)
 typedef struct cal_dual_M_D_st {
-  int height;
   int width;
+  int height;
   float fx;
   float fy;
   float cx;
