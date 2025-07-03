@@ -201,7 +201,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		vp_sensor_config_t *sensor_cof = &pipe_contex[1].sensor_config;
 		if (cam_info_.size() != 2) {
 			if (!getDualCamCalibrationFromEeprom()) {
-				if (sensor_cof->sensor_name == "sc230ai-30fps") {
+				if(strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0) {
 					getDualCamCalibrationFromEeprom_230ai();
 				}
 			}
@@ -1208,7 +1208,7 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ret = hbn_camera_attach_to_vin(pipe_contex->cam_fd,
 							pipe_contex->vin_node_handle);
 	ERR_CON_EQ(ret, 0);
-	//if (pipe_contex->sensor_config.sensor_name == "sc230ai-30fps") {
+	//if(strcasecmp(pipe_contex->sensor_config.sensor_name, "sc230ai-30fps") == 0) {
 	//  ret = hbn_camera_change_fps(pipe_contex->cam_fd, pipe_contex->sensor_config.camera_config->fps);
 	//  ERR_CON_EQ(ret, 0);
 	//}
