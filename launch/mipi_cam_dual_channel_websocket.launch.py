@@ -62,7 +62,10 @@ def generate_launch_description():
         'mipi_gdc_enable',
         default_value='True',
         description='mipi gdc enable')
-
+    mipi_image_framerate_arg = DeclareLaunchArgument(
+        'mipi_image_framerate',
+        default_value='10.0',
+        description='mipi camera out image framerate')
     mipi_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -71,7 +74,7 @@ def generate_launch_description():
         launch_arguments={
             'mipi_image_width': LaunchConfiguration('mipi_image_width'),
             'mipi_image_height': LaunchConfiguration('mipi_image_height'),
-            'mipi_image_framerate': '30.0',
+            'mipi_image_framerate': LaunchConfiguration('mipi_image_framerate'),
             'mipi_io_method': 'ros',
             'device_mode': 'dual',
             'dual_combine': '2',
@@ -128,6 +131,7 @@ def generate_launch_description():
         mipi_rotation_arg,
         mipi_cal_rotation_arg,
         mipi_gdc_enable_arg,
+        mipi_image_framerate_arg,
         shared_mem_node,
         # image publish
         mipi_node,
