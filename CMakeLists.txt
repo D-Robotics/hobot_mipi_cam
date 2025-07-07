@@ -92,6 +92,7 @@ elseif(PLATFORM_X5)
     src/x5/sensor/sc230ai_linear_1920x1080_raw10_30fps_1lane.c
     src/x5/sensor/imx219_linear_1920x1080_raw10_30fps_2lane.c
     src/x5/sensor/imx477_linear_1920x1080_raw12_50fps_2lane.c
+    src/x5/sensor/imx415_linear_3840x2160_raw10_30fps_2lane.c
     src/x5/sensor/vp_sensors.c
   )
   include_directories(include 
