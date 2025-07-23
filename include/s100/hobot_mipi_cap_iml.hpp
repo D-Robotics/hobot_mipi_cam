@@ -61,7 +61,6 @@ typedef struct pipe_contex_s {
   vp_csi_config_t csi_config;
   std::shared_ptr<GdcBinBuf_ST> gdc_bin;
   std::shared_ptr<GdcBinBuf_ST> gdc_bin_r;
-  int gdc_bin_buf_is_valid;
   int gdc_init_valid;
   int gdc_init_valid_r;
   int stream_group;
