@@ -52,7 +52,10 @@ def generate_launch_description():
             'mipi_image_height',
             default_value='544',
             description='mipi camera out image height')
-
+    mipi_channel_arg = DeclareLaunchArgument(
+            'mipi_channel',
+            default_value='0',
+            description='mipi camera out image height')
     mipi_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -63,7 +66,7 @@ def generate_launch_description():
             'mipi_image_height': LaunchConfiguration('mipi_image_height'),
             'mipi_image_framerate': '30.0',
             'mipi_io_method': 'ros',
-            'mipi_channel': '0',
+            'mipi_channel': LaunchConfiguration('mipi_channel'),
             'mipi_camera_calibration_file_path': LaunchConfiguration('mipi_camera_calibration_file_path'),
             'mipi_gdc_bin_file': LaunchConfiguration('mipi_gdc_bin_file'),
             'mipi_rotation': LaunchConfiguration('mipi_rotation'),
@@ -112,6 +115,7 @@ def generate_launch_description():
         mipi_image_height_arg,
         mipi_rotation_arg,
         mipi_cal_rotation_arg,
+        mipi_channel_arg,
         shared_mem_node,
         # image publish
         mipi_node,

@@ -320,7 +320,7 @@ char cal_tpye_ = 0; //0x00:针孔标定；0x01：鱼眼标定。
   std::vector<int> mipi_stoped_;
   int pym_channel_ = 0;
   int vin_online_isp = 0;
-  int isp_online_ynr = 1;
+  int isp_online_ynr = 0;
   int ynr_online_pym = 1;
   std::map<int, BOARD_CONFIG_ST> board_config_m_;
   std::map<int, std::vector<std::string>> host_sensor_m_;

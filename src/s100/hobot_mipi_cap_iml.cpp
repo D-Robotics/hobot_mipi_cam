@@ -43,7 +43,7 @@
 
 #define ERR_CON_EQ(ret, a) do {\
 		if ((ret) != (a)) {\
-			printf("%s(%d) failed, ret %d\n", __func__, __LINE__, (int32_t)(ret));\
+			RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "%s(%d) failed, ret %d\n", __func__, __LINE__, (int32_t)(ret));\
 			return (ret);\
 		}\
 	} while(0)\
@@ -120,7 +120,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	}
   }
   if (cap_info_.device_mode_.compare("dual") == 0) {
-	vin_online_isp = 1;
+	vin_online_isp = 0;
 	if (v_host_info_detect.size() < 2) {
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
        		"The detected sensors are 2 less than expected.\n");
@@ -160,16 +160,17 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ERR_CON_EQ(ret, 0);
 	gdc_bin_buf_.clear();
 	if (cap_info_.gdc_enable_) {
-		vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
+		vp_sensor_config_t *sensor_cfg = &pipe_contex[0].sensor_config;
 		if (cam_info_.size() != 2) {
 			if (!getDualCamCalibrationFromEeprom()) {
-				if (sensor_cof->sensor_name == "sc230ai-30fps") {
+				if (sensor_cfg->sensor_name == "sc230ai-30fps") {
 					getDualCamCalibrationFromEeprom_230ai();
 				}		
-		}
+			}
 		}
 		if (cal_tpye_ == 0) {
-			auto gdc_bin = gen_gdc_bin_stereo(cap_info_.width, cap_info_.height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
+			auto gdc_bin = gen_gdc_bin_stereo(sensor_cfg->isp_cfg->isp_attr.size.width, sensor_cfg->isp_cfg->isp_attr.size.height,
+					cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
 			if (gdc_bin.size() == 2) {
 				gdc_bin_buf_.push_back(gdc_bin[0]);
 				gdc_bin_buf_.push_back(gdc_bin[1]);
@@ -177,11 +178,20 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 				pipe_contex[1].gdc_bin = gdc_bin[1];
 			}			
 		}
-	
 	}
 	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
 		vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
-		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_cfg->isp_attr.size.width, sensor_conf->isp_cfg->isp_attr.size.height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+		int width;
+		int height;
+		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+			width = cap_info_.height;
+			height = cap_info_.width;
+		} else {
+			width = cap_info_.width;
+			height = cap_info_.height;
+		}
+
+		auto gdc_bin = gen_gdc_bin_rotation(width, height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
 		if (gdc_bin) {
 			gdc_bin_buf_.push_back(gdc_bin);
 			pipe_contex[0].gdc_bin_r = gdc_bin;
@@ -223,12 +233,12 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ERR_CON_EQ(ret, 0);
     gdc_bin_buf_.clear();
 	if (cap_info_.gdc_enable_) {
-				vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
+				vp_sensor_config_t *sensor_cfg = &pipe_contex[0].sensor_config;
 		if (cam_info_.size() > 0) {
 			sensor_msgs::msg::CameraInfo cal_cam_info;
 			if (cal_tpye_ == 0) {
-				auto gdc_bin = gen_gdc_bin(cap_info_.width, cap_info_.height, cap_info_.width, cap_info_.height,
-										&cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_);
+				auto gdc_bin = gen_gdc_bin(sensor_cfg->isp_cfg->isp_attr.size.width, sensor_cfg->isp_cfg->isp_attr.size.height,
+						cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_);
 				//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
 				if (gdc_bin) {
 					gdc_bin_buf_.push_back(gdc_bin);
@@ -239,8 +249,16 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		}
 	}
 	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
-		vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
-		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_cfg->isp_attr.size.width, sensor_conf->isp_cfg->isp_attr.size.height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+		int width;
+		int height;
+		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 90.0)) {
+			width = cap_info_.height;
+			height = cap_info_.width;
+		} else {
+			width = cap_info_.width;
+			height = cap_info_.height;
+		}
+		auto gdc_bin = gen_gdc_bin_rotation(width, height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
 		if (gdc_bin) {
 			gdc_bin_buf_.push_back(gdc_bin);
 			pipe_contex[0].gdc_bin_r = gdc_bin;
@@ -883,21 +901,18 @@ int HobotMipiCapIml::creat_isp_node(pipe_contex_t *pipe_contex) {
 	int ret = 0;
 	vp_sensor_config_t& sensor_config = pipe_contex->sensor_config;
 	auto vi_hw_id = sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx;
+
 	if((vi_hw_id == 0) || (vi_hw_id == 4)){
 		//vin_online_isp = 0;
-		//isp_attr->channel.slot_id = 4; //4 - 11
 		sensor_config.isp_cfg->isp_attr.channel.slot_id = 4;
 	}else{
 		//vin_online_isp = 0;
-		//isp_attr->channel.slot_id = 0;
-		//sensor_config.isp_cfg->isp_attr.channel.slot_id = 0;
 		sensor_config.isp_cfg->isp_attr.channel.slot_id = 5;
 	}
 
 	//vin_online_isp
 	if(vin_online_isp){
 		sensor_config.isp_cfg->isp_attr.sched_mode = SCHED_MODE_PASS_THRU;
-		//sensor_config.isp_cfg->isp_attr.sched_mode = SCHED_MODE_MANUAL;
 	}else{
 		sensor_config.isp_cfg->isp_attr.sched_mode = SCHED_MODE_MANUAL;
 	}
@@ -910,9 +925,7 @@ int HobotMipiCapIml::creat_isp_node(pipe_contex_t *pipe_contex) {
 		//return -1;
 	}
 
-	auto hw_id = sensor_config.isp_cfg->isp_attr.channel.hw_id;
-
-	ret = hbn_vnode_open(HB_ISP, hw_id, AUTO_ALLOC_ID, &pipe_contex->isp_node_handle);
+	ret = hbn_vnode_open(HB_ISP, 1, AUTO_ALLOC_ID, &pipe_contex->isp_node_handle);
 	ERR_CON_EQ(ret, 0);
 	ret = hbn_vnode_set_attr(pipe_contex->isp_node_handle, sensor_config.isp_cfg);
 	ERR_CON_EQ(ret, 0);
@@ -1090,23 +1103,37 @@ int HobotMipiCapIml::creat_pym_node(pipe_contex_t *pipe_contex) {
 		return -1;
 	}
 #if 1
-
 	auto vi_hw_id = pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx;
 	if(vi_hw_id == 4){
 		pipe_contex->sensor_config.pym_cfg->slot_id = pipe_contex->sensor_config.isp_cfg->isp_attr.channel.slot_id;
 		pipe_contex->sensor_config.pym_cfg->hw_id = 1;
 		pipe_contex->sensor_config.pym_cfg->pym_mode = 1;
 	}
-
 	int src_width = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_width;
 	int src_height = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height;
+    int out_width;
+	int out_height;
+	if (pipe_contex->gdc_init_valid == 1) {
+		out_width = src_width;
+		out_height = src_height;
+	} else {
+		if ((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0)) {
+			out_width = pipe_contex->cap_info_->height;
+			out_height = pipe_contex->cap_info_->width;
+		} else {
+			out_width = pipe_contex->cap_info_->width;
+			out_height = pipe_contex->cap_info_->height;
+		}
+	}
+
 	int roi_sel = 0;
 	int roi_layer = 0;
 	int bl_width = src_width;
 	int bl_height = src_height;
 	int bl_stride = src_width;
-	if (check_pym_config(src_width, src_height, pipe_contex->cap_info_->width,
-			pipe_contex->cap_info_->height, bl_width, bl_height, bl_stride, roi_sel, roi_layer) == -1) {
+	if (check_pym_config(src_width, src_height, out_width,
+			out_height, bl_width, bl_height, bl_stride, roi_sel, roi_layer) == -1) {
+		std::cout << "creat_pym_node----------8888888888" << std::endl;
 		return -1;
 	}
 	std::cout << "creat_pym_node--roi_sel:" << roi_sel <<",roi_layer:" <<roi_layer<< ",bl_width:"<<bl_width <<",bl_height:"<<bl_height<<std::endl;
@@ -1114,11 +1141,11 @@ int HobotMipiCapIml::creat_pym_node(pipe_contex_t *pipe_contex) {
 	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_layer[0] = roi_layer;
 	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].region_width = bl_width;
 	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].region_height = bl_height;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].wstride_uv = pipe_contex->cap_info_->width;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].wstride_y = pipe_contex->cap_info_->width;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].out_width = pipe_contex->cap_info_->width;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].out_height = pipe_contex->cap_info_->height;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].vstride = pipe_contex->cap_info_->height;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].wstride_uv = out_width;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].wstride_y = out_width;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].out_width = out_width;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].out_height = out_height;
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].vstride = out_height;
 #endif
 	int ret = 0;
 	uint32_t chn_id = 0;
@@ -1164,38 +1191,7 @@ int HobotMipiCapIml::creat_gdc_node_r(pipe_contex_t *pipe_contex) {
 	int input_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
 	//int input_width;
 	//int input_height;
-#if 0
-	uint32_t hw_id = 0;
-	ret = hbn_vnode_open(HB_GDC, hw_id, AUTO_ALLOC_ID, &pipe_contex->gdc_node_handle_r);
-	ERR_CON_EQ(ret, 0);
-	gdc_attr_t gdc_attr = {0};
-	gdc_attr.config_addr = pipe_contex->gdc_bin_r->bin_buf->phys_addr;
-	gdc_attr.config_size = pipe_contex->gdc_bin_r->bin_buf->size;
-	gdc_attr.binary_ion_id = pipe_contex->gdc_bin_r->bin_buf->share_id;
-	gdc_attr.binary_offset = pipe_contex->gdc_bin_r->bin_buf->offset;
-	gdc_attr.total_planes = 2;
-	gdc_attr.div_width = input_width;
-	gdc_attr.div_height = input_height;
-	ret = hbn_vnode_set_attr(pipe_contex->gdc_node_handle_r, &gdc_attr);
-	ERR_CON_EQ(ret, 0);
-	//uint32_t chn_id = 0;
 
-	gdc_ichn_attr_t gdc_ichn_attr = {0};
-	gdc_ichn_attr.input_width = input_width;
-	gdc_ichn_attr.input_height = input_height;
-	gdc_ichn_attr.input_stride = input_width;
-	ret = hbn_vnode_set_ichn_attr(pipe_contex->gdc_node_handle_r, chn_id, &gdc_ichn_attr);
-	ERR_CON_EQ(ret, 0);
-
-	gdc_ochn_attr_t gdc_ochn_attr = {0};
-	//gdc_ochn_attr.output_width = input_width;
-	//gdc_ochn_attr.output_height = input_height;
-	//gdc_ochn_attr.output_stride = input_width;
-	gdc_ochn_attr.output_width = pipe_contex->cap_info_->width;
-	gdc_ochn_attr.output_height = pipe_contex->cap_info_->height;
-	gdc_ochn_attr.output_stride = pipe_contex->cap_info_->width;
-	ret = hbn_vnode_set_ochn_attr(pipe_contex->gdc_node_handle_r, chn_id, &gdc_ochn_attr);
-#else
 	gdc_settings_t gdc_setting = {0};
 	uint32_t hw_id = 0;
 	ret = hbn_vnode_open(HB_GDC, hw_id, AUTO_ALLOC_ID, &pipe_contex->gdc_node_handle_r);
@@ -1226,8 +1222,6 @@ int HobotMipiCapIml::creat_gdc_node_r(pipe_contex_t *pipe_contex) {
 	ERR_CON_EQ(ret, 0);
 
 	ret = hbn_vnode_set_ochn_attr(pipe_contex->gdc_node_handle_r, chn_id, &gdc_setting);
-
-#endif
 	ERR_CON_EQ(ret, 0);
 	hbn_buf_alloc_attr_t alloc_attr = {0};
 	alloc_attr.buffers_num = 3;
@@ -1237,7 +1231,7 @@ int HobotMipiCapIml::creat_gdc_node_r(pipe_contex_t *pipe_contex) {
 					HB_MEM_USAGE_CACHED;
 	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->gdc_node_handle_r, chn_id, &alloc_attr);
 	ERR_CON_EQ(ret, 0);
-	pipe_contex->gdc_init_valid_r = 1;
+	pipe_contex->gdc_init_valid_r = 1;	
 
 	return 0;
 }
@@ -1248,16 +1242,8 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 	}
 	int ret = 0;
 	uint32_t chn_id = 0;
-	isp_ichn_attr_t isp_ichn_attr;
-	pipe_contex->gdc_bin_buf_is_valid = 0;
+		pipe_contex->gdc_bin_buf_is_valid = 0;
 	pipe_contex->gdc_init_valid = 0;
-#if 0
-    const char* gdc_bin_file = vp_gdc_get_bin_file(vp_vflow_contex->gdc_info.sensor_name);
-	if(gdc_bin_file == NULL){
-		SC_LOGE("%s is enable gdc, but gdc bin file is not set.", vp_vflow_contex->gdc_info.sensor_name);
-		return -1;
-	}
-#endif
 
 	int input_width;
 	int input_height;
@@ -1271,8 +1257,8 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 		isp_ichn_attr_t isp_ichn_attr;
 		ret = hbn_vnode_get_ichn_attr(pipe_contex->isp_node_handle, chn_id, &isp_ichn_attr);
 		ERR_CON_EQ(ret, 0);
-		//input_width = isp_ichn_attr.width;
-		//input_height = isp_ichn_attr.height;
+		input_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+		input_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
 	}
 
     auto gdc_bin = get_gdc_bin(pipe_contex->cap_info_->gdc_bin_file_);
@@ -1285,37 +1271,33 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 
 	pipe_contex->gdc_bin_buf_is_valid = 1;
 
+
+    gdc_settings_t gdc_setting = {0};
 	uint32_t hw_id = 0;
 	ret = hbn_vnode_open(HB_GDC, hw_id, AUTO_ALLOC_ID, &pipe_contex->gdc_node_handle);
 	ERR_CON_EQ(ret, 0);
-	gdc_attr_t gdc_attr = {0};
-	gdc_attr.config_addr = pipe_contex->gdc_bin->bin_buf->phys_addr;
-	gdc_attr.config_size = pipe_contex->gdc_bin->bin_buf->size;
-	gdc_attr.binary_ion_id = pipe_contex->gdc_bin->bin_buf->share_id;
-	gdc_attr.binary_offset = pipe_contex->gdc_bin->bin_buf->offset;
-	gdc_attr.total_planes = 2;
-	gdc_attr.div_width = 0;
-	gdc_attr.div_height = 0;
-	ret = hbn_vnode_set_attr(pipe_contex->gdc_node_handle, &gdc_attr);
-	ERR_CON_EQ(ret, 0);
-	//uint32_t chn_id = 0;
+	
 
-	gdc_ichn_attr_t gdc_ichn_attr = {0};
-	gdc_ichn_attr.input_width = input_width;
-	gdc_ichn_attr.input_height = input_height;
-	gdc_ichn_attr.input_stride = input_width;
-	ret = hbn_vnode_set_ichn_attr(pipe_contex->gdc_node_handle, chn_id, &gdc_ichn_attr);
+	gdc_setting.gdc_config.config_addr = pipe_contex->gdc_bin->bin_buf->phys_addr;
+	gdc_setting.gdc_config.config_size = pipe_contex->gdc_bin->bin_buf->size;
+	gdc_setting.gdc_config.input_width = input_width;
+	gdc_setting.gdc_config.input_height = input_height;
+	gdc_setting.gdc_config.input_stride = ALIGN_16(input_width);//16字节对齐
+	gdc_setting.gdc_config.output_width = input_width;
+	gdc_setting.gdc_config.output_height =input_height;
+	gdc_setting.gdc_config.output_stride = ALIGN_16(input_width);//16字节对齐
+	gdc_setting.gdc_config.div_width = 0;
+	gdc_setting.gdc_config.div_height = 0;
+	gdc_setting.gdc_config.total_planes = 2;
+	gdc_setting.binary_ion_id = pipe_contex->gdc_bin->bin_buf->share_id;
+	gdc_setting.binary_offset = pipe_contex->gdc_bin->bin_buf->offset;
+	gdc_setting.magicNumber = MAGIC_NUMBER;
+	ret = hbn_vnode_set_attr(pipe_contex->gdc_node_handle, &gdc_setting);
 	ERR_CON_EQ(ret, 0);
+    ret = hbn_vnode_set_ichn_attr(pipe_contex->gdc_node_handle, chn_id, &gdc_setting);
+	ERR_CON_EQ(ret, 0);
+    ret = hbn_vnode_set_ochn_attr(pipe_contex->gdc_node_handle, chn_id, &gdc_setting);
 
-	gdc_ochn_attr_t gdc_ochn_attr = {0};
-	//gdc_ochn_attr.output_width = input_width;
-	//gdc_ochn_attr.output_height = input_height;
-	//gdc_ochn_attr.output_stride = input_width;
-	gdc_ochn_attr.output_width = pipe_contex->cap_info_->width;
-	gdc_ochn_attr.output_height = pipe_contex->cap_info_->height;
-	gdc_ochn_attr.output_stride = pipe_contex->cap_info_->width;
-	ret = hbn_vnode_set_ochn_attr(pipe_contex->gdc_node_handle, chn_id, &gdc_ochn_attr);
-	ERR_CON_EQ(ret, 0);
 	hbn_buf_alloc_attr_t alloc_attr = {0};
 	alloc_attr.buffers_num = 3;
 	alloc_attr.is_contig = 1;
@@ -1336,7 +1318,6 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	}
 	pipe_contex->stream_group = 0;
 	int32_t ret = 0;
-#if 0
     if (pipe_contex->cap_info_->device_mode_.compare("dual") == 0) {
 		//pipe_contex->sensor_config.isp_attr->input_mode = 2;
 		isp_bind = 0;
@@ -1345,23 +1326,23 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
 			int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
 			pipe_contex->sensor_config.camera_config->sensor_mode = 6;
-			//pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 1;
-			for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
+			//pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.enable = 1;
+			for (auto& attr : pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.lpwm_chn_attr) {
 				attr.period = fps_rate;
+				attr.enable = 1;
 			}
 		} else {
+			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
 			pipe_contex->sensor_config.camera_config->sensor_mode = 1;
-			//pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 0;
+			for (auto& attr : pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.lpwm_chn_attr) {
+				attr.enable = 0;
+			}
 		}
 	} else {
 		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
-		//int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
-		//for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
-		//	attr.period = fps_rate;
-		//}
 	}
-#endif
 	// 创建pipeline中的每个node
 	ret = creat_camera_node(pipe_contex->sensor_config.camera_config, &pipe_contex->cam_fd);
 	ERR_CON_EQ(ret, 0);
@@ -1373,10 +1354,10 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 		ret = creat_ynr_node(pipe_contex);
 		ERR_CON_EQ(ret, 0);
 	}
-	//if (cap_info_.gdc_enable_) {
-		creat_gdc_node_r(pipe_contex);
+	if (cap_info_.gdc_enable_) {
 		creat_gdc_node(pipe_contex);
-	//}
+	}
+	creat_gdc_node_r(pipe_contex);
 	ret = creat_pym_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
 	// 创建HBN flow
@@ -1393,7 +1374,6 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 								pipe_contex->ynr_node_handle);
 		ERR_CON_EQ(ret, 0);
 	}
-
 	if (pipe_contex->gdc_init_valid_r == 1) {
 		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
 							pipe_contex->gdc_node_handle_r);
@@ -1407,7 +1387,6 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
 							pipe_contex->pym_node_handle);
 	ERR_CON_EQ(ret, 0);
-
 	if (vin_online_isp) {
 		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 								pipe_contex->vin_node_handle,
@@ -1425,7 +1404,6 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	}
 	pipe_contex->stream_handle = pipe_contex->isp_node_handle;
 	pipe_contex->stream_group = 0;
-
 	if (isp_online_ynr) {
 		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 							pipe_contex->isp_node_handle,
@@ -1442,14 +1420,13 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	} else {
 		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 							pipe_contex->isp_node_handle,
-							0,
+							1,
 							pipe_contex->pym_node_handle,
 							0);
 		ERR_CON_EQ(ret, 0);
 	}
 	pipe_contex->stream_handle = pipe_contex->pym_node_handle;
 	pipe_contex->stream_group = 1;
-
 
 	if ((pipe_contex->gdc_init_valid_r == 1) && (pipe_contex->gdc_init_valid == 1)) {
 		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc rotation and cal.\n");
@@ -1491,7 +1468,6 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 		pipe_contex->stream_handle = pipe_contex->pym_node_handle;
 		pipe_contex->stream_group = 1;
 	}
-
 	ret = hbn_camera_attach_to_vin(pipe_contex->cam_fd,
 							pipe_contex->vin_node_handle);
 	ERR_CON_EQ(ret, 0);

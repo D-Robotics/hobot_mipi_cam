@@ -140,6 +140,53 @@ static vin_attr_t sc132gs_vin_attr = {
                 .buff_num = 6,
             },
         },
+        .lpwm_attr = {
+            //  for external gpio trigger mode, trigger_source = 7, trigger_mode = 1;
+            //  for self mode, trigger_source = 0, trigger_mode = 0;
+            .lpwm_chn_attr = {
+                {	
+                    .enable = 1,
+                    .trigger_source = 0,
+                    .trigger_mode = 0,
+                    .period = 33333,
+                    .offset = 10,
+                    .duty_time = 100,
+                    .threshold = 0,
+                    .adjust_step = 0,
+                },
+                {	
+                    .enable = 1,
+                    .trigger_source = 0,
+                    .trigger_mode = 0,
+                    .period = 33333,
+                    .offset = 10,
+                    .duty_time = 100,
+                    .threshold = 0,
+                    .adjust_step = 0,
+                },
+                {	
+                    .enable = 1,
+                    .trigger_source = 0,
+                    .trigger_mode = 0,
+                    .period = 33333,
+                    .offset = 10,
+                    .duty_time = 100,
+                    .threshold = 0,
+                    .adjust_step = 0,
+                },
+                {	
+                    .enable = 1,
+                    .trigger_source = 0,
+                    .trigger_mode = 0,
+                    .period = 33333,
+                    .offset = 10,
+                    .duty_time = 100,
+                    .threshold = 0,
+                    .adjust_step = 0,
+                },
+            },
+        },
+
         .magicNumber = MAGIC_NUMBER,
     },
 
