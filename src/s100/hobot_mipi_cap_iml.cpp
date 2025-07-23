@@ -251,7 +251,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
 		int width;
 		int height;
-		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 90.0)) {
+		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
 			width = cap_info_.height;
 			height = cap_info_.width;
 		} else {
@@ -1185,12 +1185,15 @@ int HobotMipiCapIml::creat_gdc_node_r(pipe_contex_t *pipe_contex) {
 	uint32_t chn_id = 0;
 	isp_cfg_t isp_attr;
 	pipe_contex->gdc_init_valid_r = 0;
-	//ret = hbn_vnode_get_attr(pipe_contex->isp_node_handle, chn_id, &isp_attr);
-	//ERR_CON_EQ(ret, 0);
-	int input_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
-	int input_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
-	//int input_width;
-	//int input_height;
+	int input_width, input_height, out_width, out_height;
+
+	if ((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0)) {
+		out_height = input_width = pipe_contex->cap_info_->height;
+		out_width = input_height = pipe_contex->cap_info_->width;
+	} else {
+		out_width = input_width = pipe_contex->cap_info_->width;
+		out_height = input_height = pipe_contex->cap_info_->height;
+	}
 
 	gdc_settings_t gdc_setting = {0};
 	uint32_t hw_id = 0;
@@ -1203,9 +1206,9 @@ int HobotMipiCapIml::creat_gdc_node_r(pipe_contex_t *pipe_contex) {
 	gdc_setting.gdc_config.input_width = input_width;
 	gdc_setting.gdc_config.input_height = input_height;
 	gdc_setting.gdc_config.input_stride = ALIGN_16(input_width);//16字节对齐
-	gdc_setting.gdc_config.output_width = input_width;
-	gdc_setting.gdc_config.output_height =input_height;
-	gdc_setting.gdc_config.output_stride = ALIGN_16(input_width);//16字节对齐
+	gdc_setting.gdc_config.output_width = out_width;
+	gdc_setting.gdc_config.output_height =out_height;
+	gdc_setting.gdc_config.output_stride = ALIGN_16(out_width);//16字节对齐
 	
 	gdc_setting.gdc_config.div_width = 0;
 	gdc_setting.gdc_config.div_height = 0;
@@ -1216,7 +1219,6 @@ int HobotMipiCapIml::creat_gdc_node_r(pipe_contex_t *pipe_contex) {
 
 	ret = hbn_vnode_set_attr(pipe_contex->gdc_node_handle_r, &gdc_setting);
 	ERR_CON_EQ(ret, 0);
-	//uint32_t chn_id = 0;
 
 	ret = hbn_vnode_set_ichn_attr(pipe_contex->gdc_node_handle_r, chn_id, &gdc_setting);
 	ERR_CON_EQ(ret, 0);
@@ -1242,24 +1244,12 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 	}
 	int ret = 0;
 	uint32_t chn_id = 0;
-		pipe_contex->gdc_bin_buf_is_valid = 0;
 	pipe_contex->gdc_init_valid = 0;
 
-	int input_width;
-	int input_height;
-	if (pipe_contex->gdc_init_valid_r == 1) {
-		gdc_ochn_attr_t gdc_ochn_attr;
-		ret = hbn_vnode_get_ochn_attr(pipe_contex->gdc_node_handle_r, chn_id, &gdc_ochn_attr);
-		ERR_CON_EQ(ret, 0);
-		input_width = gdc_ochn_attr.output_width;
-		input_height = gdc_ochn_attr.output_height;
-	} else {
-		isp_ichn_attr_t isp_ichn_attr;
-		ret = hbn_vnode_get_ichn_attr(pipe_contex->isp_node_handle, chn_id, &isp_ichn_attr);
-		ERR_CON_EQ(ret, 0);
-		input_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
-		input_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
-	}
+	auto input_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+	auto input_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+	auto out_width = pipe_contex->cap_info_->width;
+	auto out_height = pipe_contex->cap_info_->height;
 
     auto gdc_bin = get_gdc_bin(pipe_contex->cap_info_->gdc_bin_file_);
 	if (gdc_bin == nullptr && pipe_contex->gdc_bin == nullptr) {
@@ -1268,9 +1258,6 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 	if (gdc_bin) {
 		pipe_contex->gdc_bin = gdc_bin;
 	}
-
-	pipe_contex->gdc_bin_buf_is_valid = 1;
-
 
     gdc_settings_t gdc_setting = {0};
 	uint32_t hw_id = 0;
@@ -1283,9 +1270,9 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 	gdc_setting.gdc_config.input_width = input_width;
 	gdc_setting.gdc_config.input_height = input_height;
 	gdc_setting.gdc_config.input_stride = ALIGN_16(input_width);//16字节对齐
-	gdc_setting.gdc_config.output_width = input_width;
-	gdc_setting.gdc_config.output_height =input_height;
-	gdc_setting.gdc_config.output_stride = ALIGN_16(input_width);//16字节对齐
+	gdc_setting.gdc_config.output_width = out_width;
+	gdc_setting.gdc_config.output_height =out_height;
+	gdc_setting.gdc_config.output_stride = ALIGN_16(out_width);//16字节对齐
 	gdc_setting.gdc_config.div_width = 0;
 	gdc_setting.gdc_config.div_height = 0;
 	gdc_setting.gdc_config.total_planes = 2;
@@ -1428,23 +1415,7 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	pipe_contex->stream_handle = pipe_contex->pym_node_handle;
 	pipe_contex->stream_group = 1;
 
-	if ((pipe_contex->gdc_init_valid_r == 1) && (pipe_contex->gdc_init_valid == 1)) {
-		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc rotation and cal.\n");
-		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-							pipe_contex->pym_node_handle,
-							0,
-							pipe_contex->gdc_node_handle_r,
-							0);
-		ERR_CON_EQ(ret, 0);
-		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-							pipe_contex->gdc_node_handle_r,
-							0,
-							pipe_contex->gdc_node_handle,
-							0);
-		ERR_CON_EQ(ret, 0);
-		pipe_contex->stream_handle = pipe_contex->gdc_node_handle;
-		pipe_contex->stream_group = 0;
-	} else if (pipe_contex->gdc_init_valid_r == 1) {
+	if (pipe_contex->gdc_init_valid_r == 1) {
 		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc rotation.\n");
 		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 							pipe_contex->pym_node_handle,
