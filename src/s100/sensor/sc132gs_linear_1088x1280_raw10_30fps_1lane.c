@@ -10,17 +10,17 @@ static mipi_config_t sc132gs_mipi_config = {
     .rx_enable = 1,
     .rx_attr = {
         .phy = 0,
-        .lane = 1,
+        .lane = 2,
         .datatype = RAW10,
         .fps = SENSOE_FPS,
-        .mclk = 1,
-        .mipiclk = 1200,
-        .width = 0,
-        .height = 0,
-        .linelenth = 0,
-        .framelenth = 0,
-        .settle = 0,
-        .channel_num = 0,
+        .mclk = 24,
+        .mipiclk = 2400,
+        .width = SENSOR_WIDTH,
+        .height = SENSOR_HEIGHT,
+        .linelenth = 1400,
+        .framelenth = 1500,
+        .settle = 20,
+        .channel_num = 1,
         .channel_sel = {0},
     },
 
@@ -53,11 +53,11 @@ static isp_cfg_t sc132gs_isp_config = {
     .isp_attr = {
         .channel = {
             .hw_id = 1,
-            .slot_id = 5,
+            .slot_id = 4,
             .ctx_id = -1, //#define AUTO_ALLOC_ID -1
         },
         .work_mode = 0,
-        .hdr_mode = 0,
+        .hdr_mode = 1,
         .size = {
             .width = SENSOR_WIDTH,
             .height = SENSOR_HEIGHT,
@@ -68,7 +68,7 @@ static isp_cfg_t sc132gs_isp_config = {
         .isp_combine = {
             .isp_channel_mode = 0, //ISP_CHANNEL_MODE_NORMAL
             .bind_channel = {
-                .bind_hw_id = 1,
+                .bind_hw_id = 0,
                 .bind_slot_id = 0,
             },
         },
@@ -108,7 +108,7 @@ static isp_cfg_t sc132gs_isp_config = {
         .out_buf_noncached = 0,
         .output_raw_level = 0, //ISP_OUTPUT_RAW_LEVEL_SENSOR_DATA
         .stream_output_mode = 1, //convert_isp_stream_output(1),
-        .axi_output_mode = 9, //convert_isp_axi_output(0),
+        .axi_output_mode = AXI_OUTPUT_MODE_YUV420, //convert_isp_axi_output(0),
         .buf_num = 3,
     }
 };
@@ -193,7 +193,7 @@ static vin_attr_t sc132gs_vin_attr = {
     .vin_ichn_attr = {
         .width =  SENSOR_WIDTH,
         .height = SENSOR_HEIGHT,
-        .format = 43,
+        .format = RAW10,
     },
 
     .vin_attr_ex = {
@@ -206,7 +206,7 @@ static vin_attr_t sc132gs_vin_attr = {
         [VIN_MAIN_FRAME] = { //vin_ochn0_attr
             .ddr_en = 1,
             .vin_basic_attr = {
-                .format = 43,
+                .format = RAW10,
                 .wstride = 1376,
                 .pack_mode = 1,
             },

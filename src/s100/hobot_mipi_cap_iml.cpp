@@ -426,7 +426,7 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
 	}
 	
 	if (ret != 0) {
-		printf("hbn_vnode_getframe VSE channel 0 failed nChnID = %d,ret = %d\n", nChnID,ret);
+		printf("hbn_vnode_getframe pym failed nChnID = %d,ret = %d\n", nChnID,ret);
 		return -1;
 	}
   }
@@ -1299,15 +1299,13 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 }
 
 int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
-	int isp_bind = 0;
-	if (pipe_contex == nullptr) {
+		if (pipe_contex == nullptr) {
 		return -1;
 	}
 	pipe_contex->stream_group = 0;
 	int32_t ret = 0;
-    if (pipe_contex->cap_info_->device_mode_.compare("dual") == 0) {
+    //if (pipe_contex->cap_info_->device_mode_.compare("dual") == 0) {
 		//pipe_contex->sensor_config.isp_attr->input_mode = 2;
-		isp_bind = 0;
 		if (pipe_contex->cap_info_->lpwm_enable_) {
 			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
@@ -1326,10 +1324,10 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 				attr.enable = 0;
 			}
 		}
-	} else {
-		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
-	}
+	//} else {
+		//	pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+		//	pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+	//}
 	// 创建pipeline中的每个node
 	ret = creat_camera_node(pipe_contex->sensor_config.camera_config, &pipe_contex->cam_fd);
 	ERR_CON_EQ(ret, 0);
@@ -1407,7 +1405,7 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	} else {
 		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 							pipe_contex->isp_node_handle,
-							1,
+							0,
 							pipe_contex->pym_node_handle,
 							0);
 		ERR_CON_EQ(ret, 0);

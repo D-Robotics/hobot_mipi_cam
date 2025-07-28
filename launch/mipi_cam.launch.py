@@ -83,6 +83,10 @@ def generate_launch_description():
             'mipi_gdc_bin_file',
             default_value='default',
             description='mipi camera gdc file path'),
+        DeclareLaunchArgument(
+            'mipi_lpwm_enable',
+            default_value='False',
+            description='mipi dual camera lpwm enable'),
         # 启动零拷贝环境配置node
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -108,6 +112,7 @@ def generate_launch_description():
                 {"video_device": LaunchConfiguration('mipi_video_device')},
                 {"frame_ts_type": LaunchConfiguration('mipi_frame_ts_type')},
                 {"rotation": LaunchConfiguration('mipi_rotation')},
+                {"lpwm_enable": LaunchConfiguration('mipi_lpwm_enable')},
                 {"cal_rotation": LaunchConfiguration('mipi_cal_rotation')},
                 {"gdc_bin_file": LaunchConfiguration('mipi_gdc_bin_file')},
             ],
