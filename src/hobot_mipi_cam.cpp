@@ -281,6 +281,7 @@ int MipiCamIml::start() {
   if (mipiCap_ptr_->start()) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
       "[%s]->cap capture start failture.\r\n", __func__);
+    return -1;
   }
   RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
               "[%s]->w:h=%d:%d.\n",
