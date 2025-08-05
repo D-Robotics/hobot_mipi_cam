@@ -344,7 +344,9 @@ void MipiCamNode::init() {
 void MipiCamNode::init_publisher(Publisher_info_st&  Pub_info, std::string topic, std::string topic_type,
                     std::string frame_id){
   Pub_info.image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(topic, PUB_BUF_NUM);
-  Pub_info.img_ = std::make_unique<sensor_msgs::msg::Image>();
+  Pub_info.img_ = std::make_unique<sensor_msgs::msg::Image>(
+    rosidl_runtime_cpp::MessageInitialization::SKIP);
+
   Pub_info.img_->header.frame_id = frame_id;
   Pub_info.topic_type = topic_type;
 }
@@ -431,7 +433,10 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
     }
     save_jpg(pub_info->img_->header.stamp,pub_info->img_->encoding,pub_info->img_->width,pub_info->img_->height,(void *)&pub_info->img_->data[0]);
     save_yuv(pub_info->img_->header.stamp, (void *)&pub_info->img_->data[0], pub_info->img_->data.size());
-    pub_info->image_pub_->publish(*pub_info->img_);
+    // pub_info->image_pub_->publish(*pub_info->img_);
+    pub_info->image_pub_->publish(std::move(pub_info->img_));
+    pub_info->img_ = std::make_unique<sensor_msgs::msg::Image>(rosidl_runtime_cpp::MessageInitialization::SKIP);
+
     if (pub_info->info_pub_) {
       pub_info->camera_calibration_info_->header.stamp = pub_info->img_->header.stamp;
       pub_info->info_pub_->publish(*pub_info->camera_calibration_info_);
