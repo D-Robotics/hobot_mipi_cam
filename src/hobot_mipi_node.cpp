@@ -36,6 +36,48 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_ = std::make_shared<struct NodePara>();
   getParams();
   init();
+  
+  RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+    "\n node params:" \
+    "\n config_path: %s" \
+    "\n video_device_name: %s" \
+    "\n channel: %d" \
+    "\n channel2: %d" \
+    "\n camera_info_url: %s" \
+    "\n camera_calibration_file_path: %s" \
+    "\n out_format_name: %s" \
+    "\n gdc_bin_file: %s" \
+    "\n image_width: %d" \
+    "\n image_height: %d" \
+    "\n framerate: %d" \
+    "\n rotation: %f" \
+    "\n device_mode: %s" \
+    "\n dual_combine: %d" \
+    "\n lpwm_enable: %d" \
+    "\n gdc_enable: %d" \
+    "\n frame_ts_type: %s" \
+    "\n frame_id: %s" \
+    "\n io_method_name: %s",
+    nodePare_->config_path_.c_str(),
+    nodePare_->video_device_name_.c_str(),
+    nodePare_->channel_,
+    nodePare_->channel2_,
+    nodePare_->camera_info_url_.c_str(),
+    nodePare_->camera_calibration_file_path_.c_str(),
+    nodePare_->out_format_name_.c_str(),
+    nodePare_->gdc_bin_file_.c_str(),
+    nodePare_->image_width_,
+    nodePare_->image_height_,
+    nodePare_->framerate_,
+    nodePare_->rotation_,
+    nodePare_->device_mode_.c_str(),
+    nodePare_->dual_combine_,
+    nodePare_->lpwm_enable_,
+    nodePare_->gdc_enable_,
+    nodePare_->frame_ts_type_.c_str(),
+    frame_id_.c_str(),
+    io_method_name_.c_str()
+  );
 }
 
 MipiCamNode::~MipiCamNode() {
@@ -351,7 +393,9 @@ void MipiCamNode::init() {
 void MipiCamNode::init_publisher(Publisher_info_st&  Pub_info, std::string topic, std::string topic_type,
                     std::string frame_id){
   Pub_info.image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(topic, PUB_BUF_NUM);
-  Pub_info.img_ = std::make_unique<sensor_msgs::msg::Image>();
+  Pub_info.img_ = std::make_unique<sensor_msgs::msg::Image>(
+    rosidl_runtime_cpp::MessageInitialization::SKIP);
+
   Pub_info.img_->header.frame_id = frame_id;
   Pub_info.topic_type = topic_type;
 }
@@ -439,7 +483,10 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
 #endif
     save_jpg(pub_info->img_->header.stamp,pub_info->img_->encoding,pub_info->img_->width,pub_info->img_->height,(void *)&pub_info->img_->data[0]);
     save_yuv(pub_info->img_->header.stamp, (void *)&pub_info->img_->data[0], pub_info->img_->data.size());
-    pub_info->image_pub_->publish(*pub_info->img_);
+    // pub_info->image_pub_->publish(*pub_info->img_);
+    pub_info->image_pub_->publish(std::move(pub_info->img_));
+    pub_info->img_ = std::make_unique<sensor_msgs::msg::Image>(rosidl_runtime_cpp::MessageInitialization::SKIP);
+
     if (pub_info->info_pub_) {
       pub_info->camera_calibration_info_->header.stamp = pub_info->img_->header.stamp;
       pub_info->info_pub_->publish(*pub_info->camera_calibration_info_);
