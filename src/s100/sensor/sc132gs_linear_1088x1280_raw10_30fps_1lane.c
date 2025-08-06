@@ -13,7 +13,7 @@ static mipi_config_t sc132gs_mipi_config = {
         .lane = 2,
         .datatype = RAW10,
         .fps = SENSOE_FPS,
-        .mclk = 24,
+        .mclk = 1,
         .mipiclk = 2400,
         .width = SENSOR_WIDTH,
         .height = SENSOR_HEIGHT,
@@ -107,7 +107,7 @@ static isp_cfg_t sc132gs_isp_config = {
         .out_buf_noinvalid = 1,
         .out_buf_noncached = 0,
         .output_raw_level = 0, //ISP_OUTPUT_RAW_LEVEL_SENSOR_DATA
-        .stream_output_mode = 1, //convert_isp_stream_output(1),
+        .stream_output_mode = 0, //convert_isp_stream_output(1),
         .axi_output_mode = AXI_OUTPUT_MODE_YUV420, //convert_isp_axi_output(0),
         .buf_num = 3,
     }
