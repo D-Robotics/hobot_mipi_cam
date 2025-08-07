@@ -163,7 +163,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		vp_sensor_config_t *sensor_cfg = &pipe_contex[0].sensor_config;
 		if (cam_info_.size() != 2) {
 			if (!getDualCamCalibrationFromEeprom()) {
-				if (sensor_cfg->sensor_name == "sc230ai-30fps") {
+				if(strcasecmp(sensor_cfg->sensor_name, "sc230ai-30fps") == 0) {
 					getDualCamCalibrationFromEeprom_230ai();
 				}		
 			}
