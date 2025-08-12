@@ -1,4 +1,9 @@
 # Changelog for package mipi_cam
+tros_2.3.11 (2025-08-12)
+------------------
+1. RDK S100增加ynr和GDC校正功能。
+2. RDK S100增加sc230ai双目。
+
 tros_2.3.8 (2025-04-27)
 ------------------
 1. 增加X5 RDK module的硬件平台。
