@@ -61,7 +61,6 @@ typedef struct pipe_contex_s {
   vp_csi_config_t csi_config;
   std::shared_ptr<GdcBinBuf_ST> gdc_bin;
   std::shared_ptr<GdcBinBuf_ST> gdc_bin_r;
-  int gdc_bin_buf_is_valid;
   int gdc_init_valid;
   int gdc_init_valid_r;
   int stream_group;
@@ -93,6 +92,30 @@ typedef struct eeprom_id {
   int check_value;           // 读取的寄存器地址
   char device_name[25];  // sensor名字
 } EEPROM_ID_T;
+
+
+typedef struct eeprom_detect {
+  int i2c_bus;           // sensor挂在哪条总线上
+  int i2c_dev_addr;      // sensor i2c设备地址
+  int i2c_addr_width;    // 总线地址宽（1/2字节）
+  int det_reg;           // 读取的寄存器地址
+  char check_str[10];           // 读取的寄存器地址
+  char device_name[25];  // sensor名字
+} EEPROM_DETECT_T;
+
+#pragma pack(4)
+typedef struct eeprom_drobot_head_st {
+  char flag[8];
+  char camType; //0x00:单目；0x01:双目
+  char cal_tpye; //0x00:针孔标定；0x01:鱼眼标定
+  char ver_main;
+  char ver_min;
+  char angle; //描述标定时是否旋转后再标定，旋转角度。0x00:表示不旋转，0x01:表示顺时针旋转90度,0x02:表示顺时针旋转180度,0x03:表示顺时针旋转270度,其他的数值无效，表示不旋转。
+  char d_num; //D畸变参数的个数，鱼眼标定：k1,k2,k3,k4;针孔标定:k1,k2,p1,p2,k3,k4,k5,k6
+  char res2;
+  char check;
+} EepromDrobotHead_ST;
+#pragma pack()
 
 #pragma pack(4)
 typedef struct cal_dualcam_info_st {
@@ -137,6 +160,57 @@ typedef struct cal_dualcam_info_st {
   double epilines;
   char h_v[4];
 } CalDualCamInfo_ST;
+#pragma pack()
+
+
+#if 0
+#pragma pack(4)
+typedef struct cal_dual_M_D_st {
+  int height;
+  int width;
+  float fx;
+  float fy;
+  float cx;
+  float cy;
+  float k1;
+  float k2;
+  float p1;
+  float p2;
+  float k3;
+  float k4;
+  float k5;
+  float k6;
+} CalDualMDInfo_ST;
+#pragma pack()
+#endif
+
+#pragma pack(4)
+typedef struct cal_dual_M_D_st {
+  int height;
+  int width;
+  float fx;
+  float fy;
+  float cx;
+  float cy;
+  float d[8];//鱼眼:k1,k2,k3,k4;针孔:k1,k2,p1,p2,k3,k4,k5,k6
+} CalDualMDInfo_ST;
+#pragma pack()
+
+#pragma pack(4)
+typedef struct cal_dual_R_T_info_st {
+  float r11;
+  float r12;
+  float r13;
+  float r21;
+  float r22;
+  float r23;
+  float r31;
+  float r32;
+  float r33;
+  float tx;
+  float ty;
+  float tz;
+} CalDualRTInfo_ST;
 #pragma pack()
 
 class HobotMipiCapIml : public HobotMipiCap {
@@ -196,8 +270,11 @@ class HobotMipiCapIml : public HobotMipiCap {
   int selectSensor(std::string &sensor, int &host, int &i2c_bus);
 
   int detectEeprom(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
+int detectEeprom_drobot(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
   bool readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize);
   bool getDualCamCalibrationFromEeprom();
+bool getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr);
+  bool getDualCamCalibrationFromEeprom_230ai();
 
   void dualFrameTask();
 
@@ -219,9 +296,11 @@ class HobotMipiCapIml : public HobotMipiCap {
   int creat_camera_node(camera_config_t* camera_config,int64_t* cam_fd);
   std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height,
-		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info);
+		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
+    double rotation = 0.0, double cal_rotate = 0.0);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin(int gdc_width, int gdc_height,int out_width, int out_height,
-       sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info);
+       sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info,
+       double rotation = 0.0, double cal_rotate = 0.0);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
 
@@ -235,13 +314,13 @@ class HobotMipiCapIml : public HobotMipiCap {
   int entry_index_ = 0;
   int sensor_bus_ = 2;
   int pipeline_id_ = 0;
+char cal_tpye_ = 0; //0x00:针孔标定；0x01：鱼眼标定。
   std::vector<int> mipi_started_;
   std::vector<int> mipi_stoped_;
   int pym_channel_ = 0;
   int vin_online_isp = 0;
   int isp_online_ynr = 1;
-  int ynr_online_pym = 1;
-  std::map<int, BOARD_CONFIG_ST> board_config_m_;
+    std::map<int, BOARD_CONFIG_ST> board_config_m_;
   std::map<int, std::vector<std::string>> host_sensor_m_;
   std::shared_ptr<std::thread> dual_frame_task_ = nullptr;
 

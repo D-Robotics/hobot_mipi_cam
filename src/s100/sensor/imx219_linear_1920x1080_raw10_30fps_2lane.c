@@ -42,6 +42,7 @@ static camera_config_t imx219_camera_config = {
         .fps = 30,
         .width = 1920,
         .height = 1080,
+        .format = 0x12b,
         .extra_mode = 0,
         .config_index = 0,
         .mipi_cfg = &imx219_mipi_config, // MIPI配置,NULL自动获取
@@ -132,6 +133,7 @@ static vin_attr_t imx219_vin_attr = {
                 .enable_frame_id = 1,
                 .set_init_frame_id = 1,
                 .enable_pattern = 0,
+                .lpwm_trig_sel = (int32_t)LPWM_CHN_INVALID,
             },
             .rdma_input = {
                 .rdma_en = 0,
@@ -213,7 +215,7 @@ struct ynr_init_attr imx219_ynr_attr = {
 
 pym_cfg_t pym_common_config = {
         .hw_id = 1,
-        .pym_mode = 3,
+        .pym_mode = 1,
         .slot_id = 4,
         .pingpong_ring = 0,
         .output_buf_num = 6,

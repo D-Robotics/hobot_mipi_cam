@@ -17,10 +17,12 @@
 
 extern vp_sensor_config_t imx219_linear_1920x1080_raw10_30fps_2lane;
 extern vp_sensor_config_t sc132gs_linear_1088x1280_raw10_30fps_1lane;
+extern vp_sensor_config_t sc230ai_linear_1920x1080_raw10_30fps_1lane;
 
 vp_sensor_config_t *vp_sensor_config_list[] = {
 	&imx219_linear_1920x1080_raw10_30fps_2lane,
-	&sc132gs_linear_1088x1280_raw10_30fps_1lane
+	&sc132gs_linear_1088x1280_raw10_30fps_1lane,
+	&sc230ai_linear_1920x1080_raw10_30fps_1lane
 };
 
 uint32_t vp_get_sensors_list_number() {

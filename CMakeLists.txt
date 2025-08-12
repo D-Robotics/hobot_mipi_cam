@@ -105,6 +105,7 @@ elseif(PLATFORM_S100)
   set(SRC_PLATFORM_FILE 
     src/s100/sensor/imx219_linear_1920x1080_raw10_30fps_2lane.c
     src/s100/sensor/sc132gs_linear_1088x1280_raw10_30fps_1lane.c
+    src/s100/sensor/sc230ai_linear_1920x1080_raw10_30fps_1lane.c
     src/s100/sensor/vp_sensors.c
   )
   include_directories(include 

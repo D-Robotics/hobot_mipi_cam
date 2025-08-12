@@ -1,26 +1,26 @@
 #include "vp_sensors.h"
 
-#define SENSOR_WIDTH  1088
-#define SENSOR_HEIGHT  1280
+#define SENSOR_WIDTH  1920
+#define SENSOR_HEIGHT  1080
 #define SENSOE_FPS 30
 #define RAW10 0x2B
 
-// sc132gs 的sample配置
-static mipi_config_t sc132gs_mipi_config = {
+// sc230ai 的sample配置
+static mipi_config_t sc230ai_mipi_config = {
     .rx_enable = 1,
     .rx_attr = {
         .phy = 0,
-        .lane = 2,
+        .lane = 1,
         .datatype = RAW10,
         .fps = SENSOE_FPS,
-        .mclk = 1,
-        .mipiclk = 2400,
+        .mclk = 24,
+        .mipiclk = 810,
         .width = SENSOR_WIDTH,
         .height = SENSOR_HEIGHT,
-        .linelenth = 1400,
-        .framelenth = 1500,
-        .settle = 20,
-        .channel_num = 1,
+        .linelenth = 0,
+        .framelenth = 0,
+        .settle = 0,
+        .channel_num = 0,
         .channel_sel = {0},
     },
 
@@ -32,10 +32,10 @@ static mipi_config_t sc132gs_mipi_config = {
     .end_flag = MIPI_CONFIG_END_FLAG,
 };
 
-static camera_config_t sc132gs_camera_config = {
+static camera_config_t sc230ai_camera_config = {
         /* 0 */
-        .name = "sc132gs",
-        .addr = 0x33,
+        .name = "sc230ai",
+        .addr = 0x30,
         .eeprom_addr = 0x51,
         .serial_addr = 0x40,
         .sensor_mode = 1,
@@ -44,12 +44,12 @@ static camera_config_t sc132gs_camera_config = {
         .height = SENSOR_HEIGHT,
         .extra_mode = 0,
         .config_index = 0,
-        .mipi_cfg = &sc132gs_mipi_config, // MIPI配置,NULL自动获取
+        .mipi_cfg = &sc230ai_mipi_config, // MIPI配置,NULL自动获取
         .end_flag = CAMERA_CONFIG_END_FLAG,
-        .calib_lname = "lib_sc132gs_linear.so",
+        .calib_lname = "lib_sc230ai_linear.so",
 };
 
-static isp_cfg_t sc132gs_isp_config = {
+static isp_cfg_t sc230ai_isp_config = {
     .isp_attr = {
         .channel = {
             .hw_id = 1,
@@ -113,7 +113,7 @@ static isp_cfg_t sc132gs_isp_config = {
     }
 };
 
-static vin_attr_t sc132gs_vin_attr = {
+static vin_attr_t sc230ai_vin_attr = {
     .vin_node_attr = {
         .vcon_attr = {
             .bus_main = 2,
@@ -132,6 +132,7 @@ static vin_attr_t sc132gs_vin_attr = {
                 .enable_frame_id = 1,
                 .set_init_frame_id = 1,
                 .enable_pattern = 0,
+                .lpwm_trig_sel = (int32_t)LPWM_CHN_INVALID,
             },
             .rdma_input = {
                 .rdma_en = 0,
@@ -193,7 +194,7 @@ static vin_attr_t sc132gs_vin_attr = {
     .vin_ichn_attr = {
         .width =  SENSOR_WIDTH,
         .height = SENSOR_HEIGHT,
-        .format = RAW10,
+        .format = 43,
     },
 
     .vin_attr_ex = {
@@ -206,8 +207,8 @@ static vin_attr_t sc132gs_vin_attr = {
         [VIN_MAIN_FRAME] = { //vin_ochn0_attr
             .ddr_en = 1,
             .vin_basic_attr = {
-                .format = RAW10,
-                .wstride = 1376,
+                .format = 43,
+                .wstride = 0,
                 .pack_mode = 1,
             },
             .pingpong_ring = 1,
@@ -239,7 +240,7 @@ static vin_attr_t sc132gs_vin_attr = {
     .magicNumber = MAGIC_NUMBER,
 };
 
-struct ynr_init_attr sc132gs_ynr_attr = {
+struct ynr_init_attr sc230ai_ynr_attr = {
 	.work_mode = 1,
 	.slot_id = 4,
 
@@ -259,7 +260,7 @@ struct ynr_init_attr sc132gs_ynr_attr = {
 
 
 
-pym_cfg_t sc132gs_pym_common_config = {
+pym_cfg_t sc230ai_pym_common_config = {
         .hw_id = 1,
         .pym_mode = 1,
         .slot_id = 5,
@@ -311,15 +312,15 @@ pym_cfg_t sc132gs_pym_common_config = {
     .magicNumber = MAGIC_NUMBER,
 };
 
-vp_sensor_config_t sc132gs_linear_1088x1280_raw10_30fps_1lane = {
+vp_sensor_config_t sc230ai_linear_1920x1080_raw10_30fps_1lane = {
 	.chip_id_reg = 0x3107,
-	.chip_id = 0x0132,
-	.sensor_i2c_addr_list = {0x30, 0x32, 0x33},
-	.sensor_name = "sc132gs",
-	.config_file = "linear_1088x1280_raw10_30fps_1lane.c",
-	.camera_config = &sc132gs_camera_config,
-	.vin_attr = &sc132gs_vin_attr,
-	.isp_cfg      = &sc132gs_isp_config,
-    .ynr_attr      = &sc132gs_ynr_attr,
-	.pym_cfg = &sc132gs_pym_common_config,
+	.chip_id = 0xcb34,
+	.sensor_i2c_addr_list = {0x30, 0x32},
+	.sensor_name = "sc230ai-30fps",
+	.config_file = "linear_1920x1080_raw10_30fps_1lane.c",
+	.camera_config = &sc230ai_camera_config,
+	.vin_attr = &sc230ai_vin_attr,
+	.isp_cfg      = &sc230ai_isp_config,
+    .ynr_attr      = &sc230ai_ynr_attr,
+	.pym_cfg = &sc230ai_pym_common_config,
 };
