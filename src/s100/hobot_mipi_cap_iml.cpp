@@ -269,6 +269,8 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ERR_CON_EQ(ret, 0);
   }
 
+  cap_info_.sensor_type = pipe_contex[0].sensor_config.sensor_name;
+
   m_inited_ = true;
 
   return ret;

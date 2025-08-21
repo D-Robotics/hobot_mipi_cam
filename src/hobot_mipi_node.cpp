@@ -35,8 +35,6 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
       camera_calibration_info_(new sensor_msgs::msg::CameraInfo()) {
   nodePare_ = std::make_shared<struct NodePara>();
   getParams();
-  init();
-  
   RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
     "\n node params:" \
     "\n config_path: %s" \
@@ -78,6 +76,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     frame_id_.c_str(),
     io_method_name_.c_str()
   );
+  init();
 }
 
 MipiCamNode::~MipiCamNode() {
