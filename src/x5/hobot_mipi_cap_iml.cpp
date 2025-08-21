@@ -331,7 +331,6 @@ int HobotMipiCapIml::start() {
   }
   for(auto contex : pipe_contex){
 	contex.vse_node_handle = hbn_vflow_get_vnode_handle(contex.vflow_fd, HB_VSE, 0);
-	printf("read_vse_data vse_node_handle[%d] = %ld\n",i, contex.vse_node_handle);
 	if (contex.vse_node_handle <= 0) {
 		printf("get vflow %d vse handle error\n", i);
 	}
