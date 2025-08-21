@@ -246,7 +246,7 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   nodePare_->image_width_ = cap_info_.width;
   nodePare_->image_height_ = cap_info_.height;
 
-  RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
     "[%s]->cap %s init success.\r\n", __func__, cap_info_.sensor_type.c_str());
   lsInit_ = true;
   return 0;
@@ -560,7 +560,7 @@ bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
   }
   auto cal_v_ptr = mipiCap_ptr_->getCalCamInfo(); 
   if (cal_v_ptr != nullptr && (cal_v_ptr->size() > 0)){
-    RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
+    RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
     const sensor_msgs::msg::CameraInfo& cameraInfo = cal_v_ptr->at(0);
     memcpy( &cam_info, &cameraInfo, sizeof(sensor_msgs::msg::CameraInfo));
     return true;
@@ -587,7 +587,7 @@ bool MipiCamIml::getCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info,
     std::string camera_name;
     std::ifstream fin(cal_file.c_str());
     if (!fin) {
-      RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
+      RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
           "Camera calibration file: %s is not exist!"
           "\nIf you need calibration msg, please make sure the calibration file path is correct and the calibration file exists!",
           cal_file.c_str());
@@ -657,7 +657,7 @@ bool MipiCamIml::getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,
   }
   auto cal_v_ptr = mipiCap_ptr_->getCalCamInfo(); 
   if (cal_v_ptr != nullptr && (cal_v_ptr->size() == 2)){
-    RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
+    RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
     const sensor_msgs::msg::CameraInfo& cal_l = cal_v_ptr->at(0);
     memcpy( &cam_info_l, &cal_l, sizeof(sensor_msgs::msg::CameraInfo));
     const sensor_msgs::msg::CameraInfo& cal_r = cal_v_ptr->at(1);
@@ -670,7 +670,7 @@ bool MipiCamIml::getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,
 
 bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info_l,sensor_msgs::msg::CameraInfo &cam_info_r,
                                   const std::string &file_path) {
-  RCLCPP_WARN(rclcpp::get_logger("mipi_cam"), "cal_file:%s", file_path.c_str());     
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cam"), "cal_file:%s", file_path.c_str());     
   try {
     if ((file_path.length() == 0) || (file_path == "default")) {
       return false;

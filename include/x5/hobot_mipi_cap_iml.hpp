@@ -269,7 +269,7 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   int selectSensor(std::string &sensor, int &host, int &i2c_bus);
 
-  int detectEeprom(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
+  int detectEeprom_lianhe(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
   int detectEeprom_drobot(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
   bool readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize);
   bool getDualCamCalibrationFromEeprom();

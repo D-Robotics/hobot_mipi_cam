@@ -37,7 +37,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   getParams();
   init();
   
-  RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+  RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
     "\n node params:" \
     "\n config_path: %s" \
     "\n video_device_name: %s" \
@@ -212,7 +212,7 @@ void MipiCamNode::getParams() {
                   parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "dual_combine") {
       nodePare_->dual_combine_ = parameter.as_int();
-      RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "dual_combine value: %s",
                   parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "lpwm_enable") {
@@ -237,11 +237,11 @@ void MipiCamNode::getParams() {
                   parameter.as_bool());
     } else if (parameter.get_name() == "frame_ts_type") {
       nodePare_->frame_ts_type_ = parameter.value_to_string();
-      RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "frame_ts_type value: %s",
                   nodePare_->frame_ts_type_.c_str());
     } else {
-      RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "Invalid parameter name: %s",
                   parameter.get_name().c_str());
     }
