@@ -35,14 +35,14 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
       camera_calibration_info_(new sensor_msgs::msg::CameraInfo()) {
   nodePare_ = std::make_shared<struct NodePara>();
   getParams();
-  
-  RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
-    "node params:" \
-    "\n                  config_path: %s" \
-    "\n            video_device_name: %s" \
-    "\n                      channel: %d" \
-    "\n                     channel2: %d" \
-    "\n              camera_info_url: %s" \
+
+  RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+    "\n node params:" \
+    "\n config_path: %s" \
+    "\n video_device_name: %s" \
+    "\n channel: %d" \
+    "\n channel2: %d" \
+    "\n camera_info_url: %s" \
     "\n camera_calibration_file_path: %s" \
     "\n              out_format_name: %s" \
     "\n                 gdc_bin_file: %s" \
@@ -77,7 +77,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     frame_id_.c_str(),
     io_method_name_.c_str()
   );
-  
+
   init();
 }
 
@@ -213,7 +213,7 @@ void MipiCamNode::getParams() {
                   parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "dual_combine") {
       nodePare_->dual_combine_ = parameter.as_int();
-      RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "dual_combine value: %s",
                   parameter.value_to_string().c_str());
     } else if (parameter.get_name() == "lpwm_enable") {
@@ -238,11 +238,11 @@ void MipiCamNode::getParams() {
                   parameter.as_bool());
     } else if (parameter.get_name() == "frame_ts_type") {
       nodePare_->frame_ts_type_ = parameter.value_to_string();
-      RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "frame_ts_type value: %s",
                   nodePare_->frame_ts_type_.c_str());
     } else {
-      RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "Invalid parameter name: %s",
                   parameter.get_name().c_str());
     }
@@ -471,7 +471,7 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
                           pub_info->img_->step,
                           pub_info->img_->data,
                           pub_info->topic_type)) {
-      RCLCPP_ERROR(rclcpp::get_logger("mipi_node"), "grab failed");
+      RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "grab failed");
       return;
     }
 #if 0
@@ -512,7 +512,7 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
                                   msg.data,
                                   msg.data_size,
                                   pub_info->topic_type)) {
-        RCLCPP_ERROR(rclcpp::get_logger("mipi_node"),
+        RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
                     "hbmemUpdate grab img failed");
         return;
       }

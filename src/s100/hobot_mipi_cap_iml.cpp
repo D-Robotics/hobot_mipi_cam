@@ -51,7 +51,7 @@
 
 #define ERR_CON_NE(ret, a) do {\
 		if ((ret) == (a)) {\
-			printf("%s(%d) failed, ret %ld\n", __func__, __LINE__, (ret));\
+			RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "%s(%d) failed, ret %ld\n", __func__, __LINE__, (ret));\
 			return (ret);\
 		}\
 	} while(0)\
@@ -76,9 +76,9 @@ int HobotMipiCapIml::initEnv() {
     mipi_hosts = {0,1,2,3};
   }
 
-  RCLCPP_WARN(rclcpp::get_logger("mipi_cam"), "this board support mipi:");
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "this board support mipi:");
   for (auto host : mipi_hosts) {
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cam"), "host %d", host);
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "host %d", host);
   }
 
   listMipiHost(mipi_hosts, mipi_started_, mipi_stoped_);
@@ -269,6 +269,8 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ERR_CON_EQ(ret, 0);
   }
 
+  cap_info_.sensor_type = pipe_contex[0].sensor_config.sensor_name;
+
   m_inited_ = true;
 
   return ret;
@@ -426,7 +428,7 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
 	}
 	
 	if (ret != 0) {
-		printf("hbn_vnode_getframe pym failed nChnID = %d,ret = %d\n", nChnID,ret);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe pym failed nChnID = %d,ret = %d\n", nChnID,ret);
 		return -1;
 	}
   }
@@ -447,7 +449,7 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
 	int ret = hbn_vnode_getframe(handle, channel, 1000, &out_img);
 
 	if (ret != 0) {
-		printf("hbn_vnode_getframe handle = %p, channel  = %d,ret = %d failed\n", handle, channel,ret);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe handle = %p, channel  = %d,ret = %d failed\n", handle, channel,ret);
 		return -1;
 	}
 	hb_mem_invalidate_buf_with_vaddr((uint64_t)out_img.buffer.virt_addr[0],out_img.buffer.size[0]);
@@ -536,7 +538,7 @@ int HobotMipiCapIml::getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, 
 	int ret = hbn_vnode_getframe_group(handle, channel, 1000, &out_img);
 
 	if (ret != 0) {
-		printf("hbn_vnode_getframe_group handle = %p, channel  = %d,ret = %d failed\n", handle, channel,ret);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe_group handle = %p, channel  = %d,ret = %d failed\n", handle, channel,ret);
 		return -1;
 	}
 	//hb_mem_invalidate_buf_with_vaddr((uint64_t)out_img.buffer.virt_addr[0],out_img.buffer.size[0]);
@@ -692,7 +694,7 @@ void HobotMipiCapIml::dualFrameTask() {
 						}
 
 						if (ret != 0) {
-							printf("hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", i,ret);
+							RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", i,ret);
 							std::unique_lock<std::mutex> lk(queue_mtx_);
 							q_buff_empty_.push(buff_ptr[i]);
 							buff_ptr[i] = nullptr;
@@ -807,7 +809,6 @@ int HobotMipiCapIml::creat_camera_node(camera_config_t* camera_config,int64_t* c
 	int32_t ret = 0;
 	ret = hbn_camera_create(camera_config, cam_fd);
 	ERR_CON_EQ(ret, 0);
-	printf("creat_camera_node cam_fd = %ld\n", cam_fd);
 	return 0;
 }
 
@@ -836,7 +837,6 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 #endif
 
 	hw_id = sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx;
-	std::cout << "mipi_rx:" << hw_id << std::endl;
 	// if (hw_id != 1) {
 	// 	vin_online_isp = 0;
 	// } else {
@@ -1003,7 +1003,7 @@ int HobotMipiCapIml::creat_ynr_node(pipe_contex_t *pipe_contex) {
 static int check_pym_config(int src_width, int src_height, int width, int height, 
 					int &bl_width, int &bl_height,int &bl_stride, int &roi_sel, int &roi_layer) {
 	if ((src_width & 1) || (src_height & 1) || (width & 1) || (height & 1)) {
-		std::cout << "width and height isn't charmonium, width:" << width << ",height:" << height << std::endl;
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "width and height isn't charmonium, width:%d, height:%d", width, height);
 		return -1;
 	}
 	roi_sel = 0;
@@ -1022,7 +1022,7 @@ static int check_pym_config(int src_width, int src_height, int width, int height
 	int bl_width_16 = (src_width >> 4) & ~1;
 	int bl_height_16 = (src_height >> 4) & ~1;
 	if ((width > src_width) || (height > src_height) || (width < bl_width_16) || (height < bl_height_16) || (height < 134)) {
-		std::cout << "width and height over rang, width:" << width << ",height:" << height << std::endl;
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "width and height over rang, width:%d, height:%d", width, height);
 		return -1;
 	} else if ((width <= src_width) && (height <= src_height) && (width > bl_width_2) && (height > bl_height_2)) {
 		roi_sel = 0;
@@ -1091,7 +1091,7 @@ static int check_pym_config(int src_width, int src_height, int width, int height
 		bl_height = bl_height_4-2;
 		bl_stride = bl_width_4;
 	} else {
-		std::cout << "width and height over rang, width:" << width << ",height:" << height << std::endl;
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "width and height over rang, width:%d, height:%d", width, height);
 		return -1;
 	}
 	return 0;
@@ -1133,10 +1133,9 @@ int HobotMipiCapIml::creat_pym_node(pipe_contex_t *pipe_contex) {
 	int bl_stride = src_width;
 	if (check_pym_config(src_width, src_height, out_width,
 			out_height, bl_width, bl_height, bl_stride, roi_sel, roi_layer) == -1) {
-		std::cout << "creat_pym_node----------8888888888" << std::endl;
 		return -1;
 	}
-	std::cout << "creat_pym_node--roi_sel:" << roi_sel <<",roi_layer:" <<roi_layer<< ",bl_width:"<<bl_width <<",bl_height:"<<bl_height<<std::endl;
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "creat_pym_node--roi_sel: %d, roi_layer: %d, bl_width: %d, bl_height: %d", roi_sel, roi_layer, bl_width, bl_height);
 	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_sel[0] = roi_sel;
 	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_layer[0] = roi_layer;
 	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].region_width = bl_width;
@@ -1650,7 +1649,7 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::get_gdc_bin(std::string gdc_bin_f
 
 	FILE *fp = fopen(gdc_bin_file.c_str(), "r");
 	if (fp == NULL) {
-		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),"gdc bin file %s open failed\n", gdc_bin_file);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"gdc bin file %s open failed\n", gdc_bin_file);
 		return nullptr;
 	}
 	fseek(fp, 0, SEEK_END);
@@ -1765,18 +1764,23 @@ if (!((rotation == 0.0) || (rotation == 90.0) || (rotation == 180.0) || (rotatio
 	Kr.at<double>(0, 2) *= gdc_width_scale;
 	Kr.at<double>(1, 1) *= gdc_height_scale;
 	Kr.at<double>(1, 2) *= gdc_height_scale;
-std::cout << "gdc_width_scale:"<<gdc_width_scale << std::endl;
-	std::cout << "gdc_height_scale:" <<gdc_height_scale << std::endl;
-    std::cout << "Kl:\n" << Kl << std::endl;
-	std::cout << "Dl:\n" << Dl << std::endl;
-	std::cout << "Kr:\n" << Kr << std::endl;
-	std::cout << "Dr:\n" << Dr << std::endl;
-	std::cout << "R_rl:\n" << R_rl << std::endl;
-	std::cout << "t_rl:\n" << t_rl << std::endl;
+
+	RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cap"),"===stetreo calibration===" 
+		<< "\ngdc_width_scale : " << gdc_width_scale
+		<< "\ngdc_height_scale : " << gdc_height_scale
+		<< "\nKl : \n" << Kl
+		<< "\nDl : \n" << Dl
+		<< "\nKr : \n" << Kr
+		<< "\nDr : \n" << Dr
+		<< "\nR_rl : \n" << R_rl
+		<< "\nt_rl : \n" << t_rl
+		<< "\n===================="
+	);
+
 	cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0 ,cv::Size(out_gdc_width, out_gdc_height));
 	cv::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
 	cv::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1r, undistmap2r);
-int rotation_diff_int = rotation_diff;
+    int rotation_diff_int = rotation_diff;
 	cv::Mat tmp;
 	cv::Mat rotation_1l;
 	cv::Mat rotation_2l;
@@ -1821,10 +1825,13 @@ int rotation_diff_int = rotation_diff;
 			break;
     }
 
-	std::cout << "Rl:\n" << Rl << std::endl;
-	std::cout << "Rr:\n" << Rr << std::endl;
-	std::cout << "Pl:\n" << Pl << std::endl;
-	std::cout << "Pr:\n" << Pr << std::endl;
+	RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cap"),"===Corrected parameters===" 
+		<< "\nRl : \n" << Rl
+		<< "\nRr : \n" << Rr
+		<< "\nPl : \n" << Pl
+		<< "\nPr : \n" << Pr
+		<< "\n===================="
+	);
 
 	param_t gdc_param;
 	memset(&gdc_param, 0, sizeof(param_t));
@@ -2079,7 +2086,7 @@ break;
 	K.at<double>(1, 2) = camera_cy;
 	K.at<double>(2, 2) = 1;
 
-double tmp_t = 0;
+    double tmp_t = 0;
     switch(rotation_diff_int) {	
         case 90:
 		case 270:
@@ -2121,21 +2128,20 @@ double tmp_t = 0;
 	memcpy(tmp_cam_info.p.data(), P.data, sizeof(tmp_cam_info.p));
 	cal_cam_info.push_back(tmp_cam_info);
 
-	std::cout << "Kl:" << std::endl
-			<< Kl << std::endl
-			<< "Dl:" << std::endl
-			<< Dl << std::endl
-			<< "Kr: " << std::endl
-			<< Kr << std::endl
-			<< "Dr:" << std::endl
-			<< Dr << std::endl
-			<< "R, t: " << std::endl
-			<< R_rl << std::endl
-			<< t_rl << std::endl
-			<< "calib file width, height: " << cam_info[0].width << ", " << cam_info[0].height << std::endl
-			<< "gdc_width_scale, gdc_height_scale: " << gdc_width_scale << ", " << gdc_height_scale << std::endl
-			<< "rectify [f, cx, cy, baseline]: " << "[" << camera_fx << ", " << camera_cx << ", " << camera_cy << ", " << base_line << "]" << std::endl
-			<< std::endl;
+
+	
+	RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cap"),"===Corrected stetreo calibration ===" 
+		<< "\nKl : \n" << Kl 
+		<< "\nDl : \n" << Dl 
+		<< "\nKr : \n" << Kr
+		<< "\nDr : \n" << Dr
+		<< "\nR_rl : \n" << R_rl
+		<< "\nt_rl : \n" << t_rl
+		<< "\ncalib file width, height : " << cam_info[0].width << "," << cam_info[0].height
+		<< "\ngdc_width_scale, gdc_height_scale : " << gdc_width_scale << ", " << gdc_height_scale
+		<< "\nrectify [f, cx, cy, baseline]: " << "[" << camera_fx << ", " << camera_cx << ", " << camera_cy << ", " << base_line << "]"
+		<< "\n===================="
+	);
 
 	return gdc_bin_buf;
 }
@@ -2187,12 +2193,16 @@ if (!((rotation == 0.0) || (rotation == 90.0) || (rotation == 180.0) || (rotatio
 	K.at<double>(1, 1) *= gdc_height_scale;
 	K.at<double>(1, 2) *= gdc_height_scale;	
 
-	std::cout << "gdc_width_scale:"<<gdc_width_scale << std::endl;
-	std::cout << "gdc_height_scale:" <<gdc_height_scale << std::endl;
-    std::cout << "K:\n" << K << std::endl;
-	std::cout << "D:\n" << D << std::endl;
-	std::cout << "R:\n" << R << std::endl;
-	std::cout << "T:\n" << T << std::endl;
+
+	RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cap"),"===stetreo calibration===" 
+		<< "\ngdc_width_scale : " << gdc_width_scale
+		<< "\ngdc_height_scale : " << gdc_height_scale
+		<< "\nK : \n" << K
+		<< "\nD : \n" << D
+		<< "\nR : \n" << R
+		<< "\nT : \n" << T
+		<< "\n===================="
+	);
 
     param_t gdc_param;
 	memset(&gdc_param, 0, sizeof(param_t));
@@ -2433,7 +2443,7 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin_rotation(int gdc_widt
 	if (gdc_width <= 0 || gdc_height<= 0 || out_width <= 0 || out_height <= 0) {
 		return nullptr;
 	}
-	std::cout << "gen_gdc_bin_rotation---gdc_width:"<<gdc_width<<",gdc_height:"<<gdc_height<<",out_width:"<<out_width<<",out_height:"<<out_height<<",rotation:"<<rotation<<std::endl;
+	RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cap"), "gen_gdc_bin_rotation---gdc_width:"<<gdc_width<<",gdc_height:"<<gdc_height<<",out_width:"<<out_width<<",out_height:"<<out_height<<",rotation:"<<rotation<<std::endl);
     param_t gdc_param;
 	memset(&gdc_param, 0, sizeof(param_t));
 	gdc_param.format = FMT_SEMIPLANAR_420;
@@ -2604,7 +2614,7 @@ bool HobotMipiCapIml::readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_
 }
 
 
-int HobotMipiCapIml::detectEeprom(std::string &device, int &i2c_bus, uint16_t &i2c_addr) {
+int HobotMipiCapIml::detectEeprom_lianhe(std::string &device, int &i2c_bus, uint16_t &i2c_addr) {
 
   // mipi sensor的信息数组
   EEPROM_ID_T eeprom_id_list[] = {
@@ -2619,8 +2629,7 @@ int HobotMipiCapIml::detectEeprom(std::string &device, int &i2c_bus, uint16_t &i
   char checksum;
   std::string chip_type;
 
-  std::cout << "====================" << std::endl;
-  std::cout << "detectEeprom start" << std::endl;
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"==========detectEeprom lianhe start==========\n");
 
   for (auto num : i2c_buss) {
     for (auto eeprom_id : eeprom_id_list) {
@@ -2633,19 +2642,28 @@ int HobotMipiCapIml::detectEeprom(std::string &device, int &i2c_bus, uint16_t &i
 		std::for_each(buf_type.begin(), buf_type.end(), [&sum](char c) {
 			sum += static_cast<int>(c);
 		});
-		std::cout << "----------------" << std::endl;
-		std::cout << "check_0:" << std::to_string(check_0) << std::endl;
-		std::cout << "chip_type:" << chip_type << std::endl;
-		std::cout << "checksum:" << std::to_string(checksum) << std::endl;
-		std::cout << "sum:" << std::to_string(sum%255) << std::endl;
-		std::cout << "--------------" << std::endl;
+
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"eeprom infomation:" \
+			"\n ----------------" \
+			"\n bus: %d" \
+			"\n check_0: %s" \
+			"\n chip_type: %s" \
+			"\n checksum: %s" \
+			"\n sum: %s" \
+			"\n ----------------",
+			num,
+			std::to_string(check_0).c_str(),
+			chip_type.c_str(),
+			std::to_string(checksum).c_str(),
+			std::to_string(sum%255).c_str()
+		);
 		if (buf[0] == eeprom_id.check_value) {
 			i2c_bus = num;
 			i2c_addr = eeprom_id.i2c_dev_addr;
 			device = eeprom_id.device_name;
 			return 0;
 		} else {
-			std::cout << "eeprom check failure bus:" << num << ",addr:" << eeprom_id.i2c_dev_addr << ",device_name" << eeprom_id.device_name << std::endl;
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"eeprom check failure bus: %d, addr: %d, device_name: %s", num, eeprom_id.i2c_dev_addr, eeprom_id.device_name);
 		}
       }
     }
@@ -2672,7 +2690,7 @@ int HobotMipiCapIml::detectEeprom_drobot(std::string &device, int &i2c_bus, uint
     for (auto eeprom_id : eeprom_detect_list) {
       if (readEeprom16(num, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 8)) {
 		std::string buf_str = buf;
-		std::cout << "EEPROM FLAG:" << buf_str << std::endl;
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),"i2c bus: %d, EEPROM FLAG: %s\n", num, buf_str.c_str());
 		if (eeprom_id.check_str == buf_str) {
 			i2c_bus = num;
 			i2c_addr = eeprom_id.i2c_dev_addr;
@@ -2720,14 +2738,27 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
   });
   if (((sum % 255) + 1) == chech_value) {
 	EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
-	std::cout << "====EepromDrobotHead======" << std::endl;
-	std::cout << "flag:" << head_buf_ptr->flag << std::endl;
-	printf("camType:%d\n", head_buf_ptr->camType);
-	printf("cal_tpye:%d\n", head_buf_ptr->cal_tpye);
-	printf("ver_main:%d\n", head_buf_ptr->ver_main);
-	printf("ver_min:%d\n", head_buf_ptr->ver_min);
-	printf("angle:%d\n", head_buf_ptr->angle);
-	printf("d_num:%d\n", head_buf_ptr->d_num);
+
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
+		"\n ----------------" \
+		"\n bus: %d" \
+		"\n flag: %s" \
+		"\n camType: %d" \
+		"\n cal_tpye: %d" \
+		"\n ver_main: %d" \
+		"\n ver_min: %d" \
+		"\n angle: %d" \
+		"\n d_num: %d" \
+		"\n ----------------",
+		i2c_bus,
+		head_buf_ptr->flag,
+		head_buf_ptr->camType,
+		head_buf_ptr->cal_tpye,
+		head_buf_ptr->ver_main,
+		head_buf_ptr->ver_min,
+		head_buf_ptr->angle,
+		head_buf_ptr->d_num
+	);
 
 	if (head_buf_ptr->angle == 0x00) {
 		cap_info_.cal_rotation_ = 0.0;
@@ -2759,14 +2790,22 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 			return false;
 		}
 		
-		std::cout << "===========================" << std::endl;
-		std::cout << "m_d_info_l" << std::endl;
-		printf("width:%d\n",m_d_info_l.width);
-		printf("height:%d\n",m_d_info_l.height);
-		printf("fx:%f\n",m_d_info_l.fx);
-		printf("cx:%f\n",m_d_info_l.cx);
-		printf("fy:%f\n",m_d_info_l.fy);
-		printf("cy:%f\n",m_d_info_l.cy);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_l======" \
+			"\n ----------------" \
+			"\n width: %d" \
+			"\n height: %d" \
+			"\n fx: %f" \
+			"\n fx: %f" \
+			"\n fy: %f" \
+			"\n cy: %f" \
+			"\n ----------------",
+			m_d_info_l.width,
+			m_d_info_l.height,
+			m_d_info_l.fx,
+			m_d_info_l.fx,
+			m_d_info_l.fy,
+			m_d_info_l.cy
+		);
 
 		// printf("k1:%f\n",m_d_info_l.k1);
 		// printf("k2:%f\n",m_d_info_l.k2);
@@ -2777,14 +2816,23 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 		// printf("k5:%f\n",m_d_info_l.k5);
 		// printf("k6:%f\n",m_d_info_l.k6);
 
-		std::cout << "===========================" << std::endl;
-		std::cout << "m_d_info_r" << std::endl;
-		printf("width:%d\n",m_d_info_r.width);
-		printf("height:%d\n",m_d_info_r.height);
-		printf("fx:%f\n",m_d_info_r.fx);
-		printf("cx:%f\n",m_d_info_r.cx);
-		printf("fy:%f\n",m_d_info_r.fy);
-		printf("cy:%f\n",m_d_info_r.cy);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_r======" \
+			"\n ----------------" \
+			"\n width: %d" \
+			"\n height: %d" \
+			"\n fx: %f" \
+			"\n fx: %f" \
+			"\n fy: %f" \
+			"\n cy: %f" \
+			"\n ----------------",
+			m_d_info_r.width,
+			m_d_info_r.height,
+			m_d_info_r.fx,
+			m_d_info_r.fx,
+			m_d_info_r.fy,
+			m_d_info_r.cy
+		);
+
 		// printf("k1:%f\n",m_d_info_r.k1);
 		// printf("k2:%f\n",m_d_info_r.k2);
 		// printf("p1:%f\n",m_d_info_r.p1);
@@ -2794,20 +2842,37 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 		// printf("k5:%f\n",m_d_info_r.k5);
 		// printf("k6:%f\n",m_d_info_r.k6);
 
-		std::cout << "===========================" << std::endl;
-		std::cout << "r_t_info" << std::endl;
-		printf("r11:%f\n",r_t_info.r11);
-		printf("r12:%f\n",r_t_info.r12);
-		printf("r13:%f\n",r_t_info.r13);
-		printf("r21:%f\n",r_t_info.r21);
-		printf("r22:%f\n",r_t_info.r22);
-		printf("r23:%f\n",r_t_info.r23);
-		printf("r31:%f\n",r_t_info.r31);
-		printf("r32:%f\n",r_t_info.r32);
-		printf("r33:%f\n",r_t_info.r33);
-		printf("tx:%f\n",r_t_info.tx);
-		printf("ty:%f\n",r_t_info.ty);
-		printf("tz:%f\n",r_t_info.tz);
+
+
+
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====r_t_info======" \
+			"\n ----------------" \
+			"\n r11: %f" \
+			"\n r12: %f" \
+			"\n r13: %f" \
+			"\n r21: %f" \
+			"\n r22: %f" \
+			"\n r23: %f" \
+			"\n r31: %f" \
+			"\n r32: %f" \
+			"\n r33: %f" \
+			"\n tx: %f" \
+			"\n ty: %f" \
+			"\n tz: %f" \
+			"\n ----------------",
+			r_t_info.r11,
+			r_t_info.r12,
+			r_t_info.r13,
+			r_t_info.r21,
+			r_t_info.r22,
+			r_t_info.r23,
+			r_t_info.r31,
+			r_t_info.r32,
+			r_t_info.r33,
+			r_t_info.tx,
+			r_t_info.ty,
+			r_t_info.tz
+		);
 
 		cam_info_[0].width = m_d_info_l.width;
 		cam_info_[0].height = m_d_info_l.height;
@@ -2907,7 +2972,7 @@ bool HobotMipiCapIml::getDualCamCalibrationFromEeprom_230ai() {
   std::vector<char> i2c_buf;
   i2c_buf.resize(sizeof(CalDualCamInfo_ST));
   char chech_value;
-  if (detectEeprom(device, i2c_bus, i2c_addr) == -1) {
+  if (detectEeprom_lianhe(device, i2c_bus, i2c_addr) == -1) {
 	return false;
   }
 

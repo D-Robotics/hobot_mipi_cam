@@ -30,7 +30,7 @@ std::shared_ptr<HobotMipiCap> createMipiCap(const std::string &dev_name) {
     cap_ptr = std::make_shared<HobotMipiCapIml>();
   } else {
     cap_ptr = std::make_shared<HobotMipiCapIml>();
-    RCLCPP_ERROR(rclcpp::get_logger("mipi_factory"),
+    RCLCPP_WARN(rclcpp::get_logger("mipi_factory"),
     "This is't support device type(%s), start defaule capture.\n",dev_name.c_str());
   }
   return cap_ptr;
@@ -59,13 +59,13 @@ std::string getBoardType() {
         board_type_str = "X5_RDK module";
         break;
       default:
-        RCLCPP_INFO(rclcpp::get_logger("mipi_factory"),
-          "/sys/class/socinfo/board_id:%d\n", board_type);
+        //RCLCPP_INFO(rclcpp::get_logger("mipi_factory"),
+        //  "/sys/class/socinfo/board_id:%d\n", board_type);
         break;
     }
   }
-  RCLCPP_WARN(rclcpp::get_logger("mipi_factory"),
-    "board_type %s\n", board_type_str.c_str());
+  //RCLCPP_WARN(rclcpp::get_logger("mipi_factory"),
+  //  "board_type %s\n", board_type_str.c_str());
   return board_type_str;
 }
 

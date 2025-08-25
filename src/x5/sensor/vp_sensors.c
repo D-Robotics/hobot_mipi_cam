@@ -614,10 +614,10 @@ static int32_t vp_sensor_mipi_host_mclk_is_not_configed(int csi_index){
 	read_mipi_info_from_device_tree(csi_index, &mipi_property);
 	if(strlen(mipi_property.pinctrl_names) == 0){
 			mclk_is_not_configed = 1;
-			printf("mipi mclk is not configed.\n");
+			//printf("mipi mclk is not configed.\n");
 		}else{
 
-			printf("mipi mclk is configed.\n");
+			//printf("mipi mclk is configed.\n");
 		}
 	return mclk_is_not_configed;
 }
@@ -647,9 +647,9 @@ void vp_sensor_detect_structed(csi_list_info_t *csi_list_info)
 		printf("mipi rx phy: %d\n", vcon_props_array[i].rx_phy[1]);
 		if(strlen(mipi_props_array[i].pinctrl_names) == 0){
 			mclk_is_not_configed = 1;
-			printf("mipi mclk is not configed.\n");
+			//printf("mipi mclk is not configed.\n");
 		}else{
-			printf("mipi mclk is configed.\n");
+			//printf("mipi mclk is configed.\n");
 		}
 		csi_info_tmp.mclk_is_not_configed = mclk_is_not_configed;
 
@@ -845,7 +845,7 @@ int32_t vp_sensor_detect_2(int host, mipi_host_info_t* host_info)
 	read_vcon_info_from_device_tree(host, &vcon_props);
 
 	printf("Searching camera sensor on device: %s ", vcon_props.device_path);
-	printf("mclk_is_not_configed: %d\n", mclk_is_not_configed);
+	//printf("mclk_is_not_configed: %d\n", mclk_is_not_configed);
 	printf("i2c bus: %d ", vcon_props.bus);
 	printf("mipi rx phy: %d\n", vcon_props.rx_phy[1]);
 
@@ -906,7 +906,7 @@ int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config,
 	read_vcon_info_from_device_tree(host, &vcon_props);
 
 	printf("Searching camera sensor on device: %s ", vcon_props.device_path);
-	printf("mclk_is_not_configed: %d\n", mclk_is_not_configed);
+	//printf("mclk_is_not_configed: %d\n", mclk_is_not_configed);
 	printf("i2c bus: %d ", vcon_props.bus);
 	printf("mipi rx phy: %d\n", vcon_props.rx_phy[1]);
 
