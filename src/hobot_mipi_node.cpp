@@ -35,6 +35,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
       camera_calibration_info_(new sensor_msgs::msg::CameraInfo()) {
   nodePare_ = std::make_shared<struct NodePara>();
   getParams();
+
   RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
     "\n node params:" \
     "\n config_path: %s" \
@@ -43,19 +44,19 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     "\n channel2: %d" \
     "\n camera_info_url: %s" \
     "\n camera_calibration_file_path: %s" \
-    "\n out_format_name: %s" \
-    "\n gdc_bin_file: %s" \
-    "\n image_width: %d" \
-    "\n image_height: %d" \
-    "\n framerate: %d" \
-    "\n rotation: %f" \
-    "\n device_mode: %s" \
-    "\n dual_combine: %d" \
-    "\n lpwm_enable: %d" \
-    "\n gdc_enable: %d" \
-    "\n frame_ts_type: %s" \
-    "\n frame_id: %s" \
-    "\n io_method_name: %s",
+    "\n              out_format_name: %s" \
+    "\n                 gdc_bin_file: %s" \
+    "\n                  image_width: %d" \
+    "\n                 image_height: %d" \
+    "\n                    framerate: %d" \
+    "\n                     rotation: %f" \
+    "\n                  device_mode: %s" \
+    "\n                 dual_combine: %d" \
+    "\n                  lpwm_enable: %s" \
+    "\n                   gdc_enable: %s" \
+    "\n                frame_ts_type: %s" \
+    "\n                     frame_id: %s" \
+    "\n               io_method_name: %s",
     nodePare_->config_path_.c_str(),
     nodePare_->video_device_name_.c_str(),
     nodePare_->channel_,
@@ -70,12 +71,13 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     nodePare_->rotation_,
     nodePare_->device_mode_.c_str(),
     nodePare_->dual_combine_,
-    nodePare_->lpwm_enable_,
-    nodePare_->gdc_enable_,
+    (nodePare_->lpwm_enable_ ? "true" : "false"),
+    (nodePare_->gdc_enable_ ? "true" : "false"),
     nodePare_->frame_ts_type_.c_str(),
     frame_id_.c_str(),
     io_method_name_.c_str()
   );
+
   init();
 }
 
