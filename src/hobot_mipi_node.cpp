@@ -469,7 +469,7 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
                           pub_info->img_->step,
                           pub_info->img_->data,
                           pub_info->topic_type)) {
-      RCLCPP_ERROR(rclcpp::get_logger("mipi_node"), "grab failed");
+      RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "grab failed");
       return;
     }
 #if 0
@@ -510,7 +510,7 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
                                   msg.data,
                                   msg.data_size,
                                   pub_info->topic_type)) {
-        RCLCPP_ERROR(rclcpp::get_logger("mipi_node"),
+        RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
                     "hbmemUpdate grab img failed");
         return;
       }
