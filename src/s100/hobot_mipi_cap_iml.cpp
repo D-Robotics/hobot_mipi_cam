@@ -2717,7 +2717,7 @@ int i2c_bus;
   if (device == "yuguang") {
 	getDualCamCalibration_yugang(i2c_bus, i2c_addr);
   }
-  return false;
+  return true;
 }
 
 bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) {

@@ -310,6 +310,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int sensor_bus_ = 2;
   int pipeline_id_ = 0;
   char cal_tpye_ = 0; //0x00:针孔标定；0x01：鱼眼标定。
+  std::string eeprom_name_ = "";
   std::vector<int> mipi_started_;
   std::vector<int> mipi_stoped_;
   std::map<int, BOARD_CONFIG_ST> board_config_m_;
