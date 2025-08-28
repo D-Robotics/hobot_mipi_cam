@@ -95,9 +95,18 @@ int HobotMipiCapIml::initEnv() {
     if (mipi_started_.size() > 0) {
       return -1;
     }
-  }  
+  }
+
+  std::ofstream qos_file("/sys/devices/platform/soc/20510100.dw230_gdc_qos/read_priority_qos_ctrl/priority");
+  if (qos_file.is_open()) {
+	qos_file << "0";  // 写入目标值
+	qos_file.close();
+  }
+
   return 0;
 }
+
+#define yuguang_calib_lname "/usr/hobot/bin/sc132gs_tuning_yg.json"
 
 int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
   int ret = 0;
@@ -227,6 +236,9 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 			pipe_contex[1].gdc_bin_r = gdc_bin;
 		}
 	}
+	if ((eeprom_name_ == "yuguang") && (strcasecmp(pipe_contex[1].sensor_config.sensor_name, "sc132gs-1280p") == 0)) {
+		std::strcpy(pipe_contex[1].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
+	}
 
 	ret = create_and_run_vflow(&pipe_contex[1]);
 	ERR_CON_EQ(ret, 0);
@@ -234,6 +246,9 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
 	ERR_CON_EQ(ret, 0);
+	if ((eeprom_name_ == "yuguang") && (strcasecmp(pipe_contex[0].sensor_config.sensor_name, "sc132gs-1280p") == 0)) {
+		std::strcpy(pipe_contex[0].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
+	}
 	ret = create_and_run_vflow(&pipe_contex[0]);
 	ERR_CON_EQ(ret, 0);
 #endif
@@ -2476,10 +2491,11 @@ bool HobotMipiCapIml::getDualCamCalibrationFromEeprom() {
   if (detectEeprom_drobot(device, i2c_bus, i2c_addr) == -1) {
 	return false;
   }
+  eeprom_name_ = device;
   if (device == "yuguang") {
 	getDualCamCalibration_yugang(i2c_bus, i2c_addr);
   }
-  return false;
+  return true;
 }
 
 bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) {
