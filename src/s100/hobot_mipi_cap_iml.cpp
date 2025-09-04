@@ -92,11 +92,13 @@ int HobotMipiCapIml::initEnv() {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "There are no available host.\n");
     return -1;
   }
+#if 0
   if (board_config_m_.size() == 0) {
     if (mipi_started_.size() > 0) {
       return -1;
     }
   }  
+#endif
   return 0;
 }
 
