@@ -76,6 +76,24 @@ mipi_cam.launch.py配置默认输出960*544分辨率NV12图像，发布的话题
 ...
 ```
 
+由于同时如果两路图像向同一个topic发送图像，导致图像冲突，因此启动第二路图像需要重映射topic，启动第二个相机的指令（仅限X5和S100）：
+
+| 源topic      | 重映射topic                                |
+| ------------ | ----------------------------------------- |
+| /image_raw   | /image_raw_alias                          |
+| /hbmem_img   | /hbmem_img_alias                          |
+| /camera_info | /camera_info_alias                        |
+
+tros humble 版本
+```bash
+# 配置 tros.b humble 环境：
+source /opt/tros/humble/setup.bash
+# run 方式启动
+ros2 run mipi_cam mipi_cam --ros-args --remap /image_raw:=/image_raw_alias
+# 或者launch 方式启动
+ros2 launch mipi_cam mipi_cam_topic_remap.launch.py
+```
+
 ## 图像可视化
 
 ### 使用ROS rqt_image_view
