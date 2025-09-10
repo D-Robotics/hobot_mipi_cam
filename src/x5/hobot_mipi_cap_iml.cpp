@@ -106,8 +106,6 @@ int HobotMipiCapIml::initEnv() {
   return 0;
 }
 
-#define yuguang_calib_lname "/usr/hobot/bin/sc132gs_tuning_yg.json"
-
 int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
   int ret = 0;
   cap_info_ = info;
@@ -161,47 +159,6 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	pipe_contex.resize(2);
 	pipe_contex[0].cap_info_ = &cap_info_;
 	pipe_contex[1].cap_info_ = &cap_info_;
-	//copy_config(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index]);
-#if 0
-	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
-	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
-	ERR_CON_EQ(ret, 0);
-	gdc_bin_buf_.clear();
-	if (cap_info_.gdc_enable_) {
-		vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
-		if (cam_info_.size() != 2) {
-			getDualCamCalibrationFromEeprom();
-		}
-		if (cal_tpye_ == 0) {
-			auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
-											cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
-			if (gdc_bin.size() == 2) {
-				gdc_bin_buf_.push_back(gdc_bin[0]);
-				gdc_bin_buf_.push_back(gdc_bin[1]);
-				pipe_contex[0].gdc_bin = gdc_bin[0];
-				pipe_contex[1].gdc_bin = gdc_bin[1];
-			}
-		}
-	}
-	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
-		vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
-		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
-		if (gdc_bin) {
-			gdc_bin_buf_.push_back(gdc_bin);
-			pipe_contex[0].gdc_bin_r = gdc_bin;
-			pipe_contex[1].gdc_bin_r = gdc_bin;
-		}
-	}
-
-	ret = create_and_run_vflow(&pipe_contex[0]);
-	ERR_CON_EQ(ret, 0);
-	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index]);
-	memcpy(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index], sizeof(vp_sensor_config_t));
-	ret = vp_sensor_fixed_mipi_host_1(v_host_info[1].host_num, &pipe_contex[1].sensor_config, &pipe_contex[1].csi_config);
-	ERR_CON_EQ(ret, 0);
-	ret = create_and_run_vflow(&pipe_contex[1]);
-	ERR_CON_EQ(ret, 0);
-#else
 	memcpy(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index], sizeof(vp_sensor_config_t));
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[1].host_num, &pipe_contex[1].sensor_config, &pipe_contex[1].csi_config);
 	ERR_CON_EQ(ret, 0);
@@ -237,7 +194,11 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		}
 	}
 	if ((eeprom_name_ == "yuguang") && (strcasecmp(pipe_contex[1].sensor_config.sensor_name, "sc132gs-1280p") == 0)) {
-		std::strcpy(pipe_contex[1].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
+		std::string sensor_tuning = "/usr/hobot/bin/sc132gs_tuning_yg.json";
+		rcpputils::fs::path file_path = sensor_tuning;
+		if (rcpputils::fs::exists(file_path)) {
+			std::strcpy(pipe_contex[1].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
+		}	
 	}
 
 	ret = create_and_run_vflow(&pipe_contex[1]);
@@ -247,11 +208,14 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
 	ERR_CON_EQ(ret, 0);
 	if ((eeprom_name_ == "yuguang") && (strcasecmp(pipe_contex[0].sensor_config.sensor_name, "sc132gs-1280p") == 0)) {
-		std::strcpy(pipe_contex[0].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
+		std::string sensor_tuning = "/usr/hobot/bin/sc132gs_tuning_yg.json";
+		rcpputils::fs::path file_path = sensor_tuning;
+		if (rcpputils::fs::exists(file_path)) {
+			std::strcpy(pipe_contex[1].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
+		}
 	}
 	ret = create_and_run_vflow(&pipe_contex[0]);
 	ERR_CON_EQ(ret, 0);
-#endif
     //n2d_pipe_contex.cap_info_ = &cap_info_;
 	//ret = create_and_run_n2d_vflow(&n2d_pipe_contex);
 	//ERR_CON_EQ(ret, 0);
@@ -282,7 +246,12 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	gdc_bin_buf_.clear();
 	if (cap_info_.gdc_enable_) {
 		vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
-		if (cam_info_.size() > 0) {
+		auto gdb_bin_fig = get_gdc_bin(pipe_contex[0].cap_info_->gdc_bin_file_);
+		if (gdb_bin_fig) {
+			gdc_bin_buf_.push_back(gdb_bin_fig);
+			pipe_contex[0].gdc_bin = gdb_bin_fig;
+		}
+		else if (cam_info_.size() > 0) {
 			sensor_msgs::msg::CameraInfo cal_cam_info;
 			if (cal_tpye_ == 0) {
 				auto gdc_bin = gen_gdc_bin(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height,
@@ -304,7 +273,13 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 			pipe_contex[0].gdc_bin_r = gdc_bin;
 		}
 	}
-
+	if ((strcasecmp(pipe_contex[0].sensor_config.sensor_name, "sc132gs-1280p") == 0)) {
+		std::string sensor_tuning = "/usr/hobot/bin/sc132gs_tuning_yg.json";
+		rcpputils::fs::path file_path = sensor_tuning;
+		if (rcpputils::fs::exists(file_path)) {
+			std::strcpy(pipe_contex[0].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
+		}	
+	}
 
 	ret = create_and_run_vflow(&pipe_contex[0]);
 	ERR_CON_EQ(ret, 0);
@@ -1003,7 +978,7 @@ int HobotMipiCapIml::creat_gdc_node_r(pipe_contex_t *pipe_contex) {
 }
 
 int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
-	if (pipe_contex == nullptr) {
+	if ((pipe_contex == nullptr) || (pipe_contex->gdc_bin == nullptr)) {
 		return -1;
 	}
 	int ret = 0;
@@ -1011,13 +986,6 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 	isp_ichn_attr_t isp_ichn_attr;
 	pipe_contex->gdc_bin_buf_is_valid = 0;
 	pipe_contex->gdc_init_valid = 0;
-#if 0
-    const char* gdc_bin_file = vp_gdc_get_bin_file(vp_vflow_contex->gdc_info.sensor_name);
-	if(gdc_bin_file == NULL){
-		SC_LOGE("%s is enable gdc, but gdc bin file is not set.", vp_vflow_contex->gdc_info.sensor_name);
-		return -1;
-	}
-#endif
 
 	int input_width;
 	int input_height;
@@ -1033,14 +1001,6 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 		ERR_CON_EQ(ret, 0);
 		input_width = isp_ichn_attr.width;
 		input_height = isp_ichn_attr.height;
-	}
-
-    auto gdc_bin = get_gdc_bin(pipe_contex->cap_info_->gdc_bin_file_);
-	if (gdc_bin == nullptr && pipe_contex->gdc_bin == nullptr) {
-		return -1;
-	}
-	if (gdc_bin) {
-		pipe_contex->gdc_bin = gdc_bin;
 	}
 
 	pipe_contex->gdc_bin_buf_is_valid = 1;
@@ -1128,10 +1088,10 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ERR_CON_EQ(ret, 0);
 	ret = creat_isp_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
-	//if (cap_info_.gdc_enable_) {
-	  creat_gdc_node_r(pipe_contex);
+	if (cap_info_.gdc_enable_) {
 	  creat_gdc_node(pipe_contex);
-	//}
+	}
+	creat_gdc_node_r(pipe_contex);
 	ret = creat_vse_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
 
@@ -1435,9 +1395,19 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::get_gdc_bin(std::string gdc_bin_f
 	int offset = 0;
 	char *cfg_buf = NULL;
 
+	if (gdc_bin_file.empty()) {
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"gdc_bin_file is empty\n");
+		return nullptr;
+	}
+	rcpputils::fs::path file_path = gdc_bin_file;
+	if (!(rcpputils::fs::exists(file_path) && rcpputils::fs::is_regular_file(file_path))) {
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"The gdc bin file %s, isn't exist or is path\n", gdc_bin_file.c_str());
+		return nullptr;
+	}
+
 	FILE *fp = fopen(gdc_bin_file.c_str(), "r");
 	if (fp == NULL) {
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"gdc bin file %s open failed\n", gdc_bin_file);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"The gdc bin file %s open failed\n", gdc_bin_file.c_str());
 		return nullptr;
 	}
 	fseek(fp, 0, SEEK_END);

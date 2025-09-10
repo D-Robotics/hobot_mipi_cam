@@ -34,7 +34,73 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
       Node("mipi_cam", node_options),
       camera_calibration_info_(new sensor_msgs::msg::CameraInfo()) {
   nodePare_ = std::make_shared<struct NodePara>();
-  getParams();
+
+  std::string tros_distro = std::string(std::getenv("TROS_DISTRO")? std::getenv("TROS_DISTRO") : "");
+  nodePare_->config_path_ = "/opt/tros/" + tros_distro + "/lib/mipi_cam/config/";
+  nodePare_->video_device_name_ = "";
+  nodePare_->channel_ = 0;
+  nodePare_->channel2_ = 2;
+  nodePare_->camera_info_url_ = "";
+  nodePare_->camera_calibration_file_path_ = "";
+  nodePare_->out_format_name_ = "bgr8"; //nv12, bgr8;
+  nodePare_->gdc_bin_file_ = "";
+  nodePare_->image_width_ = 1920;
+  nodePare_->image_height_ = 1080;
+  nodePare_->framerate_ = 30;
+  nodePare_->rotation_ = 0.0;
+  nodePare_->cal_rotation_ = 0.0;
+  nodePare_->device_mode_ = "single"; //single, dual;
+  nodePare_->dual_combine_ = 0;
+  nodePare_->lpwm_enable_ = false;
+  nodePare_->gdc_enable_ = true;
+  nodePare_->frame_ts_type_ = "sensor"; //sensor,realtime;
+  frame_id_ = "default_cam";
+  io_method_name_ = "ros"; //shared_mem, ros;
+  double framerate = 30.0;
+
+  this->declare_parameter<std::string>("frame_id", frame_id_);
+  this->declare_parameter<std::string>("io_method", io_method_name_); 
+  this->declare_parameter<std::string>("config_path", nodePare_->config_path_);
+  this->declare_parameter<std::string>("video_device", nodePare_->video_device_name_);
+  this->declare_parameter<int>("channel", nodePare_->channel_);
+  this->declare_parameter<int>("channel2", nodePare_->channel2_);
+  this->declare_parameter<std::string>("camera_info_url", nodePare_->camera_info_url_);
+  this->declare_parameter<std::string>("camera_calibration_file_path", nodePare_->camera_calibration_file_path_);
+  this->declare_parameter<std::string>("out_format", nodePare_->out_format_name_); 
+  this->declare_parameter<std::string>("gdc_bin_file", nodePare_->gdc_bin_file_);
+  this->declare_parameter<int>("image_width", nodePare_->image_width_);
+  this->declare_parameter<int>("image_height", nodePare_->image_height_);
+  this->declare_parameter<double>("framerate", framerate);
+  this->declare_parameter<double>("rotation", nodePare_->rotation_);
+  this->declare_parameter<double>("cal_rotation", nodePare_->cal_rotation_);
+  this->declare_parameter<std::string>("device_mode", nodePare_->device_mode_);  
+  this->declare_parameter<int>("dual_combine", nodePare_->dual_combine_);
+  this->declare_parameter<bool>("lpwm_enable", nodePare_->lpwm_enable_);
+  this->declare_parameter<bool>("gdc_enable", nodePare_->gdc_enable_);
+  this->declare_parameter<std::string>("frame_ts_type", nodePare_->frame_ts_type_);
+
+  this->get_parameter<std::string>("frame_id", frame_id_);
+  this->get_parameter<std::string>("io_method", io_method_name_); 
+  this->get_parameter<std::string>("config_path", nodePare_->config_path_);
+  this->get_parameter<std::string>("video_device", nodePare_->video_device_name_);
+  this->get_parameter<int>("channel", nodePare_->channel_);
+  this->get_parameter<int>("channel2", nodePare_->channel2_);
+  this->get_parameter<std::string>("camera_info_url", nodePare_->camera_info_url_);
+  this->get_parameter<std::string>("camera_calibration_file_path", nodePare_->camera_calibration_file_path_);
+  this->get_parameter<std::string>("out_format", nodePare_->out_format_name_); 
+  this->get_parameter<std::string>("gdc_bin_file", nodePare_->gdc_bin_file_);
+  this->get_parameter<int>("image_width", nodePare_->image_width_);
+  this->get_parameter<int>("image_height", nodePare_->image_height_);
+  this->get_parameter<double>("framerate", framerate);
+  this->get_parameter<double>("rotation", nodePare_->rotation_);
+  this->get_parameter<double>("cal_rotation", nodePare_->cal_rotation_);
+  this->get_parameter<std::string>("device_mode", nodePare_->device_mode_);  
+  this->get_parameter<int>("dual_combine", nodePare_->dual_combine_);
+  this->get_parameter<bool>("lpwm_enable", nodePare_->lpwm_enable_);
+  this->get_parameter<bool>("gdc_enable", nodePare_->gdc_enable_);
+  this->get_parameter<std::string>("frame_ts_type", nodePare_->frame_ts_type_);
+
+  nodePare_->framerate_ = static_cast<int>(framerate);
 
   RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
     "\n node params:" \
@@ -106,149 +172,6 @@ MipiCamNode::~MipiCamNode() {
   }
 }
 
-void MipiCamNode::getParams() {
-  std::string tros_distro
-      = std::string(std::getenv("TROS_DISTRO")? std::getenv("TROS_DISTRO") : "");
-  // declare params
-  this->declare_parameter("config_path", "/opt/tros/" + tros_distro + "/lib/mipi_cam/config/");
-  this->declare_parameter("channel", 0);
-  this->declare_parameter("channel2", 2);
-  this->declare_parameter("camera_info_url", "");
-  this->declare_parameter("framerate", 30.0);  // 10.0);
-  this->declare_parameter("frame_id", "default_cam");
-  this->declare_parameter("image_height", 1080);  // 480);
-  this->declare_parameter("image_width", 1920);   // 640);
-  this->declare_parameter("io_method", "ros");
-  this->declare_parameter("out_format", "bgr8");   // nv12
-  this->declare_parameter("video_device", "");  // "F37");
-  this->declare_parameter("camera_calibration_file_path", "");
-  this->declare_parameter("gdc_bin_file", "");
-  this->declare_parameter("device_mode", "single");
-  this->declare_parameter("dual_combine", 0);
-  this->declare_parameter("lpwm_enable", false);
-  this->declare_parameter("rotation", 0.0);
-  this->declare_parameter("cal_rotation", 0.0);
-  this->declare_parameter("gdc_enable", true);
-  this->declare_parameter("frame_ts_type", nodePare_->frame_ts_type_);
-  auto parameters_client = std::make_shared<rclcpp::SyncParametersClient>(this);
-  for (auto& parameter :
-       parameters_client->get_parameters({"config_path",
-                                          "camera_info_url",
-                                          "out_format",
-                                          "channel",
-                                          "channel2",
-                                          "frame_id",
-                                          "framerate",
-                                          "image_height",
-                                          "image_width",
-                                          "io_method",
-                                          "video_device",
-                                          "camera_calibration_file_path",
-                                          "gdc_bin_file",
-                                          "device_mode",
-                                          "dual_combine",
-                                          "lpwm_enable",
-                                          "rotation",
-                                           "cal_rotation",
-                                          "gdc_enable",
-                                          "frame_ts_type"
-                                          })) {
-    if (parameter.get_name() == "config_path") {
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "config_path value: %s",
-                  parameter.value_to_string().c_str());
-      nodePare_->config_path_ = parameter.value_to_string();
-    } else if (parameter.get_name() == "channel") {
-      nodePare_->channel_ = parameter.as_int();
-    } else if (parameter.get_name() == "channel2") {
-      nodePare_->channel2_ = parameter.as_int();
-    } else if (parameter.get_name() == "camera_info_url") {
-      nodePare_->camera_info_url_ = parameter.value_to_string();
-    } else if (parameter.get_name() == "out_format") {
-      nodePare_->out_format_name_ = parameter.value_to_string();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "out_format value: %s",
-                  parameter.value_to_string().c_str());
-    } else if (parameter.get_name() == "frame_id") {
-      frame_id_ = parameter.value_to_string();
-    } else if (parameter.get_name() == "framerate") {
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "framerate: %f",
-                  parameter.as_double());
-      nodePare_->framerate_ = parameter.as_double();
-    } else if (parameter.get_name() == "image_height") {
-      nodePare_->image_height_ = parameter.as_int();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "image_height_ value: %s",
-                  parameter.value_to_string().c_str());
-    } else if (parameter.get_name() == "image_width") {
-      nodePare_->image_width_ = parameter.as_int();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "image_width_ value: %s",
-                  parameter.value_to_string().c_str());
-    } else if (parameter.get_name() == "io_method") {
-      io_method_name_ = parameter.value_to_string();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "io_method_name_: %s",
-                  io_method_name_.c_str());
-    } else if (parameter.get_name() == "video_device") {
-      nodePare_->video_device_name_ = parameter.value_to_string();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "video_device value: %s",
-                  parameter.value_to_string().c_str());
-    } else if (parameter.get_name() == "camera_calibration_file_path") {
-      nodePare_->camera_calibration_file_path_ = parameter.value_to_string();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "camera_calibration_file_path value: %s",
-                  parameter.value_to_string().c_str());
-    } else if (parameter.get_name() == "gdc_bin_file") {
-      nodePare_->gdc_bin_file_ = parameter.value_to_string();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "gdc_bin_file value: %s",
-                  parameter.value_to_string().c_str());
-    } else if (parameter.get_name() == "device_mode") {
-      nodePare_->device_mode_ = parameter.value_to_string();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "device_mode value: %s",
-                  parameter.value_to_string().c_str());
-    } else if (parameter.get_name() == "dual_combine") {
-      nodePare_->dual_combine_ = parameter.as_int();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "dual_combine value: %s",
-                  parameter.value_to_string().c_str());
-    } else if (parameter.get_name() == "lpwm_enable") {
-      nodePare_->lpwm_enable_ = parameter.as_bool();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "lpwm_enable value: %d",
-                  parameter.as_bool());
-    } else if (parameter.get_name() == "rotation") {
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "rotation: %f",
-                  parameter.as_double());
-      nodePare_->rotation_ = parameter.as_double();
-    } else if (parameter.get_name() == "cal_rotation") {
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "cal_rotation: %f",
-                  parameter.as_double());
-      nodePare_->cal_rotation_ = parameter.as_double();
-    } else if (parameter.get_name() == "gdc_enable") {
-      nodePare_->gdc_enable_ = parameter.as_bool();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "gdc_enable value: %d",
-                  parameter.as_bool());
-    } else if (parameter.get_name() == "frame_ts_type") {
-      nodePare_->frame_ts_type_ = parameter.value_to_string();
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "frame_ts_type value: %s",
-                  nodePare_->frame_ts_type_.c_str());
-    } else {
-      RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
-                  "Invalid parameter name: %s",
-                  parameter.get_name().c_str());
-    }
-  }
-}
-
 void MipiCamNode::init() {
   if (m_bIsInit) return;
   mipiCam_ptr_ = MipiCam::create_mipicam();
@@ -257,13 +180,6 @@ void MipiCamNode::init() {
               "[%s]->mipinode init failure.\n",
               __func__);
     rclcpp::shutdown();
-  }
-  while (frame_id_ == "") {
-    RCLCPP_WARN_ONCE(
-        rclcpp::get_logger("mipi_node"),
-        "Required Parameters not set...waiting until they are set");
-    getParams();
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
 
   RCLCPP_INFO(
