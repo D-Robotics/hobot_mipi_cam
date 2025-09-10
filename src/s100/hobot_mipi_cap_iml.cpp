@@ -1240,7 +1240,7 @@ int HobotMipiCapIml::creat_gdc_node_r(pipe_contex_t *pipe_contex) {
 }
 
 int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
-	if (pipe_contex == nullptr) {
+	if ((pipe_contex == nullptr) || (pipe_contex->gdc_bin == nullptr)) {
 		return -1;
 	}
 	int ret = 0;
@@ -1251,14 +1251,6 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 	auto input_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
 	auto out_width = pipe_contex->cap_info_->width;
 	auto out_height = pipe_contex->cap_info_->height;
-
-    auto gdc_bin = get_gdc_bin(pipe_contex->cap_info_->gdc_bin_file_);
-	if (gdc_bin == nullptr && pipe_contex->gdc_bin == nullptr) {
-		return -1;
-	}
-	if (gdc_bin) {
-		pipe_contex->gdc_bin = gdc_bin;
-	}
 
     gdc_settings_t gdc_setting = {0};
 	uint32_t hw_id = 0;
