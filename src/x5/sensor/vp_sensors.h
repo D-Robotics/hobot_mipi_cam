@@ -74,6 +74,7 @@ typedef struct vp_sensor_config_s {
 	isp_attr_t      *isp_attr;
 	isp_ichn_attr_t *isp_ichn_attr;
 	isp_ochn_attr_t *isp_ochn_attr;
+	int16_t ex_chip_id;
 } vp_sensor_config_t;
 
 

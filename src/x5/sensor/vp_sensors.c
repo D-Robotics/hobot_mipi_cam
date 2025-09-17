@@ -412,6 +412,8 @@ static int32_t read_chip_id(vcon_propertie_t vcon_props, vp_sensor_config_t *sen
 		if (vp_i2c_read_reg16_data8(vcon_props.bus, addr, sensor_config->chip_id_reg, (uint8_t*)chip_id) == 0) {
 			if (((chip_id[0] & 0xFF) == (sensor_config->chip_id & 0xFF))) {
 				return 0;
+			} else if ((sensor_config->ex_chip_id != 0) && ((chip_id[0] & 0xFF) == (sensor_config->ex_chip_id & 0xFF))) {
+				return 0;
 			}
 		}
 	} else {
@@ -419,6 +421,8 @@ static int32_t read_chip_id(vcon_propertie_t vcon_props, vp_sensor_config_t *sen
 		if (vp_i2c_read_reg16_data16(vcon_props.bus, addr, sensor_config->chip_id_reg, (uint16_t*)chip_id) == 0) {
 			if ((sensor_config->chip_id == 0xA55A) // 如果有的 sensor 本身读不到ID，但是又想要使用它，就把 sensor 的 chip_id 设为 0xA55A
 			|| ((chip_id[0] & 0xFFFF) == (sensor_config->chip_id & 0xFFFF))) {
+				return 0;
+			} else if ((sensor_config->ex_chip_id != 0) && ((chip_id[0] & 0xFFFF) == (sensor_config->ex_chip_id & 0xFFFF))) {
 				return 0;
 			}
 		}
