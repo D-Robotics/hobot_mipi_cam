@@ -33,6 +33,12 @@ extern "C" {
 #define VP_MAX_BUF_SIZE 256
 #define VP_MAX_VCON_NUM 4
 
+#define SENSOR_TYPE_NORMAL	0
+#define SENSOR_TYPE_GMSL_RAW	1
+#define SENSOR_TYPE_GMSL_YUV	2
+#define SENSOR_TYPE_GMSL_RGBIR	3
+
+
 typedef struct {
 	int index;
 	int is_valid;
@@ -84,6 +90,8 @@ typedef struct vp_sensor_config_s {
 	isp_cfg_t      *isp_cfg;
 	struct ynr_init_attr *ynr_attr;
 	pym_cfg_t *pym_cfg;
+	deserial_config_t *deserial_attr;
+	uint16_t sensor_type;
 } vp_sensor_config_t;
 
 

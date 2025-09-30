@@ -46,6 +46,37 @@ typedef struct gdc_binbuf_s {
   }
 }GdcBinBuf_ST;
 
+typedef enum {
+	PIPELINE_SCENE_ISP_BYPASS    = 0,    /** 情景0(不需要ISP): Sensor 输出 YUV数据*/
+	PIPELINE_SCENE_ISP_ONLY      = 1,    /** 情景1(ISP): 不需要运行YNR的Sensor, 或者宽和高 > 2048的sensor */
+	PIPELINE_SCENE_ISP_YNR       = 2,    /** 情景2(ISP + YNR): 需要运行YNR的Sensor, 并且宽和高 <= 2048的sensor */
+	PIPELINE_SCENE_MAX                   /**< 枚举边界，不可用作实际参数 */
+} pipeline_usage_scene_type_t;
+
+typedef struct {
+	int isp_mode;
+	int isp_hw_id;
+	int isp_slot_id;
+
+	int ynr_mode;
+	int ynr_slot_id;
+
+	int pym_slot_id;
+	int pym_hw_id;
+	int pym_mode;
+
+	//PIPELINE_SCENE_ISP_BYPASS
+	int is_online_vin_pym;
+
+	//PIPELINE_SCENE_ISP_ONLY
+	int is_online_vin_isp;
+	int is_online_isp_pym;
+
+	//PIPELINE_SCENE_ISP_YNR
+	int is_online_isp_ynr;
+	int is_online_ynr_pym;
+}pipeline_channel_info_t;
+
 typedef struct pipe_contex_s {
 	hbn_vflow_handle_t vflow_fd;
 	hbn_vnode_handle_t vin_node_handle;
@@ -57,6 +88,7 @@ typedef struct pipe_contex_s {
 	hbn_vnode_handle_t vpu_node_handle;
   hbn_vnode_handle_t stream_handle;
 	camera_handle_t cam_fd;
+  deserial_handle_t des_fd;
 	vp_sensor_config_t sensor_config;
   vp_csi_config_t csi_config;
   std::shared_ptr<GdcBinBuf_ST> gdc_bin;
@@ -65,6 +97,8 @@ typedef struct pipe_contex_s {
   int gdc_init_valid_r;
   int stream_group;
   MIPI_CAP_INFO_ST *cap_info_;
+  pipeline_channel_info_t pipe_info_;
+  pipeline_usage_scene_type_t sensor_type_;
 }pipe_contex_t;
 
 typedef struct video_buffer_s {
@@ -287,13 +321,14 @@ class HobotMipiCapIml : public HobotMipiCap {
         uint64_t *timestamp, uint32_t* frame_id, bool gray = false);
 
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
-  int creat_pym_node(pipe_contex_t *pipe_contex);
-  int creat_isp_node(pipe_contex_t *pipe_contex);
-  int creat_ynr_node(pipe_contex_t *pipe_contex);
-  int creat_vin_node(pipe_contex_t *pipe_contex);
-  int creat_gdc_node(pipe_contex_t *pipe_contex);
-  int creat_gdc_node_r(pipe_contex_t *pipe_contex);
-  int creat_camera_node(camera_config_t* camera_config,int64_t* cam_fd);
+  int create_pym_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int pym_mode);
+  int create_isp_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int mode, int is_online);
+  int create_ynr_node(pipe_contex_t *pipe_contex, int slot_id, int work_mode);
+  int create_vin_node(pipe_contex_t *pipe_contex, int is_online, int link_port);
+  int create_gdc_node(pipe_contex_t *pipe_contex);
+  int create_gdc_node_r(pipe_contex_t *pipe_contex);
+  int create_deserial_node(pipe_contex_t *pipe_contex);
+  int create_camera_node(pipe_contex_t *pipe_contex, int link_port);
   std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height,
 		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
@@ -303,6 +338,8 @@ class HobotMipiCapIml : public HobotMipiCap {
        double rotation = 0.0, double cal_rotate = 0.0);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
+
+  void pipeline_connect_param_init(pipe_contex_t *pipe_contex);
 
   bool m_inited_ = false;
   bool started_ = false;
