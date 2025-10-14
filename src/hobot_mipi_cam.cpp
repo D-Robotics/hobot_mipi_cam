@@ -216,6 +216,8 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   cap_info_.cal_rotation_ = nodePare_->cal_rotation_;
   cap_info_.gdc_enable_ = nodePare_->gdc_enable_;
   cap_info_.frame_ts_type_ = nodePare_->frame_ts_type_;
+  cap_info_.link_type_ = nodePare_->link_type_;
+  cap_info_.link_port_ = nodePare_->link_port_;
 
   if (mipiCap_ptr_->initEnv() < 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),

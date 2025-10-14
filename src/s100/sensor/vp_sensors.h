@@ -109,6 +109,10 @@ void vp_show_sensors_list();
 vp_sensor_config_t *vp_get_sensor_config_by_name(char *sensor_name);
 void vp_sensor_detect_structed(csi_list_info_t *csi_list_info);
 
+uint32_t vp_get_gmsl_list_number();
+void vp_show_gmsl_list();
+vp_sensor_config_t *vp_get_gmsl_config_by_name(char *sensor_name);
+
 int32_t vp_sensor_fixed_mipi_host(vp_sensor_config_t *sensor_config, vp_csi_config_t* mipi_config);
 int32_t vp_sensor_multi_fixed_mipi_host(vp_sensor_config_t *sensor_config, int used_mipi_host, vp_csi_config_t* mipi_config);
 int32_t vp_sensor_detect_2(int host, mipi_host_info_t* host_info);

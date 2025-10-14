@@ -87,6 +87,14 @@ def generate_launch_description():
             'mipi_lpwm_enable',
             default_value='False',
             description='mipi dual camera lpwm enable'),
+        DeclareLaunchArgument(
+            'mipi_link_type',
+            default_value='0',
+            description='mipi or gmsl link type'),
+        DeclareLaunchArgument(
+            'mipi_link_port',
+            default_value='0',
+            description='gmsl link port'),
         # 启动零拷贝环境配置node
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -115,6 +123,8 @@ def generate_launch_description():
                 {"lpwm_enable": LaunchConfiguration('mipi_lpwm_enable')},
                 {"cal_rotation": LaunchConfiguration('mipi_cal_rotation')},
                 {"gdc_bin_file": LaunchConfiguration('mipi_gdc_bin_file')},
+                {"link_type": LaunchConfiguration('mipi_link_type')},
+                {"link_port": LaunchConfiguration('mipi_link_port')},
             ],
             arguments=['--ros-args', '--log-level', 'warn']
         )

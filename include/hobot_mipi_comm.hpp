@@ -47,6 +47,8 @@ struct NodePara {
   bool lpwm_enable_;
   bool gdc_enable_;
   std::string frame_ts_type_ {"sensor"};
+  int link_type_; // 0:表示mipi接口，1：表示解串器接口。
+  int link_port_; // 0~3
 };
 
 typedef struct {
@@ -66,6 +68,8 @@ typedef struct {
   bool gdc_enable_;
   std::string gdc_bin_file_;
   std::string frame_ts_type_ {"sensor"};
+  int link_type_; // 0:表示mipi接口，1：表示解串器接口。
+  int link_port_; // 0~3
 } MIPI_CAP_INFO_ST;
 
 typedef struct sensor_id {

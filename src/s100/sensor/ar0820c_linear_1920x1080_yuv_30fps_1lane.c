@@ -1,24 +1,27 @@
 #include "vp_sensors.h"
+// #include "vp_pym.h"
 
-#define SENSOR_WIDTH  1920
-#define SENSOR_HEIGHT  1080
-#define SENSOE_FPS 30
-#define RAW10 0x2B
+#define SENSOR_FPS 30
 
-static camera_config_t ovx3cstd_camera_config = {
-        /* 0 */
-        .name = "ovx3cstd",
-        .addr = 0x10,
-        .eeprom_addr = 0x51,
-        .serial_addr = 0x41,
-        .sensor_mode = 0x05,
-        .fps = 30,
-        .width = 1920,
-        .height = 1080,
-        .extra_mode = 4,
-        .config_index = 16896,
-        .end_flag = CAMERA_CONFIG_END_FLAG,
-        .calib_lname = "disable",
+#define SENSOR_WIDTH 1920
+#define SENSOR_HEIGHT 1080
+
+
+static camera_config_t ar0820std_camera_config = {
+		/* 0 */
+		.name = "ar0820std",
+		.addr = 0x13,
+		.eeprom_addr = 0x53,
+		.serial_addr = 0x43,
+		.sensor_mode = 0x05,
+		.fps = 30,
+		.width = 1920,
+		.height = 1080,
+		.extra_mode = 5,
+		.config_index = 512,
+		// .mipi_cfg = &ar0820std_mipi_config, // MIPI配置,NULL自动获取
+		.end_flag = CAMERA_CONFIG_END_FLAG,
+		.calib_lname = "disable",
 };
 
 static poc_config_t g_poc_cfg[] = {
@@ -30,19 +33,18 @@ static poc_config_t g_poc_cfg[] = {
 	},
 };
 
-static deserial_config_t ovx3cstd_deserial_config = {
+static deserial_config_t ar0820std_deserial_config = {
 	.name = "max96712",
-	.link_desp[0] = "ovx3cstd:4@16896",
-	.link_desp[1] = "ovx3cstd:4@16896",
-	.link_desp[2] = "ovx3cstd:4@16896",
-	.link_desp[3] = "ovx3cstd:4@16896",
+	.link_desp[0] = "ar0820std:5@512",
+	.link_desp[1] = "ar0820std:5@512",
+	.link_desp[2] = "ar0820std:5@512",
+	.link_desp[3] = "ar0820std:5@512",
 	.addr = 0x29,
 	.poc_cfg = &g_poc_cfg[0],
 	.end_flag = DESERIAL_CONFIG_END_FLAG,
 };
 
-
-static vin_attr_t ovx3cstd_vin_attr = {
+static vin_attr_t ar0820std_vin_attr = {
     .vin_node_attr = {
         .vcon_attr = {
             .bus_main = 3,
@@ -76,7 +78,7 @@ static vin_attr_t ovx3cstd_vin_attr = {
     .vin_ichn_attr = {
         .width =  1920,
         .height = 1080,
-        .format = 0x2c,
+        .format = 30,
     },
 
     .vin_attr_ex = {
@@ -89,7 +91,7 @@ static vin_attr_t ovx3cstd_vin_attr = {
         [VIN_MAIN_FRAME] = { //vin_ochn0_attr
             .ddr_en = 1,
             .vin_basic_attr = {
-                .format = 0x2c,
+                .format = 30,
                 .wstride = 0,
                 .vstride = 0,
                 .pack_mode = 1,
@@ -119,93 +121,8 @@ static vin_attr_t ovx3cstd_vin_attr = {
         [VIN_ROI] = { //vin_ochn4_buff_attr
             .buffers_num = 6,
         },
-    },
-    .magicNumber = MAGIC_NUMBER,
-};
-
-
-
-static isp_cfg_t ovx3cstd_isp_config = {
-    .isp_attr = {
-        .channel = {
-            .hw_id = 0,
-            .slot_id = 4,
-            .ctx_id = -1, //#define AUTO_ALLOC_ID -1
-        },
-        .work_mode = 0,
-        .hdr_mode = 1,
-        .size = {
-            .width = 1920,
-            .height = 1080,
-        },
-        .frame_rate = 30,
-        .sched_mode = 1,
-        .algo_state = 1,
-        .isp_combine = {
-            .isp_channel_mode = 0, //ISP_CHANNEL_MODE_NORMAL
-            .bind_channel = {
-                .bind_hw_id = 10,
-                .bind_slot_id = 0,
-            },
-        },
-        .clear_record = 0, //json和代码中未拿到，设置为0
-        .isp_sw_ctrl = {
-            .ae_stat_buf_en = 1,
-            .awb_stat_buf_en = 1,
-            .ae5bin_stat_buf_en = 1,
-            .ctx_buf_en = 0,
-            .pixel_consistency_en = 0,
-        },
-    },
-    .ichn_attr = {
-        .input_crop_cfg = {
-            .enable = 0,
-            .rect = {
-                .x = 0,
-                .y = 0,
-                .width = 0,
-                .height = 0,
-            },
-        },
-        .in_buf_noclean = 1,
-        .in_buf_noncached = 0,
-    },
-    .ochn_attr = {
-        .output_crop_cfg = {
-            .enable = 0,
-            .rect = {
-                .x = 0,
-                .y = 0,
-                .width = 0,
-                .height = 0,
-            },
-        },
-        .out_buf_noinvalid = 1,
-        .out_buf_noncached = 0,
-        .output_raw_level = 0, //ISP_OUTPUT_RAW_LEVEL_SENSOR_DATA
-        .stream_output_mode = 0, //convert_isp_stream_output(1),
-        .axi_output_mode = 9, //convert_isp_axi_output(0),
-        .buf_num = 3,
-    }
-};
-
-
-struct ynr_init_attr ovx3cstd_ynr_attr = {
-	.work_mode = 1,
-	.slot_id = 4,
-
-	.width = SENSOR_WIDTH,
-	.height = SENSOR_HEIGHT,
-	.nr_static_switch = 0b11, // (nr3d_en << 1) | (nr2d_en);
-	.in_stride = {
-		SENSOR_WIDTH, SENSOR_HEIGHT
 	},
-	.nr2d_en = 1,
-	.nr3d_en = 1,
-
-	.dma_output_en = 1, // nr3d_en
-
-	.debug_en = 0,    
+    .magicNumber = MAGIC_NUMBER,
 };
 
 
@@ -261,17 +178,17 @@ static pym_cfg_t pym_common_config = {
     .magicNumber = MAGIC_NUMBER,
 };
 
-vp_sensor_config_t ovx3cstd_linear_1920x1080_raw12_30fps_1lane = {
+vp_sensor_config_t ar0820std_linear_1920x1080_yuv_30fps_1lane = {
 	.chip_id_reg = 0,
 	.chip_id = 0x0820,
 	.sensor_i2c_addr_list = {0x10},
-    .sensor_type = SENSOR_TYPE_GMSL_RAW,
-	.sensor_name = "ovx3cstd-30fps",
+    .sensor_type = SENSOR_TYPE_GMSL_YUV,
+	.sensor_name = "ar0820std-1080p30",
 	.config_file = "linear_1920x1080_yuv_30fps_1lane.c",
-	.camera_config = &ovx3cstd_camera_config,
-    .deserial_attr = &ovx3cstd_deserial_config,
-	.vin_attr = &ovx3cstd_vin_attr,
-	.isp_cfg      = &ovx3cstd_isp_config,
-    .ynr_attr      = &ovx3cstd_ynr_attr,
+	.camera_config = &ar0820std_camera_config,
+    .deserial_attr = &ar0820std_deserial_config,
+	.vin_attr = &ar0820std_vin_attr,
+	.isp_cfg      = NULL,
+    .ynr_attr      = NULL,
 	.pym_cfg = &pym_common_config,
 };

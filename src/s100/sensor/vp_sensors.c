@@ -29,6 +29,7 @@ uint32_t vp_get_sensors_list_number() {
 	return sizeof(vp_sensor_config_list) / sizeof(vp_sensor_config_list[0]);
 }
 
+
 void vp_show_sensors_list() {
 	int num = 0;
 
@@ -45,6 +46,41 @@ vp_sensor_config_t *vp_get_sensor_config_by_name(char *sensor_name)
 	for (int i = 0; vp_sensor_config_list[i]->sensor_name != NULL; i++) {
 		if (strcmp(vp_sensor_config_list[i]->sensor_name, sensor_name) == 0) {
 			return vp_sensor_config_list[i];
+		}
+	}
+	return NULL;
+}
+
+
+extern vp_sensor_config_t ovx3cstd_linear_1920x1080_raw12_30fps_1lane;
+extern vp_sensor_config_t ar0820std_linear_1920x1080_yuv_30fps_1lane;
+
+vp_sensor_config_t *vp_gmsl_config_list[] = {
+	&ovx3cstd_linear_1920x1080_raw12_30fps_1lane,
+	&ar0820std_linear_1920x1080_yuv_30fps_1lane
+};
+
+uint32_t vp_get_gmsl_list_number() {
+	return sizeof(vp_gmsl_config_list) / sizeof(vp_gmsl_config_list[0]);
+}
+
+
+void vp_show_gmsl_list() {
+	int num = 0;
+
+	num = vp_get_gmsl_list_number();
+	for (int i = 0; i < num; i++) {
+		printf("index: %d  sensor_name: %-16s \tconfig_file:%s\n",
+		i, vp_gmsl_config_list[i]->sensor_name,
+		vp_gmsl_config_list[i]->config_file);
+	}
+}
+
+vp_sensor_config_t *vp_get_gmsl_config_by_name(char *sensor_name)
+{
+	for (int i = 0; vp_gmsl_config_list[i]->sensor_name != NULL; i++) {
+		if (strcmp(vp_gmsl_config_list[i]->sensor_name, sensor_name) == 0) {
+			return vp_gmsl_config_list[i];
 		}
 	}
 	return NULL;
