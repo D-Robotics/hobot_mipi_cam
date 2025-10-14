@@ -1,4 +1,8 @@
 # Changelog for package mipi_cam
+tros_2.3.14 (2025-10-14)
+------------------
+1. RDK S100增加gmsl的摄像机。
+2. 解决component的bug
 
 tros_2.3.12 (2025-08-25)
 ------------------
