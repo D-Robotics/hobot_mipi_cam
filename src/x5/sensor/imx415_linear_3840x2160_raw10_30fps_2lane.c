@@ -134,4 +134,5 @@ vp_sensor_config_t imx415_linear_3840x2160_raw10_30fps_2lane = {
 	.isp_attr      = &imx415_isp_attr,
 	.isp_ichn_attr = &imx415_isp_ichn_attr,
 	.isp_ochn_attr = &imx415_isp_ochn_attr,
+	.ex_chip_id = 0x01,
 };
