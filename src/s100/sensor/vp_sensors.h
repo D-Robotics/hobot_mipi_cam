@@ -33,6 +33,12 @@ extern "C" {
 #define VP_MAX_BUF_SIZE 256
 #define VP_MAX_VCON_NUM 4
 
+#define SENSOR_TYPE_NORMAL	0
+#define SENSOR_TYPE_GMSL_RAW	1
+#define SENSOR_TYPE_GMSL_YUV	2
+#define SENSOR_TYPE_GMSL_RGBIR	3
+
+
 typedef struct {
 	int index;
 	int is_valid;
@@ -84,6 +90,8 @@ typedef struct vp_sensor_config_s {
 	isp_cfg_t      *isp_cfg;
 	struct ynr_init_attr *ynr_attr;
 	pym_cfg_t *pym_cfg;
+	deserial_config_t *deserial_attr;
+	uint16_t sensor_type;
 } vp_sensor_config_t;
 
 
@@ -100,6 +108,10 @@ uint32_t vp_get_sensors_list_number();
 void vp_show_sensors_list();
 vp_sensor_config_t *vp_get_sensor_config_by_name(char *sensor_name);
 void vp_sensor_detect_structed(csi_list_info_t *csi_list_info);
+
+uint32_t vp_get_gmsl_list_number();
+void vp_show_gmsl_list();
+vp_sensor_config_t *vp_get_gmsl_config_by_name(char *sensor_name);
 
 int32_t vp_sensor_fixed_mipi_host(vp_sensor_config_t *sensor_config, vp_csi_config_t* mipi_config);
 int32_t vp_sensor_multi_fixed_mipi_host(vp_sensor_config_t *sensor_config, int used_mipi_host, vp_csi_config_t* mipi_config);
