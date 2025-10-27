@@ -213,6 +213,35 @@ typedef struct cal_dual_R_T_info_st {
 } CalDualRTInfo_ST;
 #pragma pack()
 
+#pragma pack(4)
+typedef struct cal_dual_M_D_d_st {
+  int width;
+  int height;
+  double fx;
+  double fy;
+  double cx;
+  double cy;
+  double d[8];//鱼眼:k1,k2,k3,k4;针孔:k1,k2,p1,p2,k3,k4,k5,k6
+} CalDualMDInfo_d_ST;
+#pragma pack()
+
+#pragma pack(4)
+typedef struct cal_dual_R_T_info_d_st {
+  double r11;
+  double r12;
+  double r13;
+  double r21;
+  double r22;
+  double r23;
+  double r31;
+  double r32;
+  double r33;
+  double tx;
+  double ty;
+  double tz;
+} CalDualRTInfo_d_ST;
+#pragma pack()
+
 class HobotMipiCapIml : public HobotMipiCap {
  public:
   HobotMipiCapIml() {}
@@ -274,6 +303,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize);
   bool getDualCamCalibrationFromEeprom();
   bool getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr);
+  bool getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr);
   bool getDualCamCalibrationFromEeprom_230ai();
 
   void dualFrameTask();
