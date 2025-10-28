@@ -53,7 +53,7 @@ static camera_config_t imx415_camera_config = {
 	.gpio_enable_bit = 0x01,
 	.gpio_level_bit = 0x00,
 	.mipi_cfg = &imx415_mipi_config,
-	.calib_lname = "/usr/hobot/bin/imx415_tuning.json",
+	.calib_lname = "/usr/hobot/lib/sensor/imx415_tuning.json",
 };
 
 static vin_node_attr_t imx415_vin_node_attr = {

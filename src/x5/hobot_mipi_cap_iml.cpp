@@ -850,6 +850,8 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	vse_attr_t vse_attr = {0};
 	vse_ichn_attr_t vse_ichn_attr;
 	vse_ochn_attr_t vse_ochn_attr;
+	memset(&vse_ichn_attr, 0, sizeof(vse_ichn_attr_t));
+	memset(&vse_ochn_attr, 0, sizeof(vse_ochn_attr_t));
 	int input_width;
 	int input_height;
 	if (pipe_contex->gdc_init_valid == 1) {
