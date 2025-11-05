@@ -2775,7 +2775,11 @@ bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr
 		  cam_info_.resize(2);
 		  CalDualMDInfo_d_ST m_d_info_l, m_d_info_r;
 		  CalDualRTInfo_d_ST r_t_info;
-		  if (readEeprom16(i2c_bus, i2c_addr, 0x0010, (char*)&m_d_info_l, sizeof(CalDualMDInfo_d_ST)) == false) {
+		  CalDualWHInfo_d_ST w_h_info,w_h_info_tmp;
+		  if (readEeprom16(i2c_bus, i2c_addr, 0x0010, (char*)&w_h_info, sizeof(CalDualWHInfo_d_ST)) == false) {
+			return false;
+		  }
+		  if (readEeprom16(i2c_bus, i2c_addr, 0x0018, (char*)&m_d_info_l, sizeof(CalDualMDInfo_d_ST)) == false) {
 			  return false;
 		  }
 		  if (readEeprom16(i2c_bus, i2c_addr, 0x0081, (char*)&m_d_info_r, sizeof(CalDualMDInfo_d_ST)) == false) {
@@ -2784,21 +2788,26 @@ bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr
 		  if (readEeprom16(i2c_bus, i2c_addr, 0x00EA, (char*)&r_t_info, sizeof(CalDualRTInfo_d_ST)) == false) {
 			  return false;
 		  }
-		  
+
+		  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====w_h_info======" \
+			"\n ----------------" \
+			"\n width: %d" \
+			"\n height: %d" \
+			"\n ----------------",
+			w_h_info.width,
+			w_h_info.height
+		  );
+
 		  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_l======" \
 			  "\n ----------------" \
-			  "\n width: %d" \
-			  "\n height: %d" \
-			  "\n fx: %lf" \
 			  "\n fx: %lf" \
 			  "\n fy: %lf" \
+			  "\n cx: %lf" \
 			  "\n cy: %lf" \
 			  "\n ----------------",
-			  m_d_info_l.width,
-			  m_d_info_l.height,
-			  m_d_info_l.fx,
 			  m_d_info_l.fx,
 			  m_d_info_l.fy,
+			  m_d_info_l.cx,
 			  m_d_info_l.cy
 		  );
   
@@ -2813,18 +2822,14 @@ bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr
   
 		  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_r======" \
 			  "\n ----------------" \
-			  "\n width: %d" \
-			  "\n height: %d" \
-			  "\n fx: %lf" \
 			  "\n fx: %lf" \
 			  "\n fy: %lf" \
+			  "\n cx: %lf" \
 			  "\n cy: %lf" \
 			  "\n ----------------",
-			  m_d_info_r.width,
-			  m_d_info_r.height,
-			  m_d_info_r.fx,
 			  m_d_info_r.fx,
 			  m_d_info_r.fy,
+			  m_d_info_r.cx,
 			  m_d_info_r.cy
 		  );
   
@@ -2869,10 +2874,10 @@ bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr
 			  r_t_info.tz
 		  );
   
-		  cam_info_[0].width = m_d_info_l.width;
-		  cam_info_[0].height = m_d_info_l.height;
-		  cam_info_[1].width = m_d_info_r.width;
-		  cam_info_[1].height = m_d_info_r.height;
+		  cam_info_[0].width = w_h_info.width;
+		  cam_info_[0].height = w_h_info.height;
+		  cam_info_[1].width = w_h_info.width;
+		  cam_info_[1].height = w_h_info.height;
   
 		  cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
 		  l_k.at<double>(0,0) = m_d_info_l.fx;

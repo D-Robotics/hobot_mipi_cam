@@ -214,9 +214,14 @@ typedef struct cal_dual_R_T_info_st {
 #pragma pack()
 
 #pragma pack(4)
-typedef struct cal_dual_M_D_d_st {
+typedef struct cal_dual_w_h_st {
   int width;
   int height;
+} CalDualWHInfo_d_ST;
+#pragma pack()
+
+#pragma pack(4)
+typedef struct cal_dual_M_D_d_st {
   double fx;
   double fy;
   double cx;
