@@ -325,12 +325,13 @@ void MipiCamNode::init_publisher(Publisher_info_st&  Pub_info, std::string topic
 
   Pub_info.img_->header.frame_id = frame_id;
   Pub_info.topic_type = topic_type;
+  Pub_info.time_start_ = std::chrono::system_clock::now();
 }
 
 void MipiCamNode::init_publisher_hbmem(Publisher_hbmem_info_st&  Pub_info, std::string topic, std::string topic_type){
   Pub_info.publisher_hbmem_ = this->create_publisher<hbm_img_msgs::msg::HbmMsg1080P>(topic, rclcpp::SensorDataQoS());
   Pub_info.topic_type = topic_type;
-
+  Pub_info.time_start_ = std::chrono::system_clock::now();
 }
 
 
@@ -397,7 +398,11 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
                           pub_info->img_->step,
                           pub_info->img_->data,
                           pub_info->topic_type)) {
-      RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "grab failed");
+      auto time_after = std::chrono::system_clock::now();
+      auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(time_after - pub_info->time_start_).count();
+      if (interval > 3000) {
+        RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "grab failed");
+      }
       return;
     }
 #if 0
@@ -438,8 +443,11 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
                                   msg.data,
                                   msg.data_size,
                                   pub_info->topic_type)) {
-        RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
-                    "hbmemUpdate grab img failed");
+        auto time_after = std::chrono::system_clock::now();
+        auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(time_after - pub_info->time_start_).count();
+        if (interval > 3000) {
+          RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "hbmemUpdate grab img failed");
+        }
         return;
       }
 #if 0

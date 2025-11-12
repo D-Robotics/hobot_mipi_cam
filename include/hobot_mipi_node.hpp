@@ -41,6 +41,7 @@ typedef struct Publisher_info_base {
   sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info2_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr info_pub_ = nullptr;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr info_pub2_ = nullptr;
+  std::chrono::time_point<std::chrono::system_clock> time_start_;
 } Publisher_info_base_st;
 
 typedef struct Publisher_info : Publisher_info_base_st  {

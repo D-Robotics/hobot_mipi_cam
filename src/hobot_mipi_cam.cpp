@@ -680,7 +680,10 @@ bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info
     }
     cv::FileStorage fs(file_path.c_str(), cv::FileStorage::READ);
     if (!fs.isOpened()) {
-        std::cerr << "无法打开标定参数文件！" << std::endl;
+      RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
+      "Camera calibration file: %s is not exist!"
+      "\nIf you need calibration msg, please make sure the calibration file path is correct and the calibration file exists!",
+      file_path.c_str());
         return false;
     }
     cv::Mat l_k, l_d, r_k, r_d, R, T;

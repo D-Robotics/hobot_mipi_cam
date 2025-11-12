@@ -769,7 +769,7 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 	ERR_CON_EQ(ret, 0);
 	// 设置基本属性
 	ret = hbn_vnode_set_attr(pipe_contex->vin_node_handle, sensor_config.vin_node_attr);
-  print_lpwm_attr(sensor_config.vin_node_attr);
+    print_lpwm_attr(sensor_config.vin_node_attr);
 	ERR_CON_EQ(ret, 0);
 	// 设置输入通道的属性
 	ret = hbn_vnode_set_ichn_attr(pipe_contex->vin_node_handle, chn_id, sensor_config.vin_ichn_attr);
@@ -906,7 +906,7 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	vse_ochn_attr.target_h = pipe_contex->cap_info_->height;
 
 	vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
-	//vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
+	vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
 
 	ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 0, &vse_ochn_attr);
 	ERR_CON_EQ(ret, 0);
@@ -1052,14 +1052,12 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 }
 
 int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
-	int isp_bind = 1;
 	if (pipe_contex == nullptr) {
 		return -1;
 	}
 	int32_t ret = 0;
     if (pipe_contex->cap_info_->device_mode_.compare("dual") == 0) {
 		pipe_contex->sensor_config.isp_attr->input_mode = 2;
-		isp_bind = 0;
 		if (pipe_contex->cap_info_->lpwm_enable_) {
 			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
@@ -1076,12 +1074,10 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 		    pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
 		}
 	} else {
+		pipe_contex->sensor_config.isp_attr->input_mode = 2;
+		pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 0;
 		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
-		//int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
-		//for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
-		//	attr.period = fps_rate;
-		//}
 	}
 	// 创建pipeline中的每个node
 	ret = creat_camera_node(pipe_contex->sensor_config.camera_config, &pipe_contex->cam_fd);
@@ -1121,7 +1117,7 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	ERR_CON_EQ(ret, 0);
 	ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 							pipe_contex->vin_node_handle,
-							isp_bind,
+							0,
 							pipe_contex->isp_node_handle,
 							0);
 	ERR_CON_EQ(ret, 0);
