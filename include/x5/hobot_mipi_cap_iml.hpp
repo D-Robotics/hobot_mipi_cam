@@ -309,6 +309,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool getDualCamCalibrationFromEeprom();
   bool getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr);
   bool getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr);
+  bool getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_addr);
   bool getDualCamCalibrationFromEeprom_230ai();
 
   void dualFrameTask();
