@@ -17,10 +17,10 @@ static mipi_config_t sc230ai_mipi_config = {
         .mipiclk = 810,
         .width = SENSOR_WIDTH,
         .height = SENSOR_HEIGHT,
-        .linelenth = 0,
-        .framelenth = 0,
-        .settle = 0,
-        .channel_num = 0,
+        .linelenth = 2149,
+        .framelenth = 1125 * 2,
+        .settle = 22,
+        .channel_num = 1,
         .channel_sel = {0},
     },
 
@@ -38,21 +38,21 @@ static camera_config_t sc230ai_camera_config = {
         .addr = 0x30,
         .eeprom_addr = 0x51,
         .serial_addr = 0x40,
-        .sensor_mode = 1,
+        .sensor_mode = 6,
         .fps = SENSOE_FPS,
         .width = SENSOR_WIDTH,
         .height = SENSOR_HEIGHT,
         .extra_mode = 0,
         .config_index = 0,
         .mipi_cfg = &sc230ai_mipi_config, // MIPI配置,NULL自动获取
-        .end_flag = CAMERA_CONFIG_END_FLAG,
         .calib_lname = "lib_sc230ai_linear.so",
+        .end_flag = CAMERA_CONFIG_END_FLAG,
 };
 
 static isp_cfg_t sc230ai_isp_config = {
     .isp_attr = {
         .channel = {
-            .hw_id = 1,
+            .hw_id = 3,
             .slot_id = 4,
             .ctx_id = -1, //#define AUTO_ALLOC_ID -1
         },
@@ -107,8 +107,8 @@ static isp_cfg_t sc230ai_isp_config = {
         .out_buf_noinvalid = 1,
         .out_buf_noncached = 0,
         .output_raw_level = 0, //ISP_OUTPUT_RAW_LEVEL_SENSOR_DATA
-        .stream_output_mode = 0, //convert_isp_stream_output(1),
-        .axi_output_mode = AXI_OUTPUT_MODE_YUV420, //convert_isp_axi_output(0),
+        .stream_output_mode = 1, //convert_isp_stream_output(1),
+        .axi_output_mode = 9, // AXI_OUTPUT_MODE_YUV420, //convert_isp_axi_output(0),
         .buf_num = 3,
     }
 };
@@ -133,6 +133,8 @@ static vin_attr_t sc230ai_vin_attr = {
                 .set_init_frame_id = 1,
                 .enable_pattern = 0,
                 .lpwm_trig_sel = (int32_t)LPWM_CHN_INVALID,
+                .skip_frame = 2, //0: disable, 1: soft skip frame, 2: drop frist few frame
+                .skip_nums = 1, //drop frist frame
             },
             .rdma_input = {
                 .rdma_en = 0,
@@ -194,7 +196,7 @@ static vin_attr_t sc230ai_vin_attr = {
     .vin_ichn_attr = {
         .width =  SENSOR_WIDTH,
         .height = SENSOR_HEIGHT,
-        .format = 43,
+        .format = RAW10,
     },
 
     .vin_attr_ex = {
@@ -207,7 +209,7 @@ static vin_attr_t sc230ai_vin_attr = {
         [VIN_MAIN_FRAME] = { //vin_ochn0_attr
             .ddr_en = 1,
             .vin_basic_attr = {
-                .format = 43,
+                .format = RAW10,
                 .wstride = 0,
                 .pack_mode = 1,
             },
@@ -251,9 +253,9 @@ struct ynr_init_attr sc230ai_ynr_attr = {
 		SENSOR_WIDTH, SENSOR_HEIGHT
 	},
 	.nr2d_en = 1,
-	.nr3d_en = 1,
+	.nr3d_en = 0,
 
-	.dma_output_en = 1, // nr3d_en
+	.dma_output_en = 0, // nr3d_en
 
 	.debug_en = 0,    
 };
@@ -263,7 +265,7 @@ struct ynr_init_attr sc230ai_ynr_attr = {
 pym_cfg_t sc230ai_pym_common_config = {
         .hw_id = 1,
         .pym_mode = 1,
-        .slot_id = 5,
+        .slot_id = 4,
         .pingpong_ring = 0,
         .output_buf_num = 6,
         .fb_buf_num = 2,

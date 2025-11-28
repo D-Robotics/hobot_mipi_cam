@@ -58,7 +58,7 @@ static isp_cfg_t imx219_isp_config = {
             .ctx_id = -1, //#define AUTO_ALLOC_ID -1
         },
         .work_mode = 0,
-        .hdr_mode = 0,
+        .hdr_mode = 1,
         .size = {
             .width = 1920,
             .height = 1080,
@@ -69,7 +69,7 @@ static isp_cfg_t imx219_isp_config = {
         .isp_combine = {
             .isp_channel_mode = 0, //ISP_CHANNEL_MODE_NORMAL
             .bind_channel = {
-                .bind_hw_id = 1,
+                .bind_hw_id = 0,
                 .bind_slot_id = 0,
             },
         },
@@ -205,7 +205,7 @@ struct ynr_init_attr imx219_ynr_attr = {
 		SENSOR_WIDTH, SENSOR_HEIGHT
 	},
 	.nr2d_en = 1,
-	.nr3d_en = 1,
+	.nr3d_en = 0,
 
 	.dma_output_en = 1, // nr3d_en
 

@@ -38,7 +38,7 @@ static camera_config_t sc132gs_camera_config = {
         .addr = 0x33,
         .eeprom_addr = 0x51,
         .serial_addr = 0x40,
-        .sensor_mode = 1,
+        .sensor_mode = 6,
         .fps = SENSOE_FPS,
         .width = SENSOR_WIDTH,
         .height = SENSOR_HEIGHT,
@@ -132,6 +132,7 @@ static vin_attr_t sc132gs_vin_attr = {
                 .enable_frame_id = 1,
                 .set_init_frame_id = 1,
                 .enable_pattern = 0,
+                .lpwm_trig_sel = (int32_t)LPWM_CHN_INVALID,
             },
             .rdma_input = {
                 .rdma_en = 0,
@@ -250,7 +251,7 @@ struct ynr_init_attr sc132gs_ynr_attr = {
 		SENSOR_WIDTH, SENSOR_HEIGHT
 	},
 	.nr2d_en = 1,
-	.nr3d_en = 1,
+	.nr3d_en = 0,
 
 	.dma_output_en = 1, // nr3d_en
 

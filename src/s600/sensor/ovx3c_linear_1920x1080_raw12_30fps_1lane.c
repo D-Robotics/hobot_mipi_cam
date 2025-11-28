@@ -201,7 +201,7 @@ struct ynr_init_attr ovx3cstd_ynr_attr = {
 		SENSOR_WIDTH, SENSOR_HEIGHT
 	},
 	.nr2d_en = 1,
-	.nr3d_en = 1,
+	.nr3d_en = 0,
 
 	.dma_output_en = 1, // nr3d_en
 

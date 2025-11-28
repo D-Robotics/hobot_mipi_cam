@@ -219,8 +219,8 @@ static int enable_sensor_pin(int gpio_number, int active)
 
 //9
 static void read_mipi_info_from_device_tree(const int device, struct mipi_properties *properties) {
-	#define MIPI_DEVICE_COUNT 3
-	const char *mipi_device_tree_node_suffixs [MIPI_DEVICE_COUNT]= {"0x37420000", "0x37620000","0x37C20000"};
+	#define MIPI_DEVICE_COUNT 6
+	const char *mipi_device_tree_node_suffixs [MIPI_DEVICE_COUNT]= {"0x37420000", "0x37620000","0x37820000","0x37A20000","0x37C20000","0x37C40000"};
 	if(device > MIPI_DEVICE_COUNT){
 		printf("Error device %d exceed max valud %d\n", device, MIPI_DEVICE_COUNT);
 		return;

@@ -70,10 +70,10 @@ int HobotMipiCapIml::initEnv() {
         mipi_bus.push_back(board.second.i2c_bus);
       }
     } else {
-      mipi_hosts = {0,1,2,3};
+      mipi_hosts = {0,1,2,3,4,5};
     }
   } else {
-    mipi_hosts = {0,1,2,3};
+    mipi_hosts = {0,1,2,3,4,5};
   }
 
   RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "this board support mipi:");
