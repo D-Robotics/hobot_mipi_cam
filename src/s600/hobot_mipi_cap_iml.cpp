@@ -1040,22 +1040,13 @@ void HobotMipiCapIml::pipeline_connect_param_init(pipe_contex_t *pipe_contex){
 	}else if(pipe_contex->sensor_type_ == PIPELINE_SCENE_ISP_ONLY){
 		ch_info->isp_mode = SCHED_MODE_MANUAL;
 		ch_info->isp_hw_id = 0;
-		if(sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx == 0){
-			ch_info->isp_slot_id = 0; //online
-		}else{
-			ch_info->isp_slot_id = 4; //online
-		}
+		ch_info->isp_slot_id = isp0_next_slot_id++;
 
 		ch_info->pym_slot_id = ch_info->isp_slot_id;
 		ch_info->pym_hw_id = 0;  		  			//固定设置为0
 		ch_info->pym_mode = PYM_MANUAL_MODE; 		//offline
 
-		if(sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx == 0){
-			ch_info->is_online_vin_isp = 1;
-		}else{
-			ch_info->is_online_vin_isp = 0;
-		}
-
+		ch_info->is_online_vin_isp = 0;
 		ch_info->is_online_isp_pym = 1;
 
 		//printf("	[%d] only use [isp only].\n", pipeline_index);
@@ -1072,11 +1063,7 @@ void HobotMipiCapIml::pipeline_connect_param_init(pipe_contex_t *pipe_contex){
 	}else if(pipe_contex->sensor_type_ == PIPELINE_SCENE_ISP_YNR){
 		ch_info->isp_mode = SCHED_MODE_MANUAL;
 		ch_info->isp_hw_id = 1;
-		if(sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx == 1){
-			ch_info->isp_slot_id = 0;
-		}else{
-			ch_info->isp_slot_id = 4;
-		}
+		ch_info->isp_slot_id = isp0_next_slot_id++;
 
 		ch_info->ynr_mode = 1; //1:Manaul 模式	2:全online模式
 		ch_info->ynr_slot_id = ch_info->isp_slot_id;
@@ -1085,11 +1072,8 @@ void HobotMipiCapIml::pipeline_connect_param_init(pipe_contex_t *pipe_contex){
 		ch_info->pym_hw_id = 1;
 		ch_info->pym_mode = PYM_MANUAL_MODE;
 
-		if(sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx == 1){
-			ch_info->is_online_vin_isp = 1;
-		}else{
-			ch_info->is_online_vin_isp = 0;
-		}
+
+		ch_info->is_online_vin_isp = 0;
 		ch_info->is_online_isp_ynr = 1;
 		ch_info->is_online_ynr_pym = 1;
 

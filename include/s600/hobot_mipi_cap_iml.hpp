@@ -361,6 +361,8 @@ char cal_tpye_ = 0; //0x00:针孔标定；0x01：鱼眼标定。
   std::map<int, std::vector<std::string>> host_sensor_m_;
   std::shared_ptr<std::thread> dual_frame_task_ = nullptr;
 
+  int isp0_next_slot_id = 4;
+
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
