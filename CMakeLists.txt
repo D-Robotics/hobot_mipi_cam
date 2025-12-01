@@ -114,6 +114,22 @@ elseif(PLATFORM_S100)
     src/s100/sensor
     ${CMAKE_SYSROOT}/usr/include/cjson
   )
+elseif(PLATFORM_S600)
+  message("build platform S600")
+  add_definitions(-DPLATFORM_S600)
+  set(PREFIX_PATH s600)
+  set(SRC_PLATFORM_FILE 
+    src/s600/sensor/imx219_linear_1920x1080_raw10_30fps_2lane.c
+    src/s600/sensor/sc132gs_linear_1088x1280_raw10_30fps_1lane.c
+    src/s600/sensor/sc230ai_linear_1920x1080_raw10_30fps_1lane.c
+    src/s100/sensor/ar0820c_linear_1920x1080_yuv_30fps_1lane.c
+    src/s100/sensor/ovx3c_linear_1920x1080_raw12_30fps_1lane.c
+    src/s600/sensor/vp_sensors.c
+  )
+  include_directories(include 
+    src/s600/sensor
+    ${CMAKE_SYSROOT}/usr/include/cjson
+  )
 else()
   message("invalid platform, build platform X3 default")
   add_definitions(-DPLATFORM_X3)
@@ -148,6 +164,8 @@ elseif(PLATFORM_Rdkultra)
 elseif(PLATFORM_X5)
   set(X3_HAPI_LIB jsoncpp multimedia hbmem cam vpf  Nano2D Nano2Dutil)
 elseif(PLATFORM_S100)
+  set(X3_HAPI_LIB jsoncpp cjson cam vpf)
+elseif(PLATFORM_S600)
   set(X3_HAPI_LIB jsoncpp cjson cam vpf)
 else()
   set(BASE_LIBRARIES pthread vio cam dl)
@@ -214,6 +232,11 @@ elseif(PLATFORM_X5)
 elseif(PLATFORM_S100)
   install(DIRECTORY
     ${PROJECT_SOURCE_DIR}/config/s100/
+    DESTINATION lib/${PROJECT_NAME}/config/
+  )
+elseif(PLATFORM_S600)
+  install(DIRECTORY
+    ${PROJECT_SOURCE_DIR}/config/s600/
     DESTINATION lib/${PROJECT_NAME}/config/
   )
 endif()
