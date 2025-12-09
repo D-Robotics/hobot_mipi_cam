@@ -163,15 +163,15 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[1].host_num, &pipe_contex[1].sensor_config, &pipe_contex[1].csi_config);
 	ERR_CON_EQ(ret, 0);
 	gdc_bin_buf_.clear();
-	if (cap_info_.gdc_enable_) {
-		vp_sensor_config_t *sensor_cof = &pipe_contex[1].sensor_config;
-		if (cam_info_.size() != 2) {
-			if (!getDualCamCalibrationFromEeprom()) {
-				if(strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0) {
-					getDualCamCalibrationFromEeprom_230ai();
-				}
+	vp_sensor_config_t *sensor_cof = &pipe_contex[1].sensor_config;
+	if (cam_info_.size() != 2) {
+		if (!getDualCamCalibrationFromEeprom()) {
+			if(strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0) {
+				getDualCamCalibrationFromEeprom_230ai();
 			}
 		}
+	}
+	if (cap_info_.gdc_enable_) {
 		if (cal_tpye_ == 0) {
 			auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
 											cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
@@ -182,7 +182,9 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 				pipe_contex[1].gdc_bin = gdc_bin[1];
 			}
 		}
-
+	} else if (cam_info_.size() == 2) {
+		cal_cam_info_.push_back(cam_info_[0]);
+		cal_cam_info_.push_back(cam_info_[1]);
 	}
 	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
 		vp_sensor_config_t *sensor_conf = &pipe_contex[1].sensor_config;
