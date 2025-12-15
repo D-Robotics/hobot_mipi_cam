@@ -2722,19 +2722,20 @@ bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr
 	std::string device;
 	std::vector<char> head_buf;
 	head_buf.resize(sizeof(EepromDrobotHead_ST));
-	char chech_value;
+	char check_value;
 	if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(), sizeof(EepromDrobotHead_ST)) == false) {
 	  return false;
 	}
 	int chech_index = sizeof(EepromDrobotHead_ST) - 1;
-	chech_value = head_buf[chech_index];
+	check_value = head_buf[chech_index];
 	head_buf[chech_index] = 0;
 	int sum = 0;
 	
 	std::for_each(head_buf.begin(), head_buf.end(), [&sum](char c) {
 	  sum += static_cast<int>(c);
 	});
-	if (((sum % 255) + 1) == chech_value) {
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"sum % 255 + 1 : %x, check_value : %x", sum % 255 + 1, check_value);
+	if (((sum % 255) + 1) == check_value) {
 	  EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
   
 	  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
@@ -2774,7 +2775,7 @@ bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr
 		  cal_tpye_ = 1; //鱼眼标定
 	  } 
   
-	  if (head_buf_ptr->camType == 0x01) {
+	  if ((head_buf_ptr->camType == 0x01) || (head_buf_ptr->camType == 0x11)) {
 		  cam_info_.resize(2);
 		  CalDualMDInfo_d_ST m_d_info_l, m_d_info_r;
 		  CalDualRTInfo_d_ST r_t_info;
