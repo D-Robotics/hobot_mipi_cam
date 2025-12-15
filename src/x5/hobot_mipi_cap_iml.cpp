@@ -166,7 +166,8 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	vp_sensor_config_t *sensor_cof = &pipe_contex[1].sensor_config;
 	if (cam_info_.size() != 2) {
 		if (!getDualCamCalibrationFromEeprom()) {
-			if(strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0) {
+			std::cout << "=> sensor_cof->sensor_name: " << sensor_cof->sensor_name << std::endl;
+			if(strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0 || strcasecmp(sensor_cof->sensor_name, "sc132gs-1280p") == 0) {
 				getDualCamCalibrationFromEeprom_230ai();
 			}
 		}
@@ -3303,6 +3304,62 @@ bool HobotMipiCapIml::getDualCamCalibrationFromEeprom_230ai() {
 	T.at<double>(0,0) = i2c_buf_ptr->tx;
 	T.at<double>(0,1) = i2c_buf_ptr->ty;
 	T.at<double>(0,2) = i2c_buf_ptr->tz;
+
+	if (T.at<double>(0,0) > 0) {
+		std::cout << "=> !!!! Tx > 0, reverse R T !!!" << std::endl;
+		cv::Mat R_inv = R.t();                 // R^T
+		cv::Mat T_inv = -R.t() * T;            // -R^T * T
+		R = R_inv;
+		T = T_inv;
+
+		l_k= cv::Mat::zeros(3,3,CV_64F);
+		l_k.at<double>(0,0) = i2c_buf_ptr->fxr;
+		l_k.at<double>(0,2) = i2c_buf_ptr->cxr;
+		l_k.at<double>(1,1) = i2c_buf_ptr->fyr;
+		l_k.at<double>(1,2) = i2c_buf_ptr->cyr;
+		l_k.at<double>(2,2) = 1;
+		std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
+
+		cam_info_[0].d[0] = i2c_buf_ptr->k1r;
+		cam_info_[0].d[1] = i2c_buf_ptr->k2r;
+		cam_info_[0].d[2] = i2c_buf_ptr->p1r;
+		cam_info_[0].d[3] = i2c_buf_ptr->p2r;
+		cam_info_[0].d[4] = i2c_buf_ptr->k3r;
+		cam_info_[0].d[5] = i2c_buf_ptr->k4r;
+		cam_info_[0].d[6] = i2c_buf_ptr->k5r;
+		cam_info_[0].d[7] = i2c_buf_ptr->k6r;
+
+		l_r_eye = cv::Mat::eye(3, 3, CV_64F);
+		std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
+
+		l_p_eye = cv::Mat::eye(3, 4, CV_64F);
+		l_p = l_k * l_p_eye;
+		std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
+
+		r_k= cv::Mat::zeros(3,3,CV_64F);
+		r_k.at<double>(0,0) = i2c_buf_ptr->fxl;
+		r_k.at<double>(0,2) = i2c_buf_ptr->cxl;
+		r_k.at<double>(1,1) = i2c_buf_ptr->fyl;
+		r_k.at<double>(1,2) = i2c_buf_ptr->cyl;
+		r_k.at<double>(2,2) = 1;
+		std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
+
+		cam_info_[1].d[0] = i2c_buf_ptr->k1l;
+		cam_info_[1].d[1] = i2c_buf_ptr->k2l;
+		cam_info_[1].d[2] = i2c_buf_ptr->p1l;
+		cam_info_[1].d[3] = i2c_buf_ptr->p2l;
+		cam_info_[1].d[4] = i2c_buf_ptr->k3l;
+		cam_info_[1].d[5] = i2c_buf_ptr->k4l;
+		cam_info_[1].d[6] = i2c_buf_ptr->k5l;
+		cam_info_[1].d[7] = i2c_buf_ptr->k6l;
+	}
+
+	std::cout << "Kl: " << std::endl << l_k << std::endl;
+	std::cout << "Dl: " << "[" << cam_info_[0].d[0] << ", " << cam_info_[0].d[1] << ", " << cam_info_[0].d[2] << ", " << cam_info_[0].d[3] << ", " << cam_info_[0].d[4] << ", " << cam_info_[0].d[5] << ", " << cam_info_[0].d[6] << ", " << cam_info_[0].d[7] << "]" << std::endl;
+	std::cout << "Kr: " << std::endl << r_k << std::endl;
+	std::cout << "Dr: " << "[" << cam_info_[1].d[0] << ", " << cam_info_[1].d[1] << ", " << cam_info_[1].d[2] << ", " << cam_info_[1].d[3] << ", " << cam_info_[1].d[4] << ", " << cam_info_[1].d[5] << ", " << cam_info_[1].d[6] << ", " << cam_info_[1].d[7] << "]" << std::endl;
+	std::cout << "R_rl: " << std::endl << R << std::endl;
+	std::cout << "T_rl: " << std::endl << T << std::endl;
 
 	cv::Mat RT;
 	cv::hconcat(R, T, RT);
