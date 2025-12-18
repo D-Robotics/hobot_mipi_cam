@@ -2961,6 +2961,152 @@ bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr
 		  cv::Mat P = r_k * RT;
 		  std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
 		  std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
+		  if (head_buf_ptr->camType == 0x11) {
+			ImuMislign_ST acc_mislign, gyro_mislign;
+			ImuScale_ST acc_scale, gyro_scale;
+			ImuBias_ST acc_bias, gyro_bias;
+			ImuNW_ST acc_n_w, gyro_n_w;
+			ImuRTTimeInfo_d_ST r_t_info;
+			if (readEeprom16(i2c_bus, i2c_addr, 0x0153, (char*)&acc_mislign, sizeof(ImuMislign_ST)) == false) {
+			  return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x0177, (char*)&acc_scale, sizeof(ImuScale_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x0183, (char*)&acc_bias, sizeof(ImuBias_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x018f, (char*)&acc_n_w, sizeof(ImuNW_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x0197, (char*)&gyro_mislign, sizeof(ImuMislign_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x01bb, (char*)&gyro_scale, sizeof(ImuScale_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x01c7, (char*)&gyro_bias, sizeof(ImuBias_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x01d3, (char*)&gyro_n_w, sizeof(ImuNW_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x01e0, (char*)&r_t_info, sizeof(ImuRTTimeInfo_d_ST)) == false) {
+				return false;
+			}
+
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====acc_info======" \
+				"\n ----------------" \
+				"\n mislign_00: %lf" \
+				"\n mislign_01: %lf" \
+				"\n mislign_02: %lf" \
+				"\n mislign_10: %lf" \
+				"\n mislign_11: %lf" \
+				"\n mislign_12: %lf" \
+				"\n mislign_20: %lf" \
+				"\n mislign_21: %lf" \
+				"\n mislign_22: %lf" \
+				"\n scale_0: %lf" \
+				"\n scale_1: %lf" \
+				"\n scale_2: %lf" \
+				"\n bias_0: %lf" \
+				"\n bias_1: %lf" \
+				"\n bias_2: %lf" \
+				"\n n: %lf" \
+				"\n w: %lf" \			
+				"\n ----------------",
+				acc_mislign.m00,
+				acc_mislign.m01,
+				acc_mislign.m01,
+				acc_mislign.m10,
+				acc_mislign.m11,
+				acc_mislign.m12,
+				acc_mislign.m20,
+				acc_mislign.m21,
+				acc_mislign.m22,
+				acc_scale.s0,
+				acc_scale.s1,
+				acc_scale.s2,
+				acc_bias.b0,
+				acc_bias.b1,
+				acc_bias.b2,
+				acc_n_w.n,
+				acc_n_w.w
+			);
+			
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====gyro_info======" \
+				"\n ----------------" \
+				"\n mislign_00: %lf" \
+				"\n mislign_01: %lf" \
+				"\n mislign_02: %lf" \
+				"\n mislign_10: %lf" \
+				"\n mislign_11: %lf" \
+				"\n mislign_12: %lf" \
+				"\n mislign_20: %lf" \
+				"\n mislign_21: %lf" \
+				"\n mislign_22: %lf" \
+				"\n scale_0: %lf" \
+				"\n scale_1: %lf" \
+				"\n scale_2: %lf" \
+				"\n bias_0: %lf" \
+				"\n bias_1: %lf" \
+				"\n bias_2: %lf" \
+				"\n n: %lf" \
+				"\n w: %lf" \			
+				"\n ----------------",
+				gyro_mislign.m00,
+				gyro_mislign.m01,
+				gyro_mislign.m01,
+				gyro_mislign.m10,
+				gyro_mislign.m11,
+				gyro_mislign.m12,
+				gyro_mislign.m20,
+				gyro_mislign.m21,
+				gyro_mislign.m22,
+				gyro_scale.s0,
+				gyro_scale.s1,
+				gyro_scale.s2,
+				gyro_bias.b0,
+				gyro_bias.b1,
+				gyro_bias.b2,
+				gyro_n_w.n,
+				gyro_n_w.w
+			);
+
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====IMU r_t_info======" \
+				"\n ----------------" \
+				"\n r11: %lf" \
+				"\n r12: %lf" \
+				"\n r13: %lf" \
+				"\n r21: %lf" \
+				"\n r22: %lf" \
+				"\n r23: %lf" \
+				"\n r31: %lf" \
+				"\n r32: %lf" \
+				"\n r33: %lf" \
+				"\n tx: %lf" \
+				"\n ty: %lf" \
+				"\n tz: %lf" \
+				"\n timeshift: %lf" \
+				"\n reporject: %lf" \
+				"\n ----------------",
+				r_t_info.r11,
+				r_t_info.r12,
+				r_t_info.r13,
+				r_t_info.r21,
+				r_t_info.r22,
+				r_t_info.r23,
+				r_t_info.r31,
+				r_t_info.r32,
+				r_t_info.r33,
+				r_t_info.tx,
+				r_t_info.ty,
+				r_t_info.tz,
+				r_t_info.timeshift,
+				r_t_info.reporject
+			);
+
+		  }
 		  return true;
 	  }
   
