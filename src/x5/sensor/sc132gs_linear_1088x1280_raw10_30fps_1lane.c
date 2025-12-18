@@ -54,7 +54,7 @@ static vin_node_attr_t vin_node_attr = {
 			.hdr_mode = NOT_HDR,
 			.time_stamp_en = 1,
 			.time_stamp_mode = 3,
-			.ts_src = 1,
+			.ts_src = 5,
 			.pps_src = 6,
 		},
 
