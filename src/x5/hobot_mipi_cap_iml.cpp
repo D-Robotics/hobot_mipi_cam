@@ -482,16 +482,19 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
       out_img.info.trig_tv.tv_usec != 0) {
       out_img.info.sys_timestamps -= exposure_time;
   }
-  
+
   //  timestamps means kernel timestamp when the frame is obtained
   //  sys_timestamps means kernel system timestamp when the frame is obtained
   //  tv means hardware timestamp when the frame is obtained
   //  trig_tv means hardware timestamp when the frame is triggered by the external trigger
+  struct timespec upts;
+  clock_gettime(CLOCK_MONOTONIC, &upts);
   double timestamps = out_img.info.timestamps * 1e-9;
   double sys_timestamps = out_img.info.sys_timestamps * 1e-9;
   double hw_timestamp = out_img.info.tv.tv_sec + (double)out_img.info.tv.tv_usec * 1e-6;
   double tri_timestamp = out_img.info.trig_tv.tv_sec + (double)out_img.info.trig_tv.tv_usec * 1e-6;
   double current_ts =  ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+  double current_uptime_ts =  upts.tv_sec + (double)upts.tv_nsec * 1e-9;
   
   *frame_id = out_img.info.frame_id;
   if ("realtime" == cap_info_.frame_ts_type_) {
@@ -500,11 +503,11 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
 	*timestamp = out_img.info.timestamps;
   }                       
                           
-  RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
-            "capture a frame, handle: %llu, id: %d, timestamps: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
+  RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+            "capture a frame, handle: %llu, id: %d, timestamps: %f, current uptime: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
             "current timestamp: %f, laps ms: %fms, exposure_time: %fms.", 
-			                        handle, *frame_id, timestamps, sys_timestamps, hw_timestamp, tri_timestamp,
-                              current_ts, (current_ts - sys_timestamps) * 1e3, exposure_time * 1e-6);
+			                        handle, *frame_id, timestamps, current_uptime_ts, sys_timestamps, hw_timestamp, tri_timestamp,
+                              current_ts, (current_ts - sys_timestamps) * 1e3, (double)exposure_time * 1e-6);
 
 	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", image time sec:" << out_img.info.tv.tv_sec
 	//          << ", trig time sec:" << out_img.info.trig_tv.tv_sec 
@@ -767,7 +770,7 @@ int HobotMipiCapIml::creat_vin_node(pipe_contex_t *pipe_contex) {
 	}
 
 	hw_id = sensor_config.vin_node_attr->cim_attr.mipi_rx;
-  sensor_config.vin_node_attr->cim_attr.func.ts_src = hw_id + 1;
+  	//sensor_config.vin_node_attr->cim_attr.func.ts_src = hw_id + 1;
 	ret = hbn_vnode_open(HB_VIN, hw_id, AUTO_ALLOC_ID, &pipe_contex->vin_node_handle);
 	ERR_CON_EQ(ret, 0);
 	// 设置基本属性
@@ -2723,19 +2726,20 @@ bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr
 	std::string device;
 	std::vector<char> head_buf;
 	head_buf.resize(sizeof(EepromDrobotHead_ST));
-	char chech_value;
+	char check_value;
 	if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(), sizeof(EepromDrobotHead_ST)) == false) {
 	  return false;
 	}
 	int chech_index = sizeof(EepromDrobotHead_ST) - 1;
-	chech_value = head_buf[chech_index];
+	check_value = head_buf[chech_index];
 	head_buf[chech_index] = 0;
 	int sum = 0;
 	
 	std::for_each(head_buf.begin(), head_buf.end(), [&sum](char c) {
 	  sum += static_cast<int>(c);
 	});
-	if (((sum % 255) + 1) == chech_value) {
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"sum % 255 + 1 : %x, check_value : %x", sum % 255 + 1, check_value);
+	if (((sum % 255) + 1) == check_value) {
 	  EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
   
 	  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
@@ -2775,7 +2779,7 @@ bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr
 		  cal_tpye_ = 1; //鱼眼标定
 	  } 
   
-	  if (head_buf_ptr->camType == 0x01) {
+	  if ((head_buf_ptr->camType == 0x01) || (head_buf_ptr->camType == 0x11)) {
 		  cam_info_.resize(2);
 		  CalDualMDInfo_d_ST m_d_info_l, m_d_info_r;
 		  CalDualRTInfo_d_ST r_t_info;
@@ -2961,6 +2965,152 @@ bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr
 		  cv::Mat P = r_k * RT;
 		  std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
 		  std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
+		  if (head_buf_ptr->camType == 0x11) {
+			ImuMislign_ST acc_mislign, gyro_mislign;
+			ImuScale_ST acc_scale, gyro_scale;
+			ImuBias_ST acc_bias, gyro_bias;
+			ImuNW_ST acc_n_w, gyro_n_w;
+			ImuRTTimeInfo_d_ST r_t_info;
+			if (readEeprom16(i2c_bus, i2c_addr, 0x0153, (char*)&acc_mislign, sizeof(ImuMislign_ST)) == false) {
+			  return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x0177, (char*)&acc_scale, sizeof(ImuScale_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x0183, (char*)&acc_bias, sizeof(ImuBias_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x018f, (char*)&acc_n_w, sizeof(ImuNW_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x0197, (char*)&gyro_mislign, sizeof(ImuMislign_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x01bb, (char*)&gyro_scale, sizeof(ImuScale_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x01c7, (char*)&gyro_bias, sizeof(ImuBias_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x01d3, (char*)&gyro_n_w, sizeof(ImuNW_ST)) == false) {
+				return false;
+			}
+			if (readEeprom16(i2c_bus, i2c_addr, 0x01e0, (char*)&r_t_info, sizeof(ImuRTTimeInfo_d_ST)) == false) {
+				return false;
+			}
+
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====acc_info======" \
+				"\n ----------------" \
+				"\n mislign_00: %lf" \
+				"\n mislign_01: %lf" \
+				"\n mislign_02: %lf" \
+				"\n mislign_10: %lf" \
+				"\n mislign_11: %lf" \
+				"\n mislign_12: %lf" \
+				"\n mislign_20: %lf" \
+				"\n mislign_21: %lf" \
+				"\n mislign_22: %lf" \
+				"\n scale_0: %lf" \
+				"\n scale_1: %lf" \
+				"\n scale_2: %lf" \
+				"\n bias_0: %lf" \
+				"\n bias_1: %lf" \
+				"\n bias_2: %lf" \
+				"\n n: %lf" \
+				"\n w: %lf" \			
+				"\n ----------------",
+				acc_mislign.m00,
+				acc_mislign.m01,
+				acc_mislign.m01,
+				acc_mislign.m10,
+				acc_mislign.m11,
+				acc_mislign.m12,
+				acc_mislign.m20,
+				acc_mislign.m21,
+				acc_mislign.m22,
+				acc_scale.s0,
+				acc_scale.s1,
+				acc_scale.s2,
+				acc_bias.b0,
+				acc_bias.b1,
+				acc_bias.b2,
+				acc_n_w.n,
+				acc_n_w.w
+			);
+			
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====gyro_info======" \
+				"\n ----------------" \
+				"\n mislign_00: %lf" \
+				"\n mislign_01: %lf" \
+				"\n mislign_02: %lf" \
+				"\n mislign_10: %lf" \
+				"\n mislign_11: %lf" \
+				"\n mislign_12: %lf" \
+				"\n mislign_20: %lf" \
+				"\n mislign_21: %lf" \
+				"\n mislign_22: %lf" \
+				"\n scale_0: %lf" \
+				"\n scale_1: %lf" \
+				"\n scale_2: %lf" \
+				"\n bias_0: %lf" \
+				"\n bias_1: %lf" \
+				"\n bias_2: %lf" \
+				"\n n: %lf" \
+				"\n w: %lf" \			
+				"\n ----------------",
+				gyro_mislign.m00,
+				gyro_mislign.m01,
+				gyro_mislign.m01,
+				gyro_mislign.m10,
+				gyro_mislign.m11,
+				gyro_mislign.m12,
+				gyro_mislign.m20,
+				gyro_mislign.m21,
+				gyro_mislign.m22,
+				gyro_scale.s0,
+				gyro_scale.s1,
+				gyro_scale.s2,
+				gyro_bias.b0,
+				gyro_bias.b1,
+				gyro_bias.b2,
+				gyro_n_w.n,
+				gyro_n_w.w
+			);
+
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====IMU r_t_info======" \
+				"\n ----------------" \
+				"\n r11: %lf" \
+				"\n r12: %lf" \
+				"\n r13: %lf" \
+				"\n r21: %lf" \
+				"\n r22: %lf" \
+				"\n r23: %lf" \
+				"\n r31: %lf" \
+				"\n r32: %lf" \
+				"\n r33: %lf" \
+				"\n tx: %lf" \
+				"\n ty: %lf" \
+				"\n tz: %lf" \
+				"\n timeshift: %lf" \
+				"\n reporject: %lf" \
+				"\n ----------------",
+				r_t_info.r11,
+				r_t_info.r12,
+				r_t_info.r13,
+				r_t_info.r21,
+				r_t_info.r22,
+				r_t_info.r23,
+				r_t_info.r31,
+				r_t_info.r32,
+				r_t_info.r33,
+				r_t_info.tx,
+				r_t_info.ty,
+				r_t_info.tz,
+				r_t_info.timeshift,
+				r_t_info.reporject
+			);
+
+		  }
 		  return true;
 	  }
   

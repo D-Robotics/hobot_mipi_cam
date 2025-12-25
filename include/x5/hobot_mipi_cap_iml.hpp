@@ -247,6 +247,63 @@ typedef struct cal_dual_R_T_info_d_st {
 } CalDualRTInfo_d_ST;
 #pragma pack()
 
+#pragma pack(4)
+typedef struct imu_R_T_time_info_d_st {
+  float r11;
+  float r12;
+  float r13;
+  float r21;
+  float r22;
+  float r23;
+  float r31;
+  float r32;
+  float r33;
+  float tx;
+  float ty;
+  float tz;
+  float timeshift;
+  float reporject;
+} ImuRTTimeInfo_d_ST;
+#pragma pack()
+
+#pragma pack(4)
+typedef struct imu_mislign_st {
+  float m00;
+  float m01;
+  float m02;
+  float m10;
+  float m11;
+  float m12;
+  float m20;
+  float m21;
+  float m22;
+} ImuMislign_ST;
+#pragma pack()
+
+#pragma pack(4)
+typedef struct imu_scale_st {
+  float s0;
+  float s1;
+  float s2;
+} ImuScale_ST;
+#pragma pack()
+
+#pragma pack(4)
+typedef struct imu_bias_st {
+  float b0;
+  float b1;
+  float b2;
+} ImuBias_ST;
+#pragma pack()
+
+#pragma pack(4)
+typedef struct imu_n_w_st {
+  float n;
+  float w;
+} ImuNW_ST;
+#pragma pack()
+
+
 class HobotMipiCapIml : public HobotMipiCap {
  public:
   HobotMipiCapIml() {}
