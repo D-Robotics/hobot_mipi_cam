@@ -108,7 +108,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
 
   nodePare_->framerate_ = static_cast<int>(framerate);
 
-  RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+  RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
     "\n node params:" \
     "\n config_path: %s" \
     "\n video_device_name: %s" \
