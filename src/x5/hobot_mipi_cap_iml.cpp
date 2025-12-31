@@ -383,17 +383,17 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
 			std::shared_ptr<VideoBuffer_ST> buff_ptr = nullptr;      
 			std::unique_lock<std::mutex> lk(queue_mtx_);
 			if (channel == "combine") {
-				if (q_combine_buff_.size() > 0) {
+				if (!q_combine_buff_.empty()) {
 					buff_ptr = q_combine_buff_.front();    
 					q_combine_buff_.pop();
 				}
-			} else if (channel == "right") {     			
-        if (q_v_buff_[1].size() > 0) {
+			} else if (channel == "right") {
+        if (!q_v_buff_[1].empty()) {
 					buff_ptr = q_v_buff_[1].front();      
 					q_v_buff_[1].pop();
 				}
 			} else {
-				if (q_v_buff_[0].size() > 0) {
+				if (!q_v_buff_[0].empty()) {
 					buff_ptr = q_v_buff_[0].front();       
 					q_v_buff_[0].pop();
 				}
@@ -503,7 +503,7 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
 	*timestamp = out_img.info.timestamps;
   }                       
                           
-  RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
             "capture a frame, handle: %llu, id: %d, timestamps: %f, current uptime: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
             "current timestamp: %f, laps ms: %fms, exposure_time: %fms.", 
 			                        handle, *frame_id, timestamps, current_uptime_ts, sys_timestamps, hw_timestamp, tri_timestamp,
@@ -562,7 +562,11 @@ void HobotMipiCapIml::dualFrameTask() {
   std::vector<int> ochn_fd;
   ochn_fd.resize(2);
   std::vector<int> loss_cnt = {0,0};
-  q_v_buff_.resize(2);
+	
+	{
+		std::unique_lock<std::mutex> lk(queue_mtx_);
+		q_v_buff_.resize(2);
+	}
   int diff_time = 500000000 / cap_info_.fps;
 
   hbn_vnode_get_fd(pipe_contex[0].vse_node_handle, 0, &ochn_fd[0]);
@@ -1539,6 +1543,8 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 		<< "\n===================="
 	);
 
+	// TODO: Set alpha from config
+	// cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0.391 ,cv::Size(out_gdc_width, out_gdc_height));
 	cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0 ,cv::Size(out_gdc_width, out_gdc_height));
 	cv::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
 	cv::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1r, undistmap2r);
