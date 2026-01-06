@@ -330,20 +330,26 @@ int HobotMipiCapIml::start() {
   started_ = true;
   if ((cap_info_.device_mode_.compare("dual") == 0) && 
    	 ((cap_info_.dual_combine_ == 1) || (cap_info_.dual_combine_ == 2))){
-	for (int j = 0; j < 7; j++) {
-		auto buffer_ptr = std::make_shared<VideoBuffer_ST>();
-		buffer_ptr->buff_size = cap_info_.width * cap_info_.height * 1.5;
-		buffer_ptr->buff = malloc(buffer_ptr->buff_size);
-		q_buff_empty_.push(buffer_ptr);
-	}
-	for (int j = 0; j < 4; j++) {
-		auto buffer_ptr = std::make_shared<VideoBuffer_ST>();
-		buffer_ptr->buff_size = cap_info_.width * cap_info_.height * 2 * 1.5;
-		buffer_ptr->buff = malloc(buffer_ptr->buff_size);
-		q_combine_buff_empty_.push(buffer_ptr);
-	}
-	dual_frame_task_ = std::make_shared<std::thread>(
-        std::bind(&HobotMipiCapIml::dualFrameTask, this));
+	
+		{
+			std::unique_lock<std::mutex> lk(queue_mtx_);
+			for (int j = 0; j < 7; j++) {
+				auto buffer_ptr = std::make_shared<VideoBuffer_ST>();
+				buffer_ptr->buff_size = cap_info_.width * cap_info_.height * 1.5;
+				buffer_ptr->buff = malloc(buffer_ptr->buff_size);
+				q_buff_empty_.push(buffer_ptr);
+			}
+			for (int j = 0; j < 4; j++) {
+				auto buffer_ptr = std::make_shared<VideoBuffer_ST>();
+				buffer_ptr->buff_size = cap_info_.width * cap_info_.height * 2 * 1.5;
+				buffer_ptr->buff = malloc(buffer_ptr->buff_size);
+				q_combine_buff_empty_.push(buffer_ptr);
+			}
+			q_v_buff_.resize(2);
+		}
+
+		dual_frame_task_ = std::make_shared<std::thread>(
+					std::bind(&HobotMipiCapIml::dualFrameTask, this));
   }
   return 0;
 }
@@ -562,10 +568,6 @@ void HobotMipiCapIml::dualFrameTask() {
   ochn_fd.resize(2);
   std::vector<int> loss_cnt = {0,0};
 	
-	{
-		std::unique_lock<std::mutex> lk(queue_mtx_);
-		q_v_buff_.resize(2);
-	}
   int diff_time = 500000000 / cap_info_.fps;
 
   hbn_vnode_get_fd(pipe_contex[0].vse_node_handle, 0, &ochn_fd[0]);
@@ -573,34 +575,34 @@ void HobotMipiCapIml::dualFrameTask() {
 
   while (started_) {
 
-	max_handle = 0;
-	FD_ZERO(&readfds);
-	FD_SET(ochn_fd[0], &readfds);
-	FD_SET(ochn_fd[1], &readfds);
+		max_handle = 0;
+		FD_ZERO(&readfds);
+		FD_SET(ochn_fd[0], &readfds);
+		FD_SET(ochn_fd[1], &readfds);
 
-	timeout.tv_sec = 2;
-	timeout.tv_usec = 0;
-	loss_cnt[0]++;
-	loss_cnt[1]++;
+		timeout.tv_sec = 2;
+		timeout.tv_usec = 0;
+		loss_cnt[0]++;
+		loss_cnt[1]++;
 
-	max_handle = max_handle > ochn_fd[0]?max_handle : ochn_fd[0];
-	max_handle = max_handle > ochn_fd[1]?max_handle : ochn_fd[1];
+		max_handle = max_handle > ochn_fd[0]?max_handle : ochn_fd[0];
+		max_handle = max_handle > ochn_fd[1]?max_handle : ochn_fd[1];
 
     result = select(max_handle + 1, &readfds, nullptr, nullptr, &timeout);
     if (result == -1) {
-		std::cerr << "Select error" << std::endl;
-		break;
+			std::cerr << "Select error" << std::endl;
+			break;
     } else if (result == 0) {
-		// 超时
-		std::cout << "Timeout occurred" << std::endl;
-		std::unique_lock<std::mutex> lk(queue_mtx_);
-		for (int i = 0; i < buff_ptr.size(); i++) {
-			if (buff_ptr[i]) {
-				q_v_buff_[i].push(buff_ptr[i]);
-				buff_ptr[i] = nullptr;
+			// 超时
+			std::cout << "Timeout occurred" << std::endl;
+			std::unique_lock<std::mutex> lk(queue_mtx_);
+			for (int i = 0; i < buff_ptr.size(); i++) {
+				if (buff_ptr[i]) {
+					q_v_buff_[i].push(buff_ptr[i]);
+					buff_ptr[i] = nullptr;
+				}
 			}
-		}
-		continue;
+			continue;
     } else {
 		for (int i = 0; i < ochn_fd.size(); i++) {
 			if (!rclcpp::ok()) break;
