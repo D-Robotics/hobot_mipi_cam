@@ -205,6 +205,8 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   cap_info_.sensor_type = nodePare_->video_device_name_;
   cap_info_.width = nodePare_->image_width_;
   cap_info_.height = nodePare_->image_height_;
+  cap_info_.sub_width = nodePare_->sub_image_width_;
+  cap_info_.sub_height = nodePare_->sub_image_height_;
   cap_info_.fps = nodePare_->framerate_;
   cap_info_.channel_ = nodePare_->channel_;
   cap_info_.channel2_ = nodePare_->channel2_;

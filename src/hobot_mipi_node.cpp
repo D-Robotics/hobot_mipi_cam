@@ -46,6 +46,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->gdc_bin_file_ = "";
   nodePare_->image_width_ = 1920;
   nodePare_->image_height_ = 1080;
+  nodePare_->sub_image_width_ = 960;
+  nodePare_->sub_image_height_ = 540;
   nodePare_->framerate_ = 30;
   nodePare_->rotation_ = 0.0;
   nodePare_->cal_rotation_ = 0.0;
@@ -72,6 +74,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<std::string>("gdc_bin_file", nodePare_->gdc_bin_file_);
   this->declare_parameter<int>("image_width", nodePare_->image_width_);
   this->declare_parameter<int>("image_height", nodePare_->image_height_);
+  this->declare_parameter<int>("sub_image_width", nodePare_->sub_image_width_);
+  this->declare_parameter<int>("sub_image_height", nodePare_->sub_image_height_);
   this->declare_parameter<double>("framerate", framerate);
   this->declare_parameter<double>("rotation", nodePare_->rotation_);
   this->declare_parameter<double>("cal_rotation", nodePare_->cal_rotation_);
@@ -95,6 +99,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<std::string>("gdc_bin_file", nodePare_->gdc_bin_file_);
   this->get_parameter<int>("image_width", nodePare_->image_width_);
   this->get_parameter<int>("image_height", nodePare_->image_height_);
+  this->get_parameter<int>("sub_image_width", nodePare_->sub_image_width_);
+  this->get_parameter<int>("sub_image_height", nodePare_->sub_image_height_);
   this->get_parameter<double>("framerate", framerate);
   this->get_parameter<double>("rotation", nodePare_->rotation_);
   this->get_parameter<double>("cal_rotation", nodePare_->cal_rotation_);
@@ -120,6 +126,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     "\n                 gdc_bin_file: %s" \
     "\n                  image_width: %d" \
     "\n                 image_height: %d" \
+    "\n               sub_image_width: %d" \
+    "\n              sub_image_height: %d" \
     "\n                    framerate: %d" \
     "\n                     rotation: %f" \
     "\n                  device_mode: %s" \
@@ -141,6 +149,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     nodePare_->gdc_bin_file_.c_str(),
     nodePare_->image_width_,
     nodePare_->image_height_,
+    nodePare_->sub_image_width_,
+    nodePare_->sub_image_height_,
     nodePare_->framerate_,
     nodePare_->rotation_,
     nodePare_->device_mode_.c_str(),
@@ -223,9 +233,10 @@ void MipiCamNode::init() {
       }
     } else if ((nodePare_->device_mode_.compare("single") == 0) ||
       (nodePare_->device_mode_.compare("") == 0)) {
-      Pub_info_.resize(1);
+      Pub_info_.resize(2);
       init_Calibration(&Pub_info_[0], "camera_info", nodePare_->camera_calibration_file_path_);
       init_publisher(Pub_info_[0], "image_raw", "single", frame_id_);
+      init_publisher(Pub_info_[1], "sub_image_raw", "sub_single", frame_id_);
     } else {
       return;
     }
@@ -265,9 +276,10 @@ void MipiCamNode::init() {
       }
     } else if ((nodePare_->device_mode_.compare("single") == 0) ||
       (nodePare_->device_mode_.compare("") == 0)) {
-      Pub_hbmem_info_.resize(1);
+      Pub_hbmem_info_.resize(2);
       init_Calibration(&Pub_hbmem_info_[0], "camera_info", nodePare_->camera_calibration_file_path_);
       init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_img", "single");
+      init_publisher_hbmem(Pub_hbmem_info_[1], "sub_hbmem_img", "sub_single");
     } else {
       return;
     }    
