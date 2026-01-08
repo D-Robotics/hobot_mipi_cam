@@ -31,6 +31,8 @@
 
 //#include "hb_mem_mgr.h"
 #include "hbm_img_msgs/msg/hbm_msg1080_p.hpp"
+#include "imu_manager.hpp"
+#include <sensor_msgs/msg/imu.hpp>
 
 namespace mipi_cam
 {
@@ -65,6 +67,7 @@ class MipiCamNode : public rclcpp::Node {
   void init();
   void update(Publisher_info_st* pub_info);
   void hbmemUpdate(Publisher_hbmem_info_st* pub_info);
+  void read_imu_data();
 
  private:
   void save_yuv(const builtin_interfaces::msg::Time stamp, void *data, int data_size);
@@ -99,6 +102,13 @@ class MipiCamNode : public rclcpp::Node {
   //struct NodePara nodePare_;
   std::shared_ptr<struct NodePara> nodePare_;
   int m_bIsInit;
+
+  std::atomic_bool is_imu_running_ = false;
+  std::string imu_type_;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu_;
+  std::shared_ptr<imu_sensor::ImuManager> imu_manager_;
+  std::vector<std::shared_ptr<std::thread>> imu_timer_;
+
 };
 }  // namespace mipi_cam
 #endif  // HOBOT_MIPI_NODE_HPP_
