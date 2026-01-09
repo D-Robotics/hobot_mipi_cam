@@ -26,6 +26,7 @@
 #include <math.h>
 #include <iostream>
 #include "icm42688.hpp"
+#include "inv_icm42600.h"
 
 
 namespace imu_sensor
@@ -125,6 +126,8 @@ int icm42688::device_has_channels(std::string dev_path, const char *type) {
 // 改进的通用初始化函数
 int icm42688::init() {
 
+#if 0
+
     // 打印传入的设备路径 
     for (const auto& device : dev_info_) {
         if (device.sensor_type == "icm42688-accel") {
@@ -166,6 +169,34 @@ int icm42688::init() {
 
     initialized = 1;
     return 0;
+#else
+
+int ret;
+
+ret = inv_icm42600_i2c_fd_auto_init();
+printf("[inv_icm42600_i2c_fd_auto_init]run return: %d.\n",ret);
+
+ret = inv_icm42600_soft_reset();
+printf("[inv_icm42600_soft_reset]run return: %d.\n",ret);
+
+ret = inv_icm42600_all_sel();
+printf("[inv_icm42600_all_sel]run return: %d.\n",ret);
+
+ret = inv_icm42600_pwr_mgmt(
+    INV_ICM_42600_GYRO_LN,
+    INV_ICM_42600_ACCEL_LN,
+    true,
+    true);
+printf("[inv_icm42600_pwr_mgmt]run return: %d.\n",ret);
+
+ret = inv_icm42600_filt_setting();
+printf("[inv_icm42600_filt_setting]run return: %d.\n",ret);
+
+//usleep(1000000);
+initialized = 1;
+return 0;
+
+#endif 
 }
 
 // 读取函数
@@ -175,6 +206,7 @@ int icm42688::read(ImuData_T *data) {
         return -1;
     }
 
+#if 0
     int accel_x_raw, accel_y_raw, accel_z_raw;
     int gyro_x_raw, gyro_y_raw, gyro_z_raw;
 
@@ -231,6 +263,51 @@ int icm42688::read(ImuData_T *data) {
     data->status = 0;
 
     return (accel_read && gyro_read) ? 0 : 1; // 部分成功返回1，完全成功返回0
+#else
+    struct inv_icm42600_data_packege dtpkt = INV_ICM42600_EMPTY_PACKAGE;
+    int ret;
+
+    ret = inv_icm42600_origin_data_read(&dtpkt, true);
+
+    system("clear");
+    //for(int i=0; i<50; i++)printf("=");printf("\n");
+
+    //printf("[origin data read]function return: %d\n", ret);
+
+    ret = inv_icm42600_data_process(&dtpkt);
+
+    //printf("[data process]function return: %d\n", ret);
+
+    //printf("[fsync test]");
+    if (dtpkt.fsync_success) {
+        //printf("Successed.\n");
+       // printf("[temp_data]%.3f unit:Celsius\n", dtpkt.temp_processed);
+        //printf("[accel_data] x:%8.3f    y:%8.3f    z:%8.3f    unit:g\n", dtpkt.accel_data_processed.x, dtpkt.accel_data_processed.y, dtpkt.accel_data_processed.z);
+       // printf("[gyro_data]  x:%8.3f    y:%8.3f    z:%8.3f    unit:dps\n", dtpkt.gyro_data_processed.x, dtpkt.gyro_data_processed.y, dtpkt.gyro_data_processed.z);
+       // printf("[timestamp_data]%ld\n", dtpkt.accel_data_processed.timestamp);
+        data->ax = dtpkt.accel_data_processed.x;
+        data->ay = dtpkt.accel_data_processed.y;
+        data->az = dtpkt.accel_data_processed.z;
+        data->gx = dtpkt.gyro_data_processed.x;
+        data->gy = dtpkt.gyro_data_processed.y;
+        data->gz = dtpkt.gyro_data_processed.z;
+        data->timestamp = dtpkt.accel_data_processed.timestamp * 1000;
+
+        // ICM42688没有磁力计
+        data->mx = 0.0f;
+        data->my = 0.0f;
+        data->mz = 0.0f;
+
+        // 状态正常
+        data->status = 0;
+        return 0;
+    }  else {
+        printf("Failed.\n");
+        return 0;
+    }
+
+
+#endif
 }
 
 // 释放函数
