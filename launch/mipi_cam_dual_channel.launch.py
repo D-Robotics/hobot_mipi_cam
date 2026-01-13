@@ -108,6 +108,10 @@ def generate_launch_description():
             default_value='True',
             description='mipi camera gdc enable'),
         DeclareLaunchArgument(
+            'mipi_cal_alpha',
+            default_value='0.0',
+            description='gmsl link port'),
+        DeclareLaunchArgument(
             'log_level',
             default_value='warn',
             description='log level'),
@@ -145,6 +149,7 @@ def generate_launch_description():
                 {"cal_rotation": LaunchConfiguration('mipi_cal_rotation')},
                 {"gdc_enable": LaunchConfiguration('mipi_gdc_enable')},
                 {"frame_id": LaunchConfiguration('frame_id')},
+                {"cal_alpha": LaunchConfiguration('mipi_cal_alpha')},
             ],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         )
