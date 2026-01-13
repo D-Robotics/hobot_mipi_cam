@@ -142,7 +142,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     "\n                     frame_id: %s" \
     "\n                    link_type: %d" \
     "\n                    link_port: %d" \
-    "\n               io_method_name: %s",
+    "\n               io_method_name: %s" \
+    "\n                    cal_alpha: %.3f",
     nodePare_->config_path_.c_str(),
     nodePare_->video_device_name_.c_str(),
     nodePare_->channel_,
@@ -165,7 +166,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     frame_id_.c_str(),
     nodePare_->link_type_,
     nodePare_->link_port_,
-    io_method_name_.c_str()
+    io_method_name_.c_str(),
+    nodePare_->cal_alpha_
   );
 
   init();
