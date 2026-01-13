@@ -59,6 +59,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->link_type_ = 0; 
   nodePare_->link_port_ = 0; 
   nodePare_->cal_alpha_ = 0.0; 
+  nodePare_->sub_stream_flag_ = true; 
   frame_id_ = "default_cam";
   io_method_name_ = "ros"; //shared_mem, ros;
   double framerate = 30.0;
@@ -239,7 +240,9 @@ void MipiCamNode::init() {
       Pub_info_.resize(2);
       init_Calibration(&Pub_info_[0], "camera_info", nodePare_->camera_calibration_file_path_);
       init_publisher(Pub_info_[0], "image_raw", "single", frame_id_);
-      init_publisher(Pub_info_[1], "sub_image_raw", "sub_single", frame_id_);
+      if (nodePare_->sub_stream_flag_) {
+        init_publisher(Pub_info_[1], "sub_image_raw", "sub_single", frame_id_);
+      }
     } else {
       return;
     }
@@ -282,7 +285,9 @@ void MipiCamNode::init() {
       Pub_hbmem_info_.resize(2);
       init_Calibration(&Pub_hbmem_info_[0], "camera_info", nodePare_->camera_calibration_file_path_);
       init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_img", "single");
-      init_publisher_hbmem(Pub_hbmem_info_[1], "sub_hbmem_img", "sub_single");
+      if (nodePare_->sub_stream_flag_) {
+        init_publisher_hbmem(Pub_hbmem_info_[1], "sub_hbmem_img", "sub_single");
+      }
     } else {
       return;
     }    

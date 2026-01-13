@@ -451,6 +451,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<std::queue<std::shared_ptr<VideoBuffer_ST>>> q_v_buff_;
   std::queue<std::shared_ptr<VideoBuffer_ST>> q_combine_buff_;
   std::queue<std::shared_ptr<VideoBuffer_ST>> q_combine_buff_empty_;
+
+  bool sub_stream_ = false;
 };
 
 }  // namespace mipi_cam

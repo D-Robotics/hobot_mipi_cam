@@ -52,6 +52,7 @@ struct NodePara {
   int link_type_; // 0:表示mipi接口，1：表示解串器接口。
   int link_port_; // 0~3
   double cal_alpha_;
+  bool sub_stream_flag_;
 };
 
 typedef struct {
@@ -76,6 +77,7 @@ typedef struct {
   int link_type_; // 0:表示mipi接口，1：表示解串器接口。
   int link_port_; // 0~3
   double cal_alpha_;
+  bool sub_stream_flag_;
 } MIPI_CAP_INFO_ST;
 
 typedef struct sensor_id {
