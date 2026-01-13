@@ -463,6 +463,9 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
 	} else if ((channel == "left") || (channel == "single")) {
 		nChnID = 0;
 	} else if (channel == "sub_single") {
+		if (sub_stream_ == false) {
+			return -1;
+		}
 		nChnID = 0;
 		stream_channel = 1;
 	} else {
@@ -960,31 +963,38 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 0, &alloc_attr);
 	ERR_CON_EQ(ret, 0);
 
-	sub_vse_ochn_attr.chn_en = CAM_TRUE;
-	sub_vse_ochn_attr.roi.x = 0;
-	sub_vse_ochn_attr.roi.y = 0;
-	sub_vse_ochn_attr.roi.w = input_width;
-	sub_vse_ochn_attr.roi.h = input_height;
-	sub_vse_ochn_attr.fmt = FRM_FMT_NV12;
-	sub_vse_ochn_attr.bit_width = 8;
-	//sub_vse_ochn_attr.target_w = input_width;
-	//sub_vse_ochn_attr.target_h = input_height;
-	sub_vse_ochn_attr.target_w = pipe_contex->cap_info_->sub_width;
-	sub_vse_ochn_attr.target_h = pipe_contex->cap_info_->sub_height;
+	if ((pipe_contex->cap_info_->device_mode_ == "single") 
+		  && (pipe_contex->cap_info_->sub_width < pipe_contex->cap_info_->width) 
+		  && (pipe_contex->cap_info_->sub_height < pipe_contex->cap_info_->height)) {
+		sub_vse_ochn_attr.chn_en = CAM_TRUE;
+		sub_vse_ochn_attr.roi.x = 0;
+		sub_vse_ochn_attr.roi.y = 0;
+		sub_vse_ochn_attr.roi.w = input_width;
+		sub_vse_ochn_attr.roi.h = input_height;
+		sub_vse_ochn_attr.fmt = FRM_FMT_NV12;
+		sub_vse_ochn_attr.bit_width = 8;
+		//sub_vse_ochn_attr.target_w = input_width;
+		//sub_vse_ochn_attr.target_h = input_height;
+		sub_vse_ochn_attr.target_w = pipe_contex->cap_info_->sub_width;
+		sub_vse_ochn_attr.target_h = pipe_contex->cap_info_->sub_height;
+	
+		sub_vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
+		sub_vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
+	
+		ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 1, &sub_vse_ochn_attr);
+		ERR_CON_EQ(ret, 0);
+		sub_alloc_attr.buffers_num = 3;
+		sub_alloc_attr.is_contig = 1;
+		sub_alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN
+							| HB_MEM_USAGE_CPU_WRITE_OFTEN
+							| HB_MEM_USAGE_CACHED
+							| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
+		ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 1, &sub_alloc_attr);
+		ERR_CON_EQ(ret, 0);
+		sub_stream_ = true;
+		pipe_contex->cap_info_->sub_stream_flag_ = true;
+	}
 
-	sub_vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
-	sub_vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
-
-	ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 1, &sub_vse_ochn_attr);
-	ERR_CON_EQ(ret, 0);
-	sub_alloc_attr.buffers_num = 3;
-	sub_alloc_attr.is_contig = 1;
-	sub_alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN
-						| HB_MEM_USAGE_CPU_WRITE_OFTEN
-						| HB_MEM_USAGE_CACHED
-						| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
-	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 1, &sub_alloc_attr);
-	ERR_CON_EQ(ret, 0);
 	return 0;
 }
 
