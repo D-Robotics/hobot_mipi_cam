@@ -119,13 +119,14 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
   bool sensor_flag2 = false;
   mipi_host_info_t host_info;
   hb_mem_module_open();
-  for (auto i : mipi_stoped_) {
-	ret = vp_sensor_detect_2(i, &host_info);
-	if (ret == 0) {
-		v_host_info_detect.push_back(host_info);
-	}
-  }
+  vp_show_sensors_list();
   if (cap_info_.device_mode_.compare("dual") == 0) {
+	for (auto i : mipi_stoped_) {
+		ret = vp_sensor_detect_2(i, &host_info);
+		if (ret == 0) {
+			v_host_info_detect.push_back(host_info);
+		}
+	}
 	if (v_host_info_detect.size() < 2) {
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
        		"The detected sensors are 2 less than expected.\n");
@@ -223,28 +224,50 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	//ERR_CON_EQ(ret, 0);
 
   } else {
-	if (v_host_info_detect.size() < 1) {
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-       		"The detected sensors are 1 less than expected.\n");
-		return -1;
-	}
-
-	for(auto& host : v_host_info_detect) {
-		if (host.host_num == cap_info_.channel_) {
-			v_host_info.push_back(host);
-			sensor_flag = true;
+	bool deteced_flag = false;
+	int sensor_count = vp_get_sensors_list_number();
+	for (int i = 0; i < sensor_count; i++) {
+		auto sensor_info = vp_sensor_config_list[i];
+		if (cap_info_.sensor_type.compare(sensor_info->sensor_name) == 0) {
+			pipe_contex.resize(1);
+			pipe_contex[0].cap_info_ = &cap_info_;
+			memcpy(&pipe_contex[0].sensor_config, sensor_info, sizeof(vp_sensor_config_t));
+			ret = vp_sensor_fixed_mipi_host_1(cap_info_.channel_, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
+			ERR_CON_EQ(ret, 0);
+			deteced_flag = true;
 			break;
 		}
 	}
-	if (sensor_flag == false) {
-		v_host_info.push_back(v_host_info_detect[0]);
-	}
+	if (deteced_flag == false) {
+		for (auto i : mipi_stoped_) {
+			ret = vp_sensor_detect_2(i, &host_info);
+			if (ret == 0) {
+				v_host_info_detect.push_back(host_info);
+			}
+		}
+		if (v_host_info_detect.size() < 1) {
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
+				"The detected sensors are 1 less than expected.\n");
+			return -1;
+		}
 
-	pipe_contex.resize(1);
-	pipe_contex[0].cap_info_ = &cap_info_;
-	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
-	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
-	ERR_CON_EQ(ret, 0);
+		for(auto& host : v_host_info_detect) {
+			if (host.host_num == cap_info_.channel_) {
+				v_host_info.push_back(host);
+				sensor_flag = true;
+				break;
+			}
+		}
+		if (sensor_flag == false) {
+			v_host_info.push_back(v_host_info_detect[0]);
+		}
+
+		pipe_contex.resize(1);
+		pipe_contex[0].cap_info_ = &cap_info_;
+		memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
+		ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
+		ERR_CON_EQ(ret, 0);
+	}
 	gdc_bin_buf_.clear();
 	if (cap_info_.gdc_enable_) {
 		vp_sensor_config_t *sensor_cof = &pipe_contex[0].sensor_config;
