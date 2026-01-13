@@ -58,6 +58,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->frame_ts_type_ = "sensor"; //sensor,realtime;
   nodePare_->link_type_ = 0; 
   nodePare_->link_port_ = 0; 
+  nodePare_->cal_alpha_ = 0.0; 
+  nodePare_->sub_stream_flag_ = true; 
   frame_id_ = "default_cam";
   io_method_name_ = "ros"; //shared_mem, ros;
   double framerate = 30.0;
@@ -86,6 +88,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<std::string>("frame_ts_type", nodePare_->frame_ts_type_);
   this->declare_parameter<int>("link_type", nodePare_->link_type_); // 0:表示mipi接口，1：表示解串器接口。
   this->declare_parameter<int>("link_port", nodePare_->link_port_);
+  this->declare_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
 
   this->get_parameter<std::string>("frame_id", frame_id_);
   this->get_parameter<std::string>("io_method", io_method_name_); 
@@ -111,6 +114,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<std::string>("frame_ts_type", nodePare_->frame_ts_type_);
   this->get_parameter<int>("link_type", nodePare_->link_type_);
   this->get_parameter<int>("link_port", nodePare_->link_port_);
+  this->get_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
 
   nodePare_->framerate_ = static_cast<int>(framerate);
 
@@ -236,7 +240,9 @@ void MipiCamNode::init() {
       Pub_info_.resize(2);
       init_Calibration(&Pub_info_[0], "camera_info", nodePare_->camera_calibration_file_path_);
       init_publisher(Pub_info_[0], "image_raw", "single", frame_id_);
-      init_publisher(Pub_info_[1], "sub_image_raw", "sub_single", frame_id_);
+      if (nodePare_->sub_stream_flag_) {
+        init_publisher(Pub_info_[1], "sub_image_raw", "sub_single", frame_id_);
+      }
     } else {
       return;
     }
@@ -279,7 +285,9 @@ void MipiCamNode::init() {
       Pub_hbmem_info_.resize(2);
       init_Calibration(&Pub_hbmem_info_[0], "camera_info", nodePare_->camera_calibration_file_path_);
       init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_img", "single");
-      init_publisher_hbmem(Pub_hbmem_info_[1], "sub_hbmem_img", "sub_single");
+      if (nodePare_->sub_stream_flag_) {
+        init_publisher_hbmem(Pub_hbmem_info_[1], "sub_hbmem_img", "sub_single");
+      }
     } else {
       return;
     }    
