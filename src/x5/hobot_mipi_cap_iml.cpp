@@ -2643,15 +2643,15 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 			"\n width: %d" \
 			"\n height: %d" \
 			"\n fx: %f" \
-			"\n fx: %f" \
 			"\n fy: %f" \
+			"\n cx: %f" \
 			"\n cy: %f" \
 			"\n ----------------",
 			m_d_info_l.width,
 			m_d_info_l.height,
 			m_d_info_l.fx,
-			m_d_info_l.fx,
 			m_d_info_l.fy,
+			m_d_info_l.cx,
 			m_d_info_l.cy
 		);
 
@@ -2669,15 +2669,15 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 			"\n width: %d" \
 			"\n height: %d" \
 			"\n fx: %f" \
-			"\n fx: %f" \
 			"\n fy: %f" \
+			"\n cx: %f" \
 			"\n cy: %f" \
 			"\n ----------------",
 			m_d_info_r.width,
 			m_d_info_r.height,
 			m_d_info_r.fx,
-			m_d_info_r.fx,
 			m_d_info_r.fy,
+			m_d_info_r.cx,
 			m_d_info_r.cy
 		);
 
