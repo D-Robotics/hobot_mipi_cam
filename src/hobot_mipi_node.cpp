@@ -413,11 +413,6 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
       pub_info->img_->header.stamp.nanosec = ts.tv_nsec;
     }
 #endif
-    save_jpg(pub_info->img_->header.stamp,pub_info->img_->encoding,pub_info->img_->width,pub_info->img_->height,(void *)&pub_info->img_->data[0]);
-    save_yuv(pub_info->img_->header.stamp, (void *)&pub_info->img_->data[0], pub_info->img_->data.size());
-    // pub_info->image_pub_->publish(*pub_info->img_);
-    pub_info->image_pub_->publish(std::move(pub_info->img_));
-    pub_info->img_ = std::make_unique<sensor_msgs::msg::Image>(rosidl_runtime_cpp::MessageInitialization::SKIP);
 
     if (pub_info->info_pub_) {
       pub_info->camera_calibration_info_->header.stamp = pub_info->img_->header.stamp;
@@ -427,6 +422,12 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
       pub_info->camera_calibration_info2_->header.stamp = pub_info->img_->header.stamp;
       pub_info->info_pub2_->publish(*pub_info->camera_calibration_info2_);
     }
+
+    save_jpg(pub_info->img_->header.stamp,pub_info->img_->encoding,pub_info->img_->width,pub_info->img_->height,(void *)&pub_info->img_->data[0]);
+    save_yuv(pub_info->img_->header.stamp, (void *)&pub_info->img_->data[0], pub_info->img_->data.size());
+    // pub_info->image_pub_->publish(*pub_info->img_);
+    pub_info->image_pub_->publish(std::move(pub_info->img_));
+    pub_info->img_ = std::make_unique<sensor_msgs::msg::Image>(rosidl_runtime_cpp::MessageInitialization::SKIP);
   }
 }
 
