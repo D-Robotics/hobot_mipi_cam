@@ -331,20 +331,26 @@ int HobotMipiCapIml::start() {
   started_ = true;
   if ((cap_info_.device_mode_.compare("dual") == 0) && 
    	 ((cap_info_.dual_combine_ == 1) || (cap_info_.dual_combine_ == 2))){
-	for (int j = 0; j < 7; j++) {
-		auto buffer_ptr = std::make_shared<VideoBuffer_ST>();
-		buffer_ptr->buff_size = cap_info_.width * cap_info_.height * 1.5;
-		buffer_ptr->buff = malloc(buffer_ptr->buff_size);
-		q_buff_empty_.push(buffer_ptr);
-	}
-	for (int j = 0; j < 4; j++) {
-		auto buffer_ptr = std::make_shared<VideoBuffer_ST>();
-		buffer_ptr->buff_size = cap_info_.width * cap_info_.height * 2 * 1.5;
-		buffer_ptr->buff = malloc(buffer_ptr->buff_size);
-		q_combine_buff_empty_.push(buffer_ptr);
-	}
-	dual_frame_task_ = std::make_shared<std::thread>(
-        std::bind(&HobotMipiCapIml::dualFrameTask, this));
+	
+		{
+			std::unique_lock<std::mutex> lk(queue_mtx_);
+			for (int j = 0; j < 7; j++) {
+				auto buffer_ptr = std::make_shared<VideoBuffer_ST>();
+				buffer_ptr->buff_size = cap_info_.width * cap_info_.height * 1.5;
+				buffer_ptr->buff = malloc(buffer_ptr->buff_size);
+				q_buff_empty_.push(buffer_ptr);
+			}
+			for (int j = 0; j < 4; j++) {
+				auto buffer_ptr = std::make_shared<VideoBuffer_ST>();
+				buffer_ptr->buff_size = cap_info_.width * cap_info_.height * 2 * 1.5;
+				buffer_ptr->buff = malloc(buffer_ptr->buff_size);
+				q_combine_buff_empty_.push(buffer_ptr);
+			}
+			q_v_buff_.resize(2);
+		}
+
+		dual_frame_task_ = std::make_shared<std::thread>(
+					std::bind(&HobotMipiCapIml::dualFrameTask, this));
   }
   return 0;
 }
@@ -429,17 +435,21 @@ int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
 	int stride = 0;
 	int nChnID = 0;
 	uint32_t frameId = 0;
+	int stream_channel = 0;
 	if ((channel == "right") && (pipe_contex.size() == 2)) {
 		nChnID = 1;
 	} else if ((channel == "left") || (channel == "single")) {
 		nChnID = 0;
+	} else if (channel == "sub_single") {
+		nChnID = 0;
+		stream_channel = 1;
 	} else {
 		RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
 		"x5 camera isn't support channel : %s", channel);
 		return -1;
 	}
 	
-	ret = getVnodeFrame(pipe_contex[nChnID].vse_node_handle, 0, nVOutW, nVOutH, &stride,
+	ret = getVnodeFrame(pipe_contex[nChnID].vse_node_handle, stream_channel, nVOutW, nVOutH, &stride,
 						frame_buf, bufsize, len, &timestamp, &frameId, gray);
 	if (ret != 0) {
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "hbn_vnode_getframe VSE channel 0 failed nChnID = %d,ret = %d\n", nChnID,ret);
@@ -563,10 +573,6 @@ void HobotMipiCapIml::dualFrameTask() {
   ochn_fd.resize(2);
   std::vector<int> loss_cnt = {0,0};
 	
-	{
-		std::unique_lock<std::mutex> lk(queue_mtx_);
-		q_v_buff_.resize(2);
-	}
   int diff_time = 500000000 / cap_info_.fps;
 
   hbn_vnode_get_fd(pipe_contex[0].vse_node_handle, 0, &ochn_fd[0]);
@@ -574,34 +580,34 @@ void HobotMipiCapIml::dualFrameTask() {
 
   while (started_) {
 
-	max_handle = 0;
-	FD_ZERO(&readfds);
-	FD_SET(ochn_fd[0], &readfds);
-	FD_SET(ochn_fd[1], &readfds);
+		max_handle = 0;
+		FD_ZERO(&readfds);
+		FD_SET(ochn_fd[0], &readfds);
+		FD_SET(ochn_fd[1], &readfds);
 
-	timeout.tv_sec = 2;
-	timeout.tv_usec = 0;
-	loss_cnt[0]++;
-	loss_cnt[1]++;
+		timeout.tv_sec = 2;
+		timeout.tv_usec = 0;
+		loss_cnt[0]++;
+		loss_cnt[1]++;
 
-	max_handle = max_handle > ochn_fd[0]?max_handle : ochn_fd[0];
-	max_handle = max_handle > ochn_fd[1]?max_handle : ochn_fd[1];
+		max_handle = max_handle > ochn_fd[0]?max_handle : ochn_fd[0];
+		max_handle = max_handle > ochn_fd[1]?max_handle : ochn_fd[1];
 
     result = select(max_handle + 1, &readfds, nullptr, nullptr, &timeout);
     if (result == -1) {
-		std::cerr << "Select error" << std::endl;
-		break;
+			std::cerr << "Select error" << std::endl;
+			break;
     } else if (result == 0) {
-		// 超时
-		std::cout << "Timeout occurred" << std::endl;
-		std::unique_lock<std::mutex> lk(queue_mtx_);
-		for (int i = 0; i < buff_ptr.size(); i++) {
-			if (buff_ptr[i]) {
-				q_v_buff_[i].push(buff_ptr[i]);
-				buff_ptr[i] = nullptr;
+			// 超时
+			std::cout << "Timeout occurred" << std::endl;
+			std::unique_lock<std::mutex> lk(queue_mtx_);
+			for (int i = 0; i < buff_ptr.size(); i++) {
+				if (buff_ptr[i]) {
+					q_v_buff_[i].push(buff_ptr[i]);
+					buff_ptr[i] = nullptr;
+				}
 			}
-		}
-		continue;
+			continue;
     } else {
 		for (int i = 0; i < ochn_fd.size(); i++) {
 			if (!rclcpp::ok()) break;
@@ -856,12 +862,15 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	uint32_t chn_id = 0;
 	uint32_t hw_id = 0;
 	hbn_buf_alloc_attr_t alloc_attr = {0};
+	hbn_buf_alloc_attr_t sub_alloc_attr = {0};
 	
 	vse_attr_t vse_attr = {0};
 	vse_ichn_attr_t vse_ichn_attr;
 	vse_ochn_attr_t vse_ochn_attr;
+	vse_ochn_attr_t sub_vse_ochn_attr;
 	memset(&vse_ichn_attr, 0, sizeof(vse_ichn_attr_t));
 	memset(&vse_ochn_attr, 0, sizeof(vse_ochn_attr_t));
+	memset(&sub_vse_ochn_attr, 0, sizeof(vse_ochn_attr_t));
 	int input_width;
 	int input_height;
 	if (pipe_contex->gdc_init_valid == 1) {
@@ -929,6 +938,31 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 0, &alloc_attr);
 	ERR_CON_EQ(ret, 0);
 
+	sub_vse_ochn_attr.chn_en = CAM_TRUE;
+	sub_vse_ochn_attr.roi.x = 0;
+	sub_vse_ochn_attr.roi.y = 0;
+	sub_vse_ochn_attr.roi.w = input_width;
+	sub_vse_ochn_attr.roi.h = input_height;
+	sub_vse_ochn_attr.fmt = FRM_FMT_NV12;
+	sub_vse_ochn_attr.bit_width = 8;
+	//sub_vse_ochn_attr.target_w = input_width;
+	//sub_vse_ochn_attr.target_h = input_height;
+	sub_vse_ochn_attr.target_w = pipe_contex->cap_info_->sub_width;
+	sub_vse_ochn_attr.target_h = pipe_contex->cap_info_->sub_height;
+
+	sub_vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
+	sub_vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
+
+	ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 1, &sub_vse_ochn_attr);
+	ERR_CON_EQ(ret, 0);
+	sub_alloc_attr.buffers_num = 3;
+	sub_alloc_attr.is_contig = 1;
+	sub_alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN
+						| HB_MEM_USAGE_CPU_WRITE_OFTEN
+						| HB_MEM_USAGE_CACHED
+						| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
+	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 1, &sub_alloc_attr);
+	ERR_CON_EQ(ret, 0);
 	return 0;
 }
 
@@ -1867,6 +1901,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 			break;
     }
 
+#if 0
 	RT = cv::Mat::eye(3, 4, CV_64F);
 	cv::Mat P = K * RT;
 
@@ -1894,8 +1929,57 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	memcpy(tmp_cam_info.p.data(), P.data, sizeof(tmp_cam_info.p));
 	cal_cam_info.push_back(tmp_cam_info);
 
+#else
+	cv::Mat S = cv::Mat::eye(3, 3, CV_64F);
 
-	
+    switch(rotation_diff_int) {	
+        case 90:
+			S.at<double>(0,0) = 0;
+			S.at<double>(0,1) = -1;
+			S.at<double>(0,2) = (double)(out_height - 1);
+			S.at<double>(1,0) = 1;
+			S.at<double>(1,1) = 0;
+			S.at<double>(1,2) = 0;
+			break;
+		case 180:
+			S.at<double>(0,0) = -1;
+			S.at<double>(0,1) = 0;
+			S.at<double>(0,2) = (double)(out_width - 1);
+			S.at<double>(1,0) = 0;
+			S.at<double>(1,1) = -1;
+			S.at<double>(1,2) = (double)(out_height - 1);
+			break;			
+		case 270:
+			S.at<double>(0,0) = 0;
+			S.at<double>(0,1) = 1;
+			S.at<double>(0,2) = 0;
+			S.at<double>(1,0) = -1;
+			S.at<double>(1,1) = 0;
+			S.at<double>(1,2) = (double)(out_width - 1);
+            break;
+		default:
+			break;
+    }
+
+	sensor_msgs::msg::CameraInfo tmp_cam_info; 
+	tmp_cam_info.width = out_width;
+	tmp_cam_info.height = out_height;
+	tmp_cam_info.d.resize(5, 0.0);
+	memcpy(tmp_cam_info.k.data(), K.data, sizeof(tmp_cam_info.k));
+	cv::Mat new_Rl = S * Rl;
+	memcpy(tmp_cam_info.r.data(), new_Rl.data, sizeof(tmp_cam_info.r));
+	cv::Mat new_Pl = S * Pl;
+	memcpy(tmp_cam_info.p.data(), new_Pl.data, sizeof(tmp_cam_info.p));
+	cal_cam_info.push_back(tmp_cam_info);
+
+	cv::Mat new_Rr = S * Rr;
+	memcpy(tmp_cam_info.r.data(), new_Rr.data, sizeof(tmp_cam_info.r));
+	cv::Mat new_Pr = S * Pr;
+	memcpy(tmp_cam_info.p.data(), new_Pr.data, sizeof(tmp_cam_info.p));
+	cal_cam_info.push_back(tmp_cam_info);
+#endif
+
+
 	RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cap"),"===Corrected stetreo calibration ===" 
 		<< "\nKl : \n" << Kl 
 		<< "\nDl : \n" << Dl 

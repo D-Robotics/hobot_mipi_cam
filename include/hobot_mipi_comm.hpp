@@ -36,6 +36,8 @@ struct NodePara {
   std::string gdc_bin_file_;
   int image_width_;
   int image_height_;
+  int sub_image_width_;
+  int sub_image_height_;
   int framerate_;
   double rotation_ = 0.0;
   double cal_rotation_ = 0.0;
@@ -57,6 +59,8 @@ typedef struct {
   std::string out_format_name;
   int width;
   int height;
+  int sub_width;
+  int sub_height;
   int fps;
   int channel_;
   int channel2_;
