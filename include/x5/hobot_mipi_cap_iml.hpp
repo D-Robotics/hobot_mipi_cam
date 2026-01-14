@@ -32,6 +32,7 @@
 #include "codec_cfg.h"
 #include "GC820/nano2D.h"
 #include "GC820/nano2D_util.h"
+#include "hb_camera_data_info.h"
 
 namespace mipi_cam {
 
@@ -65,6 +66,9 @@ typedef struct pipe_contex_s {
   int gdc_init_valid;
   int gdc_init_valid_r;
   MIPI_CAP_INFO_ST *cap_info_;
+  //-----------awb 扩展 ------------------
+  sensor_otp_t awb_otp_data_;
+  // ------------------------------------------
 }pipe_contex_t;
 
 typedef struct video_buffer_s {
@@ -212,6 +216,61 @@ typedef struct cal_dual_R_T_info_st {
   float tz;
 } CalDualRTInfo_ST;
 #pragma pack()
+
+
+
+// ----------------------------------    awb -------------------------------------------------
+
+// typedef struct {
+//     uint8_t  rg_ratio;       // 红通道 / 绿色通道 增益比例（对应rg_ratio_x）
+//     uint8_t  bg_ratio;       // 蓝通道 / 绿色通道 增益比例（对应bg_ratio_x）
+//     uint8_t  ex_ratio;       // 扩展通道 / 绿色通道 增益比例（对应ex_ratio_x，备用/特殊通道）
+//     //uint8_t  zone_en;        // 该区域增益使能位（0：禁用该区域配置，1：启用）
+// } AWB_Zone_Gain_Config;
+
+//AWB配置参数
+#pragma pack(4)
+typedef struct cal_awb_st {
+  int width;
+  int height;
+  uint8_t pattern;          // 0x0138: 拜耳阵列格式（0x00=RGGB, 0x01=GRBG等）
+  uint16_t bls_r;
+  uint16_t bls_gr;
+  uint16_t bls_gb;
+  uint16_t bls_b;
+  uint8_t awb_ratio;        // 0x013D: AWB计算区域配置（默认使用中央区域）
+  //AWB_Zone_Gain_Config   zone_gain[5];    // 5个区域的增益配置（对应ratio_1~5）
+} CONFIG_AWB_ST;
+#pragma pack()
+
+
+#pragma pack(4)
+typedef struct dual_cam_awb_st_l {
+    unsigned short rg_ratio_3100K;
+    unsigned short bg_ratio_3100K;
+    unsigned short rg_ratio_4000K;
+    unsigned short bg_ratio_4000K;
+    unsigned short rg_ratio_5800K;
+    unsigned short bg_ratio_5800K;
+    //AwbCalibData_ST left_awb_data[3];   // 左摄AWB参数（3组色温）
+    //AwbCalibData_ST left_awb_golden[3]; // 左摄黄金AWB参数
+} DualCamAwbCalib_ST_L;
+#pragma pack()
+
+#pragma pack(4)
+typedef struct dual_cam_awb_st_r {
+    //AwbCalibData_ST right_awb_data[3];  // 右摄AWB参数（3组色温）
+    //AwbCalibData_ST right_awb_golden[3];// 右摄黄金AWB参数
+    unsigned short rg_ratio_3100K;
+    unsigned short bg_ratio_3100K;
+    unsigned short rg_ratio_4000K;
+    unsigned short bg_ratio_4000K;
+    unsigned short rg_ratio_5800K;
+    unsigned short bg_ratio_5800K;
+} DualCamAwbCalib_ST_R;
+#pragma pack()
+
+// ---------------------------------------------  awb ------------------------------------------------------------------------
 
 #pragma pack(4)
 typedef struct cal_dual_w_h_st {
@@ -392,6 +451,9 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
 
+  //int config_awb_otp(int64_t cam_fd);       // 新增AWB配置函数声明
+  int config_awb_otp(pipe_contex_t *pipe_contex); 
+
   bool m_inited_ = false;
   bool started_ = false;
   //x3_vin_info_t vin_info_;
@@ -430,8 +492,11 @@ class HobotMipiCapIml : public HobotMipiCap {
     uint32_t wnd_num;
   } gdc_cfg_t;
 
+  // ---------------------------------------- AWB参数存储变量
 
-
+  sensor_otp_t left_awb_otp_data_;     // 左摄sensor_otp_t格式参数（用于后续AWB配置）
+  sensor_otp_t right_awb_otp_data_;    // 右摄sensor_otp_t格式参数（用于后续AWB配置）
+//------------------------------------------------------------------------------------------------------
   std::vector<std::shared_ptr<gdc_cfg_t>> v_gdc_cfg_;
 
   camera_config_t g_camera_config[PIPES_TOTAL];
@@ -443,7 +508,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int64_t g_cam_fd[PIPES_TOTAL] = {-1};
   hbn_vnode_handle_t vse_node_handle[PIPES_TOTAL] = {0};
 
-  std::vector<pipe_contex_t> pipe_contex;
+  std::vector<pipe_contex_t> pipe_contex;      //pipe_contex：管道上下文结构体，存储每个摄像头的传感器配置、CSI 配置、流水线句柄等核心信息
 
   std::queue<std::shared_ptr<VideoBuffer_ST>> q_buff_empty_;
   std::queue<std::shared_ptr<VideoBuffer_ST>> q_left_buff_;

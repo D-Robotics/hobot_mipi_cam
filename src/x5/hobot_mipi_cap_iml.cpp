@@ -106,9 +106,13 @@ int HobotMipiCapIml::initEnv() {
   return 0;
 }
 
+//相机初始化入口，根据配置（双目 / 单目）完成传感器检测、参数加载、硬件配置、流水线创建等全流程初始化，为相机采集图像做好准备
+//函数逻辑：先判断相机工作模式（双目dual/单目），再针对性完成初始化
 int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
+	// ------------------------------------------1.初始化前置准备（参数赋值 + 资源初始化 + 传感器检测）
   int ret = 0;
-  cap_info_ = info;
+  cap_info_ = info;   //1.保存外部传入的相机配置参数（cap_info_是类成员变量，存储相机核心配置）
+  //2. 初始化各类辅助容器（用于存储传感器、主机信息）
   std::vector<int> sensor_v;
   std::vector<int> host_v;
   std::vector<mipi_host_info_t> v_host_info;
@@ -118,25 +122,34 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
   int sensor_index2 = 0;
   bool sensor_flag2 = false;
   mipi_host_info_t host_info;
+  //3. 打开内存模块（HBN平台专属，用于相机数据内存管理）
   hb_mem_module_open();
+  //4.遍历待检测传感器，完成MIPI传感器探测
   for (auto i : mipi_stoped_) {
-	ret = vp_sensor_detect_2(i, &host_info);
-	if (ret == 0) {
+	ret = vp_sensor_detect_2(i, &host_info);     //核心探测接口：检测传感器是否存在，输入传感器编号，输出 MIPI 主机配置信息
+	if (ret == 0) {           //探测成功（返回0），保存主机信息（MIPI主机编号、传感器索引等）
 		v_host_info_detect.push_back(host_info);
 	}
   }
+
+  //双目模式初始化（cap_info_.device_mode_ == "dual"，核心分支）
+  //当配置为双目相机时，执行该分支，完成左右双摄的全流程初始化，逻辑最复杂：
   if (cap_info_.device_mode_.compare("dual") == 0) {
+	//1.校验：探测到的传感器数量不少于2个（双目需要左右两个传感器）
 	if (v_host_info_detect.size() < 2) {
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
        		"The detected sensors are 2 less than expected.\n");
 		return -1;
 	}
 
+	//2. 筛选MIPI主机信息（优先匹配配置的通道号channel_和channel2_）
 	if (cap_info_.channel_ == cap_info_.channel2_) {
+		//通道号相同时，直接保存所有探测到的主机信息,关键变量：channel_/channel2_（双目相机左右通道编号，来自外部配置）
 		for(auto& host : v_host_info_detect) {
 			v_host_info.push_back(host);
 		}
 	} else {
+		// 通道号不同时，筛选出与配置通道匹配的主机信息
 		for(int k = 0; k < v_host_info_detect.size(); k++) {
 			if (v_host_info_detect[k].host_num == cap_info_.channel_) {
 				sensor_index = k;
@@ -146,9 +159,10 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 				sensor_flag2 = true;
 			}
 		}
+		// 匹配成功则保存对应主机信息，失败则保存所有探测结果
 		if ((sensor_flag == true) && (sensor_flag2 == true)) {
-			v_host_info.push_back(v_host_info_detect[sensor_index]);
-			v_host_info.push_back(v_host_info_detect[sensor_index2]);
+			v_host_info.push_back(v_host_info_detect[sensor_index]);   // 左摄主机信息
+			v_host_info.push_back(v_host_info_detect[sensor_index2]);    // 右摄主机信息
 		} else {
 			for(auto& host : v_host_info_detect) {
 				v_host_info.push_back(host);
@@ -156,59 +170,85 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		}
 	}
 
+	// 1. 初始化双目管道上下文（pipe_contex是类成员，vector大小设为2，对应左右摄）
 	pipe_contex.resize(2);
-	pipe_contex[0].cap_info_ = &cap_info_;
-	pipe_contex[1].cap_info_ = &cap_info_;
+	pipe_contex[0].cap_info_ = &cap_info_;   // 左摄绑定相机配置
+	pipe_contex[1].cap_info_ = &cap_info_;     // 右摄绑定相机配置
+
+	// 2. 绑定右摄传感器配置+MIPI主机配置   vp_sensor_config_list：传感器配置列表（预设不同传感器的参数，如分辨率、帧率等）
 	memcpy(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index], sizeof(vp_sensor_config_t));
-	ret = vp_sensor_fixed_mipi_host_1(v_host_info[1].host_num, &pipe_contex[1].sensor_config, &pipe_contex[1].csi_config);
-	ERR_CON_EQ(ret, 0);
+	ret = vp_sensor_fixed_mipi_host_1(v_host_info[1].host_num, &pipe_contex[1].sensor_config, &pipe_contex[1].csi_config);    //vp_sensor_fixed_mipi_host_1：绑定 MIPI 主机与传感器配置的接口，完成硬件参数映射
+	ERR_CON_EQ(ret, 0);   // 校验配置是否成功
+
+	// 3. 加载双目标定参数（从EEPROM读取，内参/外参/AWB等，复用之前的getDualCamCalibrationFromEeprom系列函数）
 	gdc_bin_buf_.clear();
 	vp_sensor_config_t *sensor_cof = &pipe_contex[1].sensor_config;
 	if (cam_info_.size() != 2) {
-		if (!getDualCamCalibrationFromEeprom()) {
+		if (!getDualCamCalibrationFromEeprom()) {     //优先读取默认EEPROM
 			if(strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0) {
-				getDualCamCalibrationFromEeprom_230ai();
+				getDualCamCalibrationFromEeprom_230ai();    // 针对sc230ai传感器的专属读取函数
 			}
 		}
 	}
-	if (cap_info_.gdc_enable_) {
-		if (cal_tpye_ == 0) {
+
+	//GDC 功能配置（畸变校正 / 旋转 / 尺寸缩放）              畸变校正：消除相机镜头的畸变（桶形 / 枕形畸变）       尺寸缩放：将原始图像缩放到配置的输出分辨率（cap_info_.width/height）
+	if (cap_info_.gdc_enable_) {       //若启用GDC功能
+		if (cal_tpye_ == 0) {    //针孔相机标定类型
+			//生成双目GDC二进制配置（基于内参/外参，完成畸变校正+尺寸缩放）
 			auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
 											cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
-			if (gdc_bin.size() == 2) {
+
+			if (gdc_bin.size() == 2) {          // 双目对应2份GDC配置
 				gdc_bin_buf_.push_back(gdc_bin[0]);
 				gdc_bin_buf_.push_back(gdc_bin[1]);
-				pipe_contex[0].gdc_bin = gdc_bin[0];
-				pipe_contex[1].gdc_bin = gdc_bin[1];
+				pipe_contex[0].gdc_bin = gdc_bin[0];      // 左摄绑定GDC配置
+				pipe_contex[1].gdc_bin = gdc_bin[1];           // 右摄绑定GDC配置
 			}
 		}
-	} else if (cam_info_.size() == 2) {
+	} else if (cam_info_.size() == 2) {        //未启用GDC时，直接保存标定信息
 		cal_cam_info_.push_back(cam_info_[0]);
 		cal_cam_info_.push_back(cam_info_[1]);
 	}
+
+	//单独处理图像旋转（未启用GDC时，通过GDC旋转配置实现图像旋转）                 图像旋转：实现 0°/90°/180°/270° 图像旋转，适配不同安装角度
 	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
 		vp_sensor_config_t *sensor_conf = &pipe_contex[1].sensor_config;
 		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
 		if (gdc_bin) {
 			gdc_bin_buf_.push_back(gdc_bin);
-			pipe_contex[0].gdc_bin_r = gdc_bin;
+			pipe_contex[0].gdc_bin_r = gdc_bin;      // 左右摄共享旋转配置
 			pipe_contex[1].gdc_bin_r = gdc_bin;
 		}
 	}
+
+	//传感器调优文件配置（针对 sc132gs 传感器）为指定传感器（sc132gs）加载自定义调优文件（包含 ISP 参数、AWB 参数等），优化图像色彩、清晰度等指标。
 	if ((eeprom_name_ == "yuguang") && (strcasecmp(pipe_contex[1].sensor_config.sensor_name, "sc132gs-1280p") == 0)) {
 		std::string sensor_tuning = "/usr/hobot/bin/sc132gs_tuning_yg.json";
 		rcpputils::fs::path file_path = sensor_tuning;
-		if (rcpputils::fs::exists(file_path)) {
+		if (rcpputils::fs::exists(file_path)) {      // 检查调优文件是否存在
+			// 配置传感器调优文件名（用于ISP参数优化，提升图像质量）
 			std::strcpy(pipe_contex[1].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
 		}	
 	}
 
+
+	//创建并运行左右摄视觉流水线   实现逻辑：先启动右摄，再启动左摄，确保双目流水线同步就绪，为后续同步采集图像做准备
+
+	pipe_contex[0].awb_otp_data_ = left_awb_otp_data_;
+	pipe_contex[1].awb_otp_data_ = right_awb_otp_data_;
+	//1.创建并运行右摄视觉流水线（核心接口：create_and_run_vflow）
 	ret = create_and_run_vflow(&pipe_contex[1]);
 	ERR_CON_EQ(ret, 0);
+
+
 	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index]);
+
+	// 2. 绑定左摄传感器配置+MIPI主机配置
 	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
 	ERR_CON_EQ(ret, 0);
+
+	// 3. 左摄同样配置sc132gs调优文件
 	if ((eeprom_name_ == "yuguang") && (strcasecmp(pipe_contex[0].sensor_config.sensor_name, "sc132gs-1280p") == 0)) {
 		std::string sensor_tuning = "/usr/hobot/bin/sc132gs_tuning_yg.json";
 		rcpputils::fs::path file_path = sensor_tuning;
@@ -216,13 +256,15 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 			std::strcpy(pipe_contex[1].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
 		}
 	}
+	
+	// 4. 创建并运行左摄视觉流水线
 	ret = create_and_run_vflow(&pipe_contex[0]);
 	ERR_CON_EQ(ret, 0);
     //n2d_pipe_contex.cap_info_ = &cap_info_;
 	//ret = create_and_run_n2d_vflow(&n2d_pipe_contex);
 	//ERR_CON_EQ(ret, 0);
 
-  } else {
+  } else {             //单目模式初始化   当配置为单目相机时，执行该分支，流程与双目一致但仅处理单个摄像头
 	if (v_host_info_detect.size() < 1) {
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
        		"The detected sensors are 1 less than expected.\n");
@@ -287,23 +329,31 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ERR_CON_EQ(ret, 0);
   }
 
+  //1. 保存传感器类型（类成员变量，用于后续查询）
   cap_info_.sensor_type = pipe_contex[0].sensor_config.sensor_name;
 
+	//2. 标记初始化完成（m_inited_是类成员，用于判断相机状态）
   m_inited_ = true;
 
+	// 3. 返回初始化结果（0=成功，非0=失败）
   return ret;
 }
 
+//相机资源销毁入口，负责释放初始化阶段创建的硬件流水线、内存模块等资源，避免内存泄漏和硬件占用。
 int HobotMipiCapIml::deInit() {
   int i = 0;
-  if (m_inited_) {
-	m_inited_ = false;
-	
+  if (m_inited_) {      // 仅当相机已初始化时，才执行销毁操作
+	m_inited_ = false;  // 先标记为未初始化，避免重复销毁
+	 
+	 // 1. 遍历所有管道上下文，销毁视觉流水线（释放硬件资源）
 	for(auto contex : pipe_contex){
-		hbn_vflow_destroy(contex.vflow_fd);
+		hbn_vflow_destroy(contex.vflow_fd);   // 核心接口：销毁HBN视觉流水线
 	}
 
+	// 2. 关闭内存模块（释放相机数据内存资源）
 	hb_mem_module_close();
+
+	// 3. 打印日志，提示销毁完成
 	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
        "x5_cam_deinit end.\n");
   }
@@ -502,11 +552,11 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
 	*timestamp = out_img.info.timestamps;
   }                       
                           
-  RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
-            "capture a frame, handle: %llu, id: %d, timestamps: %f, current uptime: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
-            "current timestamp: %f, laps ms: %fms, exposure_time: %fms.", 
-			                        handle, *frame_id, timestamps, current_uptime_ts, sys_timestamps, hw_timestamp, tri_timestamp,
-                              current_ts, (current_ts - sys_timestamps) * 1e3, (double)exposure_time * 1e-6);
+  //RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+            //"capture a frame, handle: %llu, id: %d, timestamps: %f, current uptime: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
+            //"current timestamp: %f, laps ms: %fms, exposure_time: %fms.", 
+			  //                      handle, *frame_id, timestamps, current_uptime_ts, sys_timestamps, hw_timestamp, tri_timestamp,
+                //              current_ts, (current_ts - sys_timestamps) * 1e3, (double)exposure_time * 1e-6);
 
 	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", image time sec:" << out_img.info.tv.tv_sec
 	//          << ", trig time sec:" << out_img.info.trig_tv.tv_sec 
@@ -1087,6 +1137,11 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	// 创建pipeline中的每个node
 	ret = creat_camera_node(pipe_contex->sensor_config.camera_config, &pipe_contex->cam_fd);
 	ERR_CON_EQ(ret, 0);
+
+	//      ------------------------------调用AWB OTP配置函数（核心修改）
+	ret = config_awb_otp(pipe_contex);
+	ERR_CON_EQ(ret, 0);
+	//     --------------------------------------------------
 	ret = creat_vin_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
 	ret = creat_isp_node(pipe_contex);
@@ -1185,13 +1240,116 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 
 	ret = hbn_camera_attach_to_vin(pipe_contex->cam_fd,
 							pipe_contex->vin_node_handle);
-	ERR_CON_EQ(ret, 0);
+	ERR_CON_EQ(ret, 0); 
 	//if(strcasecmp(pipe_contex->sensor_config.sensor_name, "sc230ai-30fps") == 0) {
 	//  ret = hbn_camera_change_fps(pipe_contex->cam_fd, pipe_contex->sensor_config.camera_config->fps);
 	//  ERR_CON_EQ(ret, 0);
 	//}
 	return 0;
 }
+
+// 封装AWB OTP配置函数（HBN接口方式）
+int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
+	if (pipe_contex->cam_fd < 0) {
+		//RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Invalid cam_fd: %ld for AWB OTP config", cam_fd);
+        return -1;
+	}
+
+	//初始化AWB OTP配置结构体
+	sensor_otp_t pdata = {0};
+	pdata.otp_awb_enable = 1;          // 启用AWB OTP配置
+    pdata.awb_ct_num = 3;              // AWB色温配置数量
+    pdata.awb_golden_ct_num = 3;       // AWB黄金色温配置数量
+
+    // 配置3100K色温参数
+    pdata.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
+    pdata.awb_data[0].r =   0;        //pipe_contex->awb_otp_data_.awb_data[0].r;
+    pdata.awb_data[0].gr =  0;           //pipe_contex->awb_otp_data_.awb_data[0].gr;
+    pdata.awb_data[0].gb =  0;                  //pipe_contex->awb_otp_data_.awb_data[0].gb;
+    pdata.awb_data[0].b =  0;                    //pipe_contex->awb_otp_data_.awb_data[0].b;
+    pdata.awb_data[0].rg_ratio = pipe_contex->awb_otp_data_.awb_data[0].rg_ratio;
+    pdata.awb_data[0].bg_ratio = pipe_contex->awb_otp_data_.awb_data[0].bg_ratio;
+
+    pdata.awb_golden_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
+    pdata.awb_golden_data[0].r = 0;
+    pdata.awb_golden_data[0].gr = 0;
+    pdata.awb_golden_data[0].gb = 0;
+    pdata.awb_golden_data[0].b = 0;
+    pdata.awb_golden_data[0].rg_ratio = pipe_contex->awb_otp_data_.awb_golden_data[0].rg_ratio;
+    pdata.awb_golden_data[0].bg_ratio = pipe_contex->awb_otp_data_.awb_golden_data[0].bg_ratio;
+
+    // 配置4000K色温参数
+    pdata.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+    pdata.awb_data[1].r =    0;             //pipe_contex->awb_otp_data_.awb_data[0].r;
+    pdata.awb_data[1].gr =     0;         //pipe_contex->awb_otp_data_.awb_data[0].gr;
+    pdata.awb_data[1].gb =   0;                //pipe_contex->awb_otp_data_.awb_data[0].gb;
+    pdata.awb_data[1].b =   0;               //pipe_contex->awb_otp_data_.awb_data[0].b;
+    pdata.awb_data[1].rg_ratio = pipe_contex->awb_otp_data_.awb_data[1].rg_ratio;
+    pdata.awb_data[1].bg_ratio = pipe_contex->awb_otp_data_.awb_data[1].bg_ratio;
+
+    pdata.awb_golden_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+    pdata.awb_golden_data[1].r = 0;
+    pdata.awb_golden_data[1].gr = 0;
+    pdata.awb_golden_data[1].gb = 0;
+    pdata.awb_golden_data[1].b = 0;
+    pdata.awb_golden_data[1].rg_ratio = pipe_contex->awb_otp_data_.awb_golden_data[1].rg_ratio;
+    pdata.awb_golden_data[1].bg_ratio = pipe_contex->awb_otp_data_.awb_golden_data[1].bg_ratio;
+
+    // 配置5800K色温参数
+    pdata.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+    pdata.awb_data[2].r =      0;            //pipe_contex->awb_otp_data_.awb_data[0].r;
+    pdata.awb_data[2].gr =   0;                   //pipe_contex->awb_otp_data_.awb_data[0].gr;
+    pdata.awb_data[2].gb =   0;                  //pipe_contex->awb_otp_data_.awb_data[0].gb;
+    pdata.awb_data[2].b =    0;                  //pipe_contex->awb_otp_data_.awb_data[0].b;
+    pdata.awb_data[2].rg_ratio = pipe_contex->awb_otp_data_.awb_data[2].rg_ratio;
+    pdata.awb_data[2].bg_ratio = pipe_contex->awb_otp_data_.awb_data[2].bg_ratio;
+
+    pdata.awb_golden_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+    pdata.awb_golden_data[2].r = 0;
+    pdata.awb_golden_data[2].gr = 0;
+    pdata.awb_golden_data[2].gb = 0;
+    pdata.awb_golden_data[2].b = 0;
+    pdata.awb_golden_data[2].rg_ratio = pipe_contex->awb_otp_data_.awb_golden_data[2].rg_ratio;
+    pdata.awb_golden_data[2].bg_ratio = pipe_contex->awb_otp_data_.awb_golden_data[2].bg_ratio;
+
+    // 打印日志+调用HBN接口启用AWB OTP
+	//printf("awb otp enable\n");
+    //RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "AWB OTP config enable, cam_fd: %ld", pipe_contex->cam_fd);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].rg_ratio: %ld", pipe_contex->awb_otp_data_.awb_data[0].rg_ratio);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].bg_ratio: %ld",  pipe_contex->awb_otp_data_.awb_data[0].bg_ratio);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].rg_ratio: %ld",  pipe_contex->awb_otp_data_.awb_data[1].rg_ratio);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].bg_ratio: %ld",  pipe_contex->awb_otp_data_.awb_data[1].bg_ratio);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].rg_ratio: %ld",  pipe_contex->awb_otp_data_.awb_data[2].rg_ratio);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].bg_ratio: %ld",  pipe_contex->awb_otp_data_.awb_data[2].bg_ratio);
+
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pipe_contex->awb_otp_data_.awb_data[0].r);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pipe_contex->awb_otp_data_.awb_data[0].gr);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pipe_contex->awb_otp_data_.awb_data[0].gb);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pipe_contex->awb_otp_data_.awb_data[0].b);
+
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pdata.awb_data[0].r);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pdata.awb_data[0].gr);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pdata.awb_data[0].gb);
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pdata.awb_data[0].b);
+
+
+	
+    int32_t ret = hbn_camera_enable_otp(pipe_contex->cam_fd, &pdata);                    ////cam_fd由hbn_camera_create创建
+
+
+
+
+	ERR_CON_EQ(ret, 0);
+
+    
+	// if (ret != 0) {
+    //     //RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "hbn_camera_enable_otp failed, ret: %d, cam_fd: %ld", ret, cam_fd);
+    //     return ret;
+    // }
+
+    return 0;
+}
+
 
 void HobotMipiCapIml::listMipiHost(std::vector<int> &mipi_hosts, 
     std::vector<int> &started, std::vector<int> &stoped) {
@@ -2477,25 +2635,38 @@ bool HobotMipiCapIml::getDualCamCalibrationFromEeprom() {
   return true;
 }
 
+//双目相机硬件参数读取函数，核心作用是从相机的 EEPROM 存储芯片中，通过 I2C 总线读取双目相机的标定参数（内参、外参、旋转角度、相机类型等），并将这些参数解析后存储到类成员变量中
 bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) {
   std::string device;
+  // 1------------------------------  初始化缓冲区：大小对应EEPROM头部结构体EepromDrobotHead_ST
   std::vector<char> head_buf;
   head_buf.resize(sizeof(EepromDrobotHead_ST));
   char chech_value;
-  if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(), sizeof(EepromDrobotHead_ST)) == false) {
-	return false;
+  //2----------------------------------- 核心：通过I2C读取EEPROM头部数据（地址0x0000），读取 EEPROM 中存储的相机基础信息（相机类型、标定类型、版本号等）
+  // readEeprom16：I2C 16位地址读取函数（关键硬件通信接口）,通过readEeprom16函数实现 I2C 总线通信，这是读取硬件参数的核心接口
+  if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(), sizeof(EepromDrobotHead_ST)) == false) {   //参数说明：i2c_bus：I2C 总线编号（固定），i2c_addr：EEPROM 芯片的 I2C 设备地址（固定），0x0000：EEPROM 中的起始读取地址（头部数据存储在首地址）
+	return false;                         //head_buf.data()：数据接收缓冲区，sizeof(EepromDrobotHead_ST)：读取数据长度（与头部结构体大小一致）
   }
+  
+  //1------------------------- 获取校验位（头部结构体最后1个字节是校验值）,防止 I2C 传输过程中数据丢失或篡改，保证硬件参数的准确性
   int chech_index = sizeof(EepromDrobotHead_ST) - 1;
   chech_value = head_buf[chech_index];
-  head_buf[chech_index] = 0;
+  head_buf[chech_index] = 0;           //// 校验时排除校验位本身
+  
+  //2. 计算头部数据的累加和
   int sum = 0;
   
   std::for_each(head_buf.begin(), head_buf.end(), [&sum](char c) {
 	sum += static_cast<int>(c);
   });
+
+  //3. 校验：(累加和%255 +1) 与校验位一致，说明数据有效
   if (((sum % 255) + 1) == chech_value) {
+	//数据有效，后续解析参数-----------------------------------------------------------------------------
+
 	EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
 
+	//打印相机头部数据，基本信息
 	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
 		"\n ----------------" \
 		"\n bus: %d" \
@@ -2533,20 +2704,95 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 		cal_tpye_ = 1; //鱼眼标定
 	} 
 
-	if (head_buf_ptr->camType == 0x01) {
+	if (head_buf_ptr->camType == 0x01) {        //当头部数据校验通过且camType == 0x01（双目相机类型）时,分 3 段读取 EEPROM 中的核心标定参数（通过不同的 EEPROM 地址区分）：
+
+		//-----------------------EEPROM 中的参数是分段存储的，每个参数块有固定的起始地址（0x0010/0x0048/0x008C），长度对应各自的结构体大小；
+		if (head_buf_ptr->ver_main == 0x01) {
+
 		cam_info_.resize(2);
-		CalDualMDInfo_ST m_d_info_l, m_d_info_r;
-		CalDualRTInfo_ST r_t_info;
+
+		CalDualMDInfo_ST m_d_info_l, m_d_info_r;         //相机内参结构体
+
+		CalDualRTInfo_ST r_t_info;                       //双目外参结构体
+
+		//1. 读取左摄像头内参（EEPROM地址0x0010）
 		if (readEeprom16(i2c_bus, i2c_addr, 0x0010, (char*)&m_d_info_l, sizeof(CalDualMDInfo_ST)) == false) {
 			return false;
 		}
+		//2. 读取右摄像头内参（EEPROM地址0x0048）
 		if (readEeprom16(i2c_bus, i2c_addr, 0x0048, (char*)&m_d_info_r, sizeof(CalDualMDInfo_ST)) == false) {
 			return false;
 		}
+		//3. 读取双目外参（旋转矩阵R+平移向量T，EEPROM地址0x008C）
 		if (readEeprom16(i2c_bus, i2c_addr, 0x008C, (char*)&r_t_info, sizeof(CalDualRTInfo_ST)) == false) {
 			return false;
 		}
 		
+
+		// ===================== 扩展：读取AWB硬件参数 =====================
+		CONFIG_AWB_ST awb_config; // AWB参数缓冲区
+		//读取EEPROM中的AWB配置参数（地址0x0134，长度为DualCamAwbCalib_ST大小）
+		if (readEeprom16(i2c_bus, i2c_addr, 0x0134, (char*)&awb_config, sizeof(CONFIG_AWB_ST)) == false) {
+			return false;
+			// 可返回true（兼容无AWB参数的情况），或false（强制要求AWB参数）
+		}
+		//
+
+		//左右相机的AWB参数
+		DualCamAwbCalib_ST_L awb_info_l;
+		DualCamAwbCalib_ST_R awb_info_r;
+		//1.读取左相机参数
+		if (readEeprom16(i2c_bus, i2c_addr, 0x0166, (char*)&awb_info_l, sizeof(DualCamAwbCalib_ST_L)) == false) {
+			return false;
+			// 可返回true（兼容无AWB参数的情况），或false（强制要求AWB参数）
+		}
+		//2.读取右相机参数
+		if (readEeprom16(i2c_bus, i2c_addr, 0x0172, (char*)&awb_info_r, sizeof(DualCamAwbCalib_ST_R)) == false) {
+			return false;
+			// 可返回true（兼容无AWB参数的情况），或false（强制要求AWB参数）
+		}
+
+
+
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====awb_info_l======" \
+			"\n ----------------" \
+			"\n rg_ratio_3100K: %d" \
+			"\n bg_ratio_3100K: %d" \
+			"\n rg_ratio_4000K: %f" \
+			"\n bg_ratio_4000K: %f" \
+			"\n rg_ratio_5800K: %f" \
+			"\n bg_ratio_5800K: %f" \
+			"\n ----------------",
+			awb_info_l.rg_ratio_3100K,
+			awb_info_l.bg_ratio_3100K,
+			awb_info_l.rg_ratio_4000K,
+			awb_info_l.bg_ratio_4000K,
+			awb_info_l.rg_ratio_5800K,
+			awb_info_l.bg_ratio_5800K
+		);
+
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====awb_info_l======" \
+			"\n ----------------" \
+			"\n rg_ratio_3100K: %d" \
+			"\n bg_ratio_3100K: %d" \
+			"\n rg_ratio_4000K: %f" \
+			"\n bg_ratio_4000K: %f" \
+			"\n rg_ratio_5800K: %f" \
+			"\n bg_ratio_5800K: %f" \
+			"\n ----------------",
+			awb_info_r.rg_ratio_3100K,
+			awb_info_r.bg_ratio_3100K,
+			awb_info_r.rg_ratio_4000K,
+			awb_info_r.bg_ratio_4000K,
+			awb_info_r.rg_ratio_5800K,
+			awb_info_r.bg_ratio_5800K
+		);
+
+
+
+
+
+		//打印左摄像头内参
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_l======" \
 			"\n ----------------" \
 			"\n width: %d" \
@@ -2573,6 +2819,7 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 		// printf("k5:%f\n",m_d_info_l.k5);
 		// printf("k6:%f\n",m_d_info_l.k6);
 
+		//打印右摄像头内参
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_r======" \
 			"\n ----------------" \
 			"\n width: %d" \
@@ -2601,7 +2848,7 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 
 
 
-
+		//打印双目外参
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====r_t_info======" \
 			"\n ----------------" \
 			"\n r11: %f" \
@@ -2631,11 +2878,14 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 			r_t_info.tz
 		);
 
+		//解析参数并存储到类成员变量
+		//1.存储分辨率（类成员变量：cam_info_，应为std::vector<CameraInfo>类型）
 		cam_info_[0].width = m_d_info_l.width;
 		cam_info_[0].height = m_d_info_l.height;
 		cam_info_[1].width = m_d_info_r.width;
 		cam_info_[1].height = m_d_info_r.height;
 
+		//2.构建左摄内参矩阵K，并存储到cam_info_[0].k
 		cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
 		l_k.at<double>(0,0) = m_d_info_l.fx;
 		l_k.at<double>(0,2) = m_d_info_l.cx;
@@ -2648,6 +2898,8 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 		if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
 			d_num = head_buf_ptr->d_num;
 		}
+
+		//3. 存储左摄畸变系数d
 		cam_info_[0].d.resize(d_num);
 		for (int i = 0; i < d_num; i++) {
 			cam_info_[0].d[i] = m_d_info_l.d[i];
@@ -2714,7 +2966,80 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 		cv::Mat P = r_k * RT;
 		std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
 		std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
+
+
+
+		// ----------------------------------awb -----------------------------------
+		//左目
+		left_awb_otp_data_.otp_awb_enable = 1;
+		left_awb_otp_data_.awb_ct_num = 3;
+		left_awb_otp_data_.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
+		left_awb_otp_data_.awb_data[0].rg_ratio = awb_info_l.rg_ratio_3100K;
+		left_awb_otp_data_.awb_data[0].bg_ratio = awb_info_l.bg_ratio_3100K;
+		left_awb_otp_data_.awb_golden_data[0].rg_ratio = 1326;
+		left_awb_otp_data_.awb_golden_data[0].bg_ratio = 350;
+		left_awb_otp_data_.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+		left_awb_otp_data_.awb_data[1].rg_ratio = awb_info_l.rg_ratio_4000K;
+		left_awb_otp_data_.awb_data[1].bg_ratio = awb_info_l.bg_ratio_4000K;
+		left_awb_otp_data_.awb_golden_data[1].rg_ratio = 1040;
+		left_awb_otp_data_.awb_golden_data[1].bg_ratio = 420;
+		left_awb_otp_data_.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+		left_awb_otp_data_.awb_data[2].rg_ratio = awb_info_l.rg_ratio_5800K;
+		left_awb_otp_data_.awb_data[2].bg_ratio = awb_info_l.bg_ratio_5800K;
+		left_awb_otp_data_.awb_golden_data[2].rg_ratio = 836;
+		left_awb_otp_data_.awb_golden_data[2].bg_ratio = 575;
+
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[0].rg_ratio: %ld", left_awb_otp_data_.awb_data[0].rg_ratio);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[0].bg_ratio: %ld", left_awb_otp_data_.awb_data[0].bg_ratio);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[1].rg_ratio: %ld", left_awb_otp_data_.awb_data[1].rg_ratio);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[1].bg_ratio: %ld", left_awb_otp_data_.awb_data[1].bg_ratio);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[2].rg_ratio: %ld", left_awb_otp_data_.awb_data[2].rg_ratio);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[2].bg_ratio: %ld", left_awb_otp_data_.awb_data[2].bg_ratio);
+
+		
+
+		left_awb_otp_data_.awb_data[0].r = awb_config.bls_r;
+		left_awb_otp_data_.awb_data[0].gr = awb_config.bls_gr;
+		left_awb_otp_data_.awb_data[0].gb = awb_config.bls_gb;
+		left_awb_otp_data_.awb_data[0].b = awb_config.bls_b;
+
+
+		//右目
+		right_awb_otp_data_.otp_awb_enable = 1;
+		right_awb_otp_data_.awb_ct_num = 3;
+		right_awb_otp_data_.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
+		right_awb_otp_data_.awb_data[0].rg_ratio = awb_info_r.rg_ratio_3100K;
+		right_awb_otp_data_.awb_data[0].bg_ratio = awb_info_r.bg_ratio_3100K;
+		right_awb_otp_data_.awb_golden_data[0].rg_ratio = 1309;
+		right_awb_otp_data_.awb_golden_data[0].bg_ratio = 348;
+		right_awb_otp_data_.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+		right_awb_otp_data_.awb_data[1].rg_ratio = awb_info_r.rg_ratio_4000K;
+		right_awb_otp_data_.awb_data[1].bg_ratio = awb_info_r.bg_ratio_4000K;
+		right_awb_otp_data_.awb_golden_data[1].rg_ratio = 1023;
+		right_awb_otp_data_.awb_golden_data[1].bg_ratio = 415;
+		right_awb_otp_data_.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+		right_awb_otp_data_.awb_data[2].rg_ratio = awb_info_r.rg_ratio_5800K;
+		right_awb_otp_data_.awb_data[2].bg_ratio = awb_info_r.bg_ratio_5800K;
+		right_awb_otp_data_.awb_golden_data[2].rg_ratio = 819;
+		right_awb_otp_data_.awb_golden_data[2].bg_ratio = 570;
+
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[0].rg_ratio: %ld", right_awb_otp_data_.awb_data[0].rg_ratio);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[0].bg_ratio: %ld", right_awb_otp_data_.awb_data[0].bg_ratio);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[1].rg_ratio: %ld", right_awb_otp_data_.awb_data[1].rg_ratio);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[1].bg_ratio: %ld", right_awb_otp_data_.awb_data[1].bg_ratio);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[2].rg_ratio: %ld", right_awb_otp_data_.awb_data[2].rg_ratio);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[2].bg_ratio: %ld", right_awb_otp_data_.awb_data[2].bg_ratio);
+
+
+		right_awb_otp_data_.awb_data[0].r = awb_config.bls_r;
+		right_awb_otp_data_.awb_data[0].gr = awb_config.bls_gr;
+		right_awb_otp_data_.awb_data[0].gb = awb_config.bls_gb;
+		right_awb_otp_data_.awb_data[0].b = awb_config.bls_b;
+		
+
+
 		return true;
+	}
 	}
 
   }
