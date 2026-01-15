@@ -1535,7 +1535,6 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	   (cal_rotate == 0.0) || (cal_rotate == 90.0) || (cal_rotate == 180.0) || (cal_rotate == 270.0))) {
 		return gdc_bin_buf;
 	}
-
 	float gdc_width_scale, gdc_height_scale;
 	int in_gdc_width, in_gdc_height;
 
@@ -1581,7 +1580,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 
 	cv::Mat Kr_inv = Kr.inv();
 	cv::Mat RT = Kr_inv * tPr;
-    cv::Mat tTr = RT(cv::Rect(3, 0, 1, 3));
+    cv::Mat tTr = RT(cv::Rect(3, 0, 1, 3)).clone();
 	R_rl = tRr;
 	t_rl = tTr;
 
@@ -2028,7 +2027,7 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int in_width, int in_
 	P = cv::Mat(3, 4, CV_64F, cam_info->p.data()).clone();
 	cv::Mat K_inv = K.inv();
 	cv::Mat RT = K_inv * P;
-	T = RT(cv::Rect(3, 0, 1, 3));
+	T = RT(cv::Rect(3, 0, 1, 3)).clone();
 	K.at<double>(0, 0) *= gdc_width_scale;
 	K.at<double>(0, 2) *= gdc_width_scale;
 	K.at<double>(1, 1) *= gdc_height_scale;
