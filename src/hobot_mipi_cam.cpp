@@ -695,12 +695,14 @@ bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info
     
     int width = fs["image_width"];
     int height = fs["image_height"];
+    std::string dist_model;
     fs["left_camera_matrix"] >> l_k;
     fs["left_distortion_coefficients"] >> l_d;
     fs["right_camera_matrix"] >> r_k;
     fs["right_distortion_coefficients"] >> r_d;
     fs["R"] >> R;
     fs["T"] >> T;
+    fs["distortion_model"] >> dist_model;
     fs.release();
     // 检查数据类型并进行转换（如果需要）
     if (l_k.type() != CV_64F) {
@@ -746,7 +748,16 @@ bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info
     cv::Mat P = r_k * RT;
     std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_r.r.begin());
     std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_r.p.begin());
-    fs.release();
+    if (dist_model == "fisheye") {
+      cam_info_l.distortion_model = cam_info_r.distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
+    } else {
+      cam_info_l.distortion_model = cam_info_r.distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
+      RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
+                 "Camera calibration file did not specify distortion model, "
+                  "assuming plumb bob");
+    }
+
+    //fs.release();
     return true;
   } catch (cv::Exception &e) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
