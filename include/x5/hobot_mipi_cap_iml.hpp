@@ -246,29 +246,74 @@ typedef struct cal_awb_st {
 
 #pragma pack(4)
 typedef struct dual_cam_awb_st_l {
+    unsigned short r_3100K;
+    unsigned short gr_3100K;
+    unsigned short gb_3100K;
+    unsigned short b_3100K;
     unsigned short rg_ratio_3100K;
     unsigned short bg_ratio_3100K;
+    unsigned short r_4000K;
+    unsigned short gr_4000K;
+    unsigned short gb_4000K;
+    unsigned short b_4000K;
     unsigned short rg_ratio_4000K;
     unsigned short bg_ratio_4000K;
+    unsigned short r_5800K;
+    unsigned short gr_5800K;
+    unsigned short gb_5800K;
+    unsigned short b_5800K;
     unsigned short rg_ratio_5800K;
     unsigned short bg_ratio_5800K;
-    //AwbCalibData_ST left_awb_data[3];   // 左摄AWB参数（3组色温）
-    //AwbCalibData_ST left_awb_golden[3]; // 左摄黄金AWB参数
 } DualCamAwbCalib_ST_L;
 #pragma pack()
 
 #pragma pack(4)
 typedef struct dual_cam_awb_st_r {
-    //AwbCalibData_ST right_awb_data[3];  // 右摄AWB参数（3组色温）
-    //AwbCalibData_ST right_awb_golden[3];// 右摄黄金AWB参数
+    unsigned short r_3100K;
+    unsigned short gr_3100K;
+    unsigned short gb_3100K;
+    unsigned short b_3100K;
     unsigned short rg_ratio_3100K;
     unsigned short bg_ratio_3100K;
+    unsigned short r_4000K;
+    unsigned short gr_4000K;
+    unsigned short gb_4000K;
+    unsigned short b_4000K;
     unsigned short rg_ratio_4000K;
     unsigned short bg_ratio_4000K;
+    unsigned short r_5800K;
+    unsigned short gr_5800K;
+    unsigned short gb_5800K;
+    unsigned short b_5800K;
     unsigned short rg_ratio_5800K;
     unsigned short bg_ratio_5800K;
 } DualCamAwbCalib_ST_R;
 #pragma pack()
+
+
+#pragma pack(4)
+typedef struct dual_cam_awb_st_golden {
+    unsigned short r_3100K;
+    unsigned short gr_3100K;
+    unsigned short gb_3100K;
+    unsigned short b_3100K;
+    unsigned short rg_ratio_3100K;
+    unsigned short bg_ratio_3100K;
+    unsigned short r_4000K;
+    unsigned short gr_4000K;
+    unsigned short gb_4000K;
+    unsigned short b_4000K;
+    unsigned short rg_ratio_4000K;
+    unsigned short bg_ratio_4000K;
+    unsigned short r_5800K;
+    unsigned short gr_5800K;
+    unsigned short gb_5800K;
+    unsigned short b_5800K;
+    unsigned short rg_ratio_5800K;
+    unsigned short bg_ratio_5800K;
+} DualCamAwbCalib_ST_Golden;
+#pragma pack()
+
 
 // ---------------------------------------------  awb ------------------------------------------------------------------------
 

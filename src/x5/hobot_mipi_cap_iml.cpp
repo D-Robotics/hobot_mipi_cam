@@ -2756,7 +2756,15 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 			// 可返回true（兼容无AWB参数的情况），或false（强制要求AWB参数）
 		}
 		//2.读取右相机参数
-		if (readEeprom16(i2c_bus, i2c_addr, 0x0172, (char*)&awb_info_r, sizeof(DualCamAwbCalib_ST_R)) == false) {
+		if (readEeprom16(i2c_bus, i2c_addr, 0x018A, (char*)&awb_info_r, sizeof(DualCamAwbCalib_ST_R)) == false) {
+			return false;
+			// 可返回true（兼容无AWB参数的情况），或false（强制要求AWB参数）
+		}
+
+		//相机的AWB Golden参数
+		DualCamAwbCalib_ST_Golden awb_info_golden;
+		//3.读取相机golden参数
+		if (readEeprom16(i2c_bus, i2c_addr, 0x01AE, (char*)&awb_info_golden, sizeof(DualCamAwbCalib_ST_Golden)) == false) {
 			return false;
 			// 可返回true（兼容无AWB参数的情况），或false（强制要求AWB参数）
 		}
@@ -2985,18 +2993,18 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 		left_awb_otp_data_.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
 		left_awb_otp_data_.awb_data[0].rg_ratio = awb_info_l.rg_ratio_3100K;
 		left_awb_otp_data_.awb_data[0].bg_ratio = awb_info_l.bg_ratio_3100K;
-		left_awb_otp_data_.awb_golden_data[0].rg_ratio = awb_info_l.rg_ratio_3100K;
-		left_awb_otp_data_.awb_golden_data[0].bg_ratio = awb_info_l.bg_ratio_3100K;
+		left_awb_otp_data_.awb_golden_data[0].rg_ratio = awb_info_golden.rg_ratio_3100K;
+		left_awb_otp_data_.awb_golden_data[0].bg_ratio = awb_info_golden.bg_ratio_3100K;
 		left_awb_otp_data_.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
 		left_awb_otp_data_.awb_data[1].rg_ratio = awb_info_l.rg_ratio_4000K;
 		left_awb_otp_data_.awb_data[1].bg_ratio = awb_info_l.bg_ratio_4000K;
-		left_awb_otp_data_.awb_golden_data[1].rg_ratio = awb_info_l.rg_ratio_4000K;
-		left_awb_otp_data_.awb_golden_data[1].bg_ratio = awb_info_l.bg_ratio_4000K;
+		left_awb_otp_data_.awb_golden_data[1].rg_ratio = awb_info_golden.rg_ratio_4000K;
+		left_awb_otp_data_.awb_golden_data[1].bg_ratio = awb_info_golden.bg_ratio_4000K;
 		left_awb_otp_data_.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
 		left_awb_otp_data_.awb_data[2].rg_ratio = awb_info_l.rg_ratio_5800K;
 		left_awb_otp_data_.awb_data[2].bg_ratio = awb_info_l.bg_ratio_5800K;
-		left_awb_otp_data_.awb_golden_data[2].rg_ratio = awb_info_l.rg_ratio_5800K;
-		left_awb_otp_data_.awb_golden_data[2].bg_ratio = awb_info_l.bg_ratio_5800K;
+		left_awb_otp_data_.awb_golden_data[2].rg_ratio = awb_info_golden.rg_ratio_5800K;
+		left_awb_otp_data_.awb_golden_data[2].bg_ratio = awb_info_golden.bg_ratio_5800K;
 
 		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ================== left awb otp data ==================");
 		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_golden_data[0].rg_ratio: %ld", left_awb_otp_data_.awb_golden_data[0].rg_ratio);
@@ -3024,18 +3032,18 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 		right_awb_otp_data_.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
 		right_awb_otp_data_.awb_data[0].rg_ratio = awb_info_r.rg_ratio_3100K;
 		right_awb_otp_data_.awb_data[0].bg_ratio = awb_info_r.bg_ratio_3100K;
-		right_awb_otp_data_.awb_golden_data[0].rg_ratio = awb_info_l.rg_ratio_3100K;
-		right_awb_otp_data_.awb_golden_data[0].bg_ratio = awb_info_l.bg_ratio_3100K;
+		right_awb_otp_data_.awb_golden_data[0].rg_ratio = awb_info_golden.rg_ratio_3100K;
+		right_awb_otp_data_.awb_golden_data[0].bg_ratio = awb_info_golden.bg_ratio_3100K;
 		right_awb_otp_data_.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
 		right_awb_otp_data_.awb_data[1].rg_ratio = awb_info_r.rg_ratio_4000K;
 		right_awb_otp_data_.awb_data[1].bg_ratio = awb_info_r.bg_ratio_4000K;
-		right_awb_otp_data_.awb_golden_data[1].rg_ratio = awb_info_l.rg_ratio_4000K;
-		right_awb_otp_data_.awb_golden_data[1].bg_ratio = awb_info_l.bg_ratio_4000K;
+		right_awb_otp_data_.awb_golden_data[1].rg_ratio = awb_info_golden.rg_ratio_4000K;
+		right_awb_otp_data_.awb_golden_data[1].bg_ratio = awb_info_golden.bg_ratio_4000K;
 		right_awb_otp_data_.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
 		right_awb_otp_data_.awb_data[2].rg_ratio = awb_info_r.rg_ratio_5800K;
 		right_awb_otp_data_.awb_data[2].bg_ratio = awb_info_r.bg_ratio_5800K;
-		right_awb_otp_data_.awb_golden_data[2].rg_ratio = awb_info_l.rg_ratio_5800K;
-		right_awb_otp_data_.awb_golden_data[2].bg_ratio = awb_info_l.bg_ratio_5800K;
+		right_awb_otp_data_.awb_golden_data[2].rg_ratio = awb_info_golden.rg_ratio_5800K;
+		right_awb_otp_data_.awb_golden_data[2].bg_ratio = awb_info_golden.bg_ratio_5800K;
 
 		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ================== right awb otp data ==================");
 		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_golden_data[0].rg_ratio: %ld", right_awb_otp_data_.awb_golden_data[0].rg_ratio);
