@@ -269,7 +269,7 @@ int icm42688::read(ImuData_T *data) {
 
     ret = inv_icm42600_origin_data_read(&dtpkt, true);
 
-    system("clear");
+    // system("clear");
     //for(int i=0; i<50; i++)printf("=");printf("\n");
 
     //printf("[origin data read]function return: %d\n", ret);

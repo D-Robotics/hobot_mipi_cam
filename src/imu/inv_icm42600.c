@@ -32,18 +32,18 @@
     .accel_pwr_mode = INV_ICM_42600_ACCEL_OFF, \
     /* GYRO_CONFIG0 */ \
     .gyro_fs = INV_ICM42600_GYRO_FS_2000DPS, \
-    .gyro_odr = INV_ICM42600_GYRO_ODR_2KHZ, \
+    .gyro_odr = INV_ICM42600_GYRO_ODR_8KHZ, \
     /* ACCEL_CONFIG0  */ \
     .accel_fs = INV_ICM42600_ACCEL_FS_16G, \
-    .accel_odr = INV_ICM42600_ACCEL_ODR_2KHZ_LN, \
+    .accel_odr = INV_ICM42600_ACCEL_ODR_8KHZ_LN, \
     /* GYRO_CONFIG1 */ \
     .temp_filt_bw = INV_ICM42600_DLPF_4000HZ_0_125MS, \
     .gyro_ui_filt_ord = 1, \
     .gyro_dec2_m2_ord = 2, \
     /* GYRO_ACCEL_CONFIG0 */ \
-    .accel_filt_bw = BW_ODR_DIR_4, \
+    .accel_filt_bw = BW_ODR_DIR_40, \
     .accel_LP_filt_avg = AVG_1_FILTER, \
-    .gyro_filt_bw = BW_ODR_DIR_4, \
+    .gyro_filt_bw = BW_ODR_DIR_40, \
     /* TMST_CONFIG */ \
     .tmst_en = true, \
     .tmst_fsync_en = true, \
