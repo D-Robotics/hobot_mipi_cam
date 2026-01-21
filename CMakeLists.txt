@@ -124,6 +124,7 @@ elseif(PLATFORM_S600)
     src/s600/sensor/sc230ai_linear_1920x1080_raw10_30fps_1lane.c
     src/s100/sensor/ar0820c_linear_1920x1080_yuv_30fps_1lane.c
     src/s100/sensor/ovx3c_linear_1920x1080_raw12_30fps_1lane.c
+    src/s600/sensor/gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane.c
     src/s600/sensor/vp_sensors.c
   )
   include_directories(include 

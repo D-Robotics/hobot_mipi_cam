@@ -3,8 +3,8 @@
 
 #define SENSOR_FPS 15
 
-#define SENSOR_WIDTH 1920
-#define SENSOR_HEIGHT 1080
+#define SENSOR_WIDTH 1088
+#define SENSOR_HEIGHT 1280
 #define RAW10 0x2B
 #define SETTLE 16
 #define MIPILINE  2000
@@ -17,7 +17,7 @@ static mipi_config_t g_mipi_config = {
 		.phy = 0,
 		.lane = 4,
 		.datatype = RAW10,
-		.fps = SENSOE_FPS,
+		.fps = SENSOR_FPS,
 		.mclk = 0,
 		.mipiclk = 4800,
 		.width = SENSOR_WIDTH,
@@ -34,61 +34,21 @@ static mipi_config_t g_mipi_config = {
 	.end_flag = MIPI_CONFIG_END_FLAG,
 };
 
-static camera_config_t gsml_sc132gs_camera_config[] = {
-    /* 0 */
-    [0] = {
-        .name = "sc132gs",
-        .addr = 0x13,
-        .eeprom_addr = 0x51,
-        .serial_addr = 0x41,
-        .sensor_mode = 0x01,
-        .fps = SENSOR_FPS,
-        .width = SENSOR_WIDTH,
-        .height = SENSOR_HEIGHT,
-        .format = RAW10,
-        .extra_mode = 1,
-        .config_index = 2304,
-        .mipi_cfg = &g_mipi_config, // MIPI配置,NULL自动获取
-        .calib_lname = "lib_metoak_gmsl_sc132gs_linear.so",
-        .end_flag = CAMERA_CONFIG_END_FLAG,	
-    },
-    [1] = {
-        .name = "dummystd",
-        .addr = 0xff,
-        .eeprom_addr = 0xff,
-        .serial_addr = 0xff,
-        .sensor_mode = 0x01,
-        .fps = SENSOR_FPS,
-        .width = SENSOR_WIDTH,
-        .height = SENSOR_HEIGHT,
-        .format = RAW10,
-        .extra_mode = 22,
-        .config_index = 0,
-        .mipi_cfg = &g_mipi_config, // MIPI配置,NULL自动获取
-        .calib_lname = "lib_metoak_gmsl_sc132gs_linear.so",
-        .sensor_param = "{"
-            "\"tuning_data\": {"
-                "\"enable\": 1,"
-                "\"VMAX\": 5400,"
-                "\"HMAX\": 0,"
-                "\"gain_max\": 104856,"
-                "\"analog_gain_max\": 104856,"
-                "\"digital_gain_max\": 0,"
-                "\"exposure_time_min\": 1,"
-                "\"exposure_time_max\": 4000,"
-                "\"exposure_time_long_max\": 4000,"
-                "\"lines_per_second\": 162000,"
-                "\"turning_type\": 6,"
-                "\"conversion\": 0,"
-                "\"data_width\": 10,"
-                "\"bayer_start\": 3,"
-                "\"bayer_pattern\": 0,"
-                "\"exposure_max_bit_width\": 12"
-            "}"
-        "}",
-        .end_flag = CAMERA_CONFIG_END_FLAG,	
-    },
-
+static camera_config_t gsml_sc132gs_camera_config = {
+    .name = "sc132gs",
+    .addr = 0x13,
+    .eeprom_addr = 0x51,
+    .serial_addr = 0x41,
+    .sensor_mode = 0x01,
+    .fps = SENSOR_FPS,
+    .width = SENSOR_WIDTH,
+    .height = SENSOR_HEIGHT,
+    .format = RAW10,
+    .extra_mode = 1,
+    .config_index = 2304,
+    .mipi_cfg = &g_mipi_config, // MIPI配置,NULL自动获取
+    .calib_lname = "lib_metoak_gmsl_sc132gs_linear.so",
+    .end_flag = CAMERA_CONFIG_END_FLAG,	
 };
 
 static poc_config_t g_poc_cfg[] = {
@@ -106,35 +66,19 @@ static poc_config_t g_poc_cfg[] = {
 	},
 };
 
-static deserial_config_t gsml_sc132gs_deserial_config[] = {
-    [0] = {
-        .name = "max96712",
-        .link_desp[0] = "sc132gs:1@2304",
-        .link_desp[1] = "",
-        .link_desp[2] = "sc132gs:1@2304",
-        .link_desp[3] = "",
-        // .gpio_mfp[CAMERA_DES_GPIO_TRIG0] = 0x5,
-        // .gpio_mfp[CAMERA_DES_GPIO_TRIG1] = 0x5,
-        // .gpio_mfp[CAMERA_DES_GPIO_TRIG2] = 0x5,
-        // .gpio_mfp[CAMERA_DES_GPIO_TRIG3] = 0x5,
-        .addr = 0x29,
-        .poc_cfg = &g_poc_cfg[0],
-        .end_flag = DESERIAL_CONFIG_END_FLAG,
-    },
-    [1] = {
-        .name = "max96712",
-        .link_desp[0] = "sc132gs:1@2304",
-        .link_desp[1] = "",
-        .link_desp[2] = "sc132gs:1@2304",
-        .link_desp[3] = "",
-        // .gpio_mfp[CAMERA_DES_GPIO_TRIG0] = 0x5,
-        // .gpio_mfp[CAMERA_DES_GPIO_TRIG1] = 0x5,
-        // .gpio_mfp[CAMERA_DES_GPIO_TRIG2] = 0x5,
-        // .gpio_mfp[CAMERA_DES_GPIO_TRIG3] = 0x5,
-        .addr = 0x29,
-        .poc_cfg = &g_poc_cfg[1],
-        .end_flag = DESERIAL_CONFIG_END_FLAG,
-    },
+static deserial_config_t gsml_sc132gs_deserial_config = {
+    .name = "max96712",
+    .link_desp[0] = "sc132gs:1@2304",
+    .link_desp[1] = "",
+    .link_desp[2] = "sc132gs:1@2304",
+    .link_desp[3] = "",
+    .gpio_mfp[CAMERA_DES_GPIO_TRIG0] = 0x5,
+    .gpio_mfp[CAMERA_DES_GPIO_TRIG1] = 0x5,
+    .gpio_mfp[CAMERA_DES_GPIO_TRIG2] = 0x5,
+    .gpio_mfp[CAMERA_DES_GPIO_TRIG3] = 0x5,
+    .addr = 0x29,
+    .poc_cfg = &g_poc_cfg[0],
+    .end_flag = DESERIAL_CONFIG_END_FLAG,
 
 };
 
@@ -226,11 +170,10 @@ static vin_attr_t gsml_sc132gs_vin_attr = {
             .ddr_en = 1,
             .vin_basic_attr = {
                 .format = RAW10,
-                .wstride = 1376,
+                .wstride = 0,
                 .vstride = 0,
                 .pack_mode = 1,
             },
-            .pingpong_ring = 1,
             .roi_en = 0,
             .roi_attr = {
                 .roi_x = 0,
@@ -259,70 +202,68 @@ static vin_attr_t gsml_sc132gs_vin_attr = {
     .magicNumber = MAGIC_NUMBER,
 };
 
-static isp_cfg_t gsml_sc132gs_isp_cfg[] = {
-	[0] = {
-		.isp_attr = {
-			.channel = {
-				.hw_id = 1,
-				.slot_id = 4,
-				.ctx_id = -1,
-			},
-			.sched_mode = 1,
-			.work_mode = 0,
-			.hdr_mode = 0,
-			.size = {
-				.width = SENSOR_WIDTH,
-				.height = SENSOR_HEIGHT,
-			},
-			.frame_rate = 15,
-			.isp_combine = {
-				.isp_channel_mode = 0,
-				.bind_channel = {
-					.bind_hw_id = 0,
-					.bind_slot_id = 0,
-				},
-			},
-			.isp_sw_ctrl = {
-				.ae_stat_buf_en = 1,
-				.awb_stat_buf_en = 1,
-				.ae5bin_stat_buf_en = 1,
-				.ctx_buf_en = 0,
-				.pixel_consistency_en = 0
-			},
-			.algo_state = 1,
-			.clear_record = 0,
-		},
-		.ochn_attr = {
-			.stream_output_mode = 0,
-			.axi_output_mode = AXI_OUTPUT_MODE_YUV420,
-			.output_crop_cfg = {
-				.enable = 0,
-				.rect = {
-					.x = 0,
-					.y = 0,
-					.width = 0,
-					.height = 0,
-				},
-			},
-			.output_raw_level = 0,
-			.out_buf_noinvalid = 1,
-			.out_buf_noncached = 0,
-			.buf_num = 6,
-		},
-		.ichn_attr = {
-			.input_crop_cfg = {
-				.enable = 0,
-				.rect = {
-					.x = 0,
-					.y = 0,
-					.width = 0,
-					.height = 0,
-				},
-			},
-			.in_buf_noclean = 1,
-			.in_buf_noncached = 0,
-		},
-	},
+static isp_cfg_t gsml_sc132gs_isp_cfg = {
+    .isp_attr = {
+        .channel = {
+            .hw_id = 1,
+            .slot_id = 4,
+            .ctx_id = -1,
+        },
+        .sched_mode = 1,
+        .work_mode = 0,
+        .hdr_mode = 0,
+        .size = {
+            .width = SENSOR_WIDTH,
+            .height = SENSOR_HEIGHT,
+        },
+        .frame_rate = 15,
+        .isp_combine = {
+            .isp_channel_mode = 0,
+            .bind_channel = {
+                .bind_hw_id = 0,
+                .bind_slot_id = 0,
+            },
+        },
+        .isp_sw_ctrl = {
+            .ae_stat_buf_en = 1,
+            .awb_stat_buf_en = 1,
+            .ae5bin_stat_buf_en = 1,
+            .ctx_buf_en = 0,
+            .pixel_consistency_en = 0
+        },
+        .algo_state = 1,
+        .clear_record = 0,
+    },
+    .ochn_attr = {
+        .stream_output_mode = 0,
+        .axi_output_mode = AXI_OUTPUT_MODE_YUV420,
+        .output_crop_cfg = {
+            .enable = 0,
+            .rect = {
+                .x = 0,
+                .y = 0,
+                .width = 0,
+                .height = 0,
+            },
+        },
+        .output_raw_level = 0,
+        .out_buf_noinvalid = 1,
+        .out_buf_noncached = 0,
+        .buf_num = 6,
+    },
+    .ichn_attr = {
+        .input_crop_cfg = {
+            .enable = 0,
+            .rect = {
+                .x = 0,
+                .y = 0,
+                .width = 0,
+                .height = 0,
+            },
+        },
+        .in_buf_noclean = 1,
+        .in_buf_noncached = 0,
+    },
 };
 
 

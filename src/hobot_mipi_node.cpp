@@ -44,8 +44,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->camera_calibration_file_path_ = "";
   nodePare_->out_format_name_ = "bgr8"; //nv12, bgr8;
   nodePare_->gdc_bin_file_ = "";
-  nodePare_->image_width_ = 1920;
-  nodePare_->image_height_ = 1080;
+  nodePare_->image_width_ = 1088;
+  nodePare_->image_height_ = 1280;
   nodePare_->sub_image_width_ = 960;
   nodePare_->sub_image_height_ = 540;
   nodePare_->framerate_ = 30;
