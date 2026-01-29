@@ -214,7 +214,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		std::string sensor_tuning = "/usr/hobot/bin/sc132gs_tuning_yg.json";
 		rcpputils::fs::path file_path = sensor_tuning;
 		if (rcpputils::fs::exists(file_path)) {
-			std::strcpy(pipe_contex[1].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
+			std::strcpy(pipe_contex[0].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
 		}
 	}
 	ret = create_and_run_vflow(&pipe_contex[0]);
