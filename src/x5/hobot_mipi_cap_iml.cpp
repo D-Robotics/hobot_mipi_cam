@@ -15,6 +15,7 @@
 #include "hobot_mipi_comm.hpp"
 #include "hobot_mipi_cap_iml.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
+#include "sensor_msgs/distortion_models.hpp"
 #include "opencv2/opencv.hpp"
 
 #include <string>
@@ -173,15 +174,13 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		}
 	}
 	if (cap_info_.gdc_enable_) {
-		if (cal_tpye_ == 0) {
-			auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
-											cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_);
-			if (gdc_bin.size() == 2) {
-				gdc_bin_buf_.push_back(gdc_bin[0]);
-				gdc_bin_buf_.push_back(gdc_bin[1]);
-				pipe_contex[0].gdc_bin = gdc_bin[0];
-				pipe_contex[1].gdc_bin = gdc_bin[1];
-			}
+		auto gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
+										cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_);
+		if (gdc_bin.size() == 2) {
+			gdc_bin_buf_.push_back(gdc_bin[0]);
+			gdc_bin_buf_.push_back(gdc_bin[1]);
+			pipe_contex[0].gdc_bin = gdc_bin[0];
+			pipe_contex[1].gdc_bin = gdc_bin[1];
 		}
 	} else if (cam_info_.size() == 2) {
 		cal_cam_info_.push_back(cam_info_[0]);
@@ -278,15 +277,13 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		}
 		else if (cam_info_.size() > 0) {
 			sensor_msgs::msg::CameraInfo cal_cam_info;
-			if (cal_tpye_ == 0) {
-				auto gdc_bin = gen_gdc_bin(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height,
-										&cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_);
-				//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
-				if (gdc_bin) {
-					gdc_bin_buf_.push_back(gdc_bin);
-					pipe_contex[0].gdc_bin = gdc_bin;
-					cal_cam_info_.push_back(cal_cam_info);
-				}
+			auto gdc_bin = gen_gdc_bin(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height,
+									&cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_);
+			//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
+			if (gdc_bin) {
+				gdc_bin_buf_.push_back(gdc_bin);
+				pipe_contex[0].gdc_bin = gdc_bin;
+				cal_cam_info_.push_back(cal_cam_info);
 			}
 		}
 	}
@@ -1538,7 +1535,6 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	   (cal_rotate == 0.0) || (cal_rotate == 90.0) || (cal_rotate == 180.0) || (cal_rotate == 270.0))) {
 		return gdc_bin_buf;
 	}
-
 	float gdc_width_scale, gdc_height_scale;
 	int in_gdc_width, in_gdc_height;
 
@@ -1584,7 +1580,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 
 	cv::Mat Kr_inv = Kr.inv();
 	cv::Mat RT = Kr_inv * tPr;
-    cv::Mat tTr = RT(cv::Rect(3, 0, 1, 3));
+    cv::Mat tTr = RT(cv::Rect(3, 0, 1, 3)).clone();
 	R_rl = tRr;
 	t_rl = tTr;
 
@@ -1616,7 +1612,12 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 
 	// TODO: Set alpha from config
 	// cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0.391 ,cv::Size(out_gdc_width, out_gdc_height));
-	cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, alpha ,cv::Size(out_gdc_width, out_gdc_height));
+	if (cam_info[0].distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
+		double balance = alpha;
+		cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), balance);
+	} else {
+		cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, alpha ,cv::Size(out_gdc_width, out_gdc_height));
+	}
 	cv::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
 	cv::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1r, undistmap2r);
 	int rotation_diff_int = rotation_diff;
@@ -2026,7 +2027,7 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int in_width, int in_
 	P = cv::Mat(3, 4, CV_64F, cam_info->p.data()).clone();
 	cv::Mat K_inv = K.inv();
 	cv::Mat RT = K_inv * P;
-	T = RT(cv::Rect(3, 0, 1, 3));
+	T = RT(cv::Rect(3, 0, 1, 3)).clone();
 	K.at<double>(0, 0) *= gdc_width_scale;
 	K.at<double>(0, 2) *= gdc_width_scale;
 	K.at<double>(1, 1) *= gdc_height_scale;
@@ -2096,7 +2097,17 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int in_width, int in_
 	}
 
 	cv::Mat undistmap1l, undistmap2l;
-	cv::Mat new_K = cv::getOptimalNewCameraMatrix(K, D, cv::Size(in_width, in_height), alpha, cv::Size(out_gdc_width, out_gdc_height), nullptr, true);
+	cv::Mat new_K;
+	if (cam_info->distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
+		double balance = alpha;
+		cv::Mat tmp_P;
+		cv::fisheye::estimateNewCameraMatrixForUndistortRectify(K, D, cv::Size(in_width, in_height), cv::Matx33d::eye(), tmp_P, alpha, cv::Size(out_gdc_width, out_gdc_height));
+		new_K = tmp_P(cv::Rect(0, 0, 3, 3)).clone();
+	} else {
+		new_K = cv::getOptimalNewCameraMatrix(K, D, cv::Size(in_width, in_height), alpha, cv::Size(out_gdc_width, out_gdc_height), nullptr, true);
+	}
+
+	
 	cv::initUndistortRectifyMap(K, D, cv::Mat(), new_K, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
 	
 
@@ -2610,14 +2621,15 @@ bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_add
 		cap_info_.cal_rotation_ = 270.0;
 	}
 
-	if (head_buf_ptr->cal_tpye == 0x00) {
-		cal_tpye_ = 0; //针孔标定
-	} else if (head_buf_ptr->cal_tpye == 0x01) {
-		cal_tpye_ = 1; //鱼眼标定
-	} 
+
 
 	if (head_buf_ptr->camType == 0x01) {
 		cam_info_.resize(2);
+		if (head_buf_ptr->cal_tpye == 0x01) {
+			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
+		} else {
+			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
+		} 
 		CalDualMDInfo_ST m_d_info_l, m_d_info_r;
 		CalDualRTInfo_ST r_t_info;
 		if (readEeprom16(i2c_bus, i2c_addr, 0x0010, (char*)&m_d_info_l, sizeof(CalDualMDInfo_ST)) == false) {
@@ -2855,14 +2867,13 @@ bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr
 		  cap_info_.cal_rotation_ = 270.0;
 	  }
   
-	  if (head_buf_ptr->cal_tpye == 0x00) {
-		  cal_tpye_ = 0; //针孔标定
-	  } else if (head_buf_ptr->cal_tpye == 0x01) {
-		  cal_tpye_ = 1; //鱼眼标定
-	  } 
-  
 	  if ((head_buf_ptr->camType == 0x01) || (head_buf_ptr->camType == 0x11)) {
 		  cam_info_.resize(2);
+		  if (head_buf_ptr->cal_tpye == 0x01) {
+			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
+		  } else {
+			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
+		  } 
 		  CalDualMDInfo_d_ST m_d_info_l, m_d_info_r;
 		  CalDualRTInfo_d_ST r_t_info;
 		  CalDualWHInfo_d_ST w_h_info,w_h_info_tmp;
@@ -3251,14 +3262,13 @@ bool HobotMipiCapIml::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_addr
 		  cap_info_.cal_rotation_ = 270.0;
 	  }
   
-	  if (head_buf_ptr->cal_tpye == 0x00) {
-		  cal_tpye_ = 0; //针孔标定
-	  } else if (head_buf_ptr->cal_tpye == 0x01) {
-		  cal_tpye_ = 1; //鱼眼标定
-	  } 
-  
 	  if (head_buf_ptr->camType == 0x01) {
 		  cam_info_.resize(2);
+		  if (head_buf_ptr->cal_tpye == 0x01) {
+			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
+		  } else {
+			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
+		  } 
 		  CalDualMDInfo_ST m_d_info_l, m_d_info_r;
 		  CalDualRTInfo_ST r_t_info;
 		  if (readEeprom16(i2c_bus, i2c_addr, 0x0010, (char*)&m_d_info_l, sizeof(CalDualMDInfo_ST)) == false) {
@@ -3469,6 +3479,7 @@ bool HobotMipiCapIml::getDualCamCalibrationFromEeprom_230ai() {
   });
   if (((sum % 255) + 1) == chech_value) {
 	cam_info_.resize(2);
+	cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
 	CalDualCamInfo_ST* i2c_buf_ptr = (CalDualCamInfo_ST *)i2c_buf.data();
 	int width = (i2c_buf_ptr->h_v[0] << 8) | i2c_buf_ptr->h_v[1];
 	int height = (i2c_buf_ptr->h_v[2] << 8) | i2c_buf_ptr->h_v[3];
