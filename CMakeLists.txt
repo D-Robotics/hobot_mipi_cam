@@ -179,6 +179,7 @@ add_library(${PROJECT_NAME}_plugin SHARED
   src/hobot_mipi_cam.cpp
   src/${PREFIX_PATH}/hobot_mipi_cap_iml.cpp
   src/${PREFIX_PATH}/hobot_mipi_factory.cpp
+  src/hobot_mipi_calibration.cpp
   ${SRC_PLATFORM_FILE}
 )
 target_link_libraries(${PROJECT_NAME}_plugin
