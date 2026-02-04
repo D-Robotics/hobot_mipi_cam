@@ -86,7 +86,7 @@ def generate_launch_description():
             'mipi_rotation': LaunchConfiguration('mipi_rotation'),
             'mipi_cal_rotation': LaunchConfiguration('mipi_cal_rotation'),
             'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
-            'mipi_frame_ts_type': 'sensor'
+            'mipi_frame_ts_type': 'realtime'
         }.items()
     )
 

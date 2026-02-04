@@ -529,7 +529,10 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
 
   if (out_img.info.trig_tv.tv_sec != 0 && 
       out_img.info.trig_tv.tv_usec != 0) {
-      out_img.info.sys_timestamps -= exposure_time;
+      //  exposure_time larger than 40ms is unexpected  
+      if (std::abs(exposure_time) < 40000000) {
+        out_img.info.sys_timestamps -= exposure_time;
+      }
   }
 
   //  timestamps means kernel timestamp when the frame is obtained
@@ -552,11 +555,11 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* 
 	*timestamp = out_img.info.timestamps;
   }                       
                           
-  //RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
-            //"capture a frame, handle: %llu, id: %d, timestamps: %f, current uptime: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
-            //"current timestamp: %f, laps ms: %fms, exposure_time: %fms.", 
-			  //                      handle, *frame_id, timestamps, current_uptime_ts, sys_timestamps, hw_timestamp, tri_timestamp,
-                //              current_ts, (current_ts - sys_timestamps) * 1e3, (double)exposure_time * 1e-6);
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+            "capture a frame, handle: %llu, id: %d, timestamps: %f, current uptime: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
+            "current timestamp: %f, laps ms: %fms, exposure_time: %fms. uesd ts: %f.", 
+			                        handle, *frame_id, timestamps, current_uptime_ts, sys_timestamps, hw_timestamp, tri_timestamp,
+                              current_ts, (current_ts - sys_timestamps) * 1e3, (double)exposure_time * 1e-6, *timestamp * 1e-9);
 
 	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", image time sec:" << out_img.info.tv.tv_sec
 	//          << ", trig time sec:" << out_img.info.trig_tv.tv_sec 
