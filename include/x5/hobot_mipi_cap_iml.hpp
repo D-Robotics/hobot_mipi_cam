@@ -118,6 +118,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   int getFrame(std::string channel, int* nVOutW, int* nVOutH,
         void* buf, unsigned int bufsize, unsigned int*, uint64_t&, bool gray = false);
 
+  std::shared_ptr<VideoBuffer> getFrame(std::string channel);
+
 
   // 获取cap的info信息；
   // 输入输出参数：MIPI_CAP_INFO_ST的结构信息。
@@ -145,10 +147,17 @@ class HobotMipiCapIml : public HobotMipiCap {
   int selectSensor(std::string &sensor, int &host, int &i2c_bus);
 
   void dualFrameTask();
+  void multiFrameTask();
+  void singleFrameTask();
+
+  void sync_task();
+  bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
 
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* width,
 		int* height, int* stride, void* frame_buf, unsigned int bufsize, unsigned int* len,
         uint64_t *timestamp, uint32_t* frame_id, bool gray = false);
+
+  int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
 
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
   int creat_vse_node(pipe_contex_t *pipe_contex);
@@ -187,6 +196,7 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   bool m_inited_ = false;
   bool started_ = false;
+  bool combine_flag_ = false;
   //x3_vin_info_t vin_info_;
   //x3_vps_infos_t vps_infos_;  // vps的配置，支持多个vps group
   int vin_enable_ = true;
@@ -203,6 +213,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::map<int, std::vector<std::string>> host_sensor_m_;
   //std::vector<hbn_cfg_t> hbn_cfg_;
   std::shared_ptr<std::thread> dual_frame_task_ = nullptr;
+  std::shared_ptr<std::thread> sync_task_ = nullptr;
 
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
@@ -246,6 +257,13 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<std::queue<std::shared_ptr<VideoBuffer_ST>>> q_v_buff_;
   std::queue<std::shared_ptr<VideoBuffer_ST>> q_combine_buff_;
   std::queue<std::shared_ptr<VideoBuffer_ST>> q_combine_buff_empty_;
+
+  std::vector<std::shared_ptr<BuffQueueManage>> v_buff_que_manger_;
+  std::shared_ptr<BuffQueueManage> combine_buff_que_manger_;
+  std::vector<std::shared_ptr<FrameQueue>> v_frame_que_;
+
+  std::mutex empty_mtx_;
+  std::vector<std::shared_ptr<VideoBuffer>> v_empty_buff_;
 
   bool sub_stream_ = false;
 };

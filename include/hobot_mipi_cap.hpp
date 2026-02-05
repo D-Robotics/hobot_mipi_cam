@@ -52,6 +52,9 @@ class HobotMipiCap {
   virtual int getFrame(std::string channel, int* nVOutW, int* nVOutH,
       void* buf, unsigned int bufsize, unsigned int*, uint64_t&, bool gray = false) = 0;
 
+  // 如果有 vps ，就 输出vps 的分层数据 channel--"single":单sensor，"sub_single":单sensor的子码流， "left": 双目的左sensor，"right":双目的右sensor，"combine"：左右sensor拼合的图像。
+  virtual std::shared_ptr<VideoBuffer> getFrame(std::string channel) = 0;
+
 
   // 获取cap的info信息；
   // 输入输出参数：MIPI_CAP_INFO_ST的结构信息。

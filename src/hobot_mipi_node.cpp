@@ -305,8 +305,8 @@ void MipiCamNode::init() {
           Pub_hbmem_info_.resize(2);
           init_Calibration(&Pub_hbmem_info_[0], "hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_img", "single");
-          init_Calibration(&Pub_hbmem_info_[1], "sub_hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
-          init_publisher_hbmem(Pub_hbmem_info_[1], "sub_hbmem_img", "sub_single");
+          //init_Calibration(&Pub_hbmem_info_[1], "sub_hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
+          //init_publisher_hbmem(Pub_hbmem_info_[1], "sub_hbmem_img", "sub_single");
         } else {
           Pub_hbmem_info_.resize(1);
           init_Calibration(&Pub_hbmem_info_[0], "hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
@@ -513,7 +513,6 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
       save_jpg(msg.time_stamp,encode,msg.width,msg.height,(void *)&msg.data);
       save_yuv(msg.time_stamp, (void *)&msg.data, msg.data_size);
       msg.index = pub_info->mSendIdx++;
-      pub_info->publisher_hbmem_->publish(std::move(loanedMsg));
       if (pub_info->info_pub_) {
         pub_info->camera_calibration_info_->header.stamp = msg.time_stamp;
         pub_info->info_pub_->publish(*pub_info->camera_calibration_info_);
@@ -522,6 +521,8 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
         pub_info->camera_calibration_info2_->header.stamp = msg.time_stamp;
         pub_info->info_pub2_->publish(*pub_info->camera_calibration_info2_);
       }
+      pub_info->publisher_hbmem_->publish(std::move(loanedMsg));
+
     } else {
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "borrow_loaned_message failed");
