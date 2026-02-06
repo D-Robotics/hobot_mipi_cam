@@ -439,6 +439,7 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
 
     if (pub_info && pub_info->info_pub_ && pub_info->camera_calibration_info_) {
       sensor_msgs::msg::CameraInfo camera_calibration_info = *pub_info->camera_calibration_info_;
+      camera_calibration_info.header.stamp = img->header.stamp;
       camera_calibration_info.header.frame_id = pub_info->frame_id;
       pub_info->info_pub_->publish(camera_calibration_info);
     }
