@@ -78,8 +78,8 @@ def generate_launch_description():
             'mipi_io_method': 'ros',
             'device_mode': 'dual',
             'dual_combine': '2',
-            'mipi_channel': '2',
-            'mipi_channel2': '0',
+            'mipi_channel': '0',
+            'mipi_channel2': '2',
             'mipi_lpwm_enable': LaunchConfiguration('mipi_lpwm_enable'),
             'mipi_camera_calibration_file_path':  LaunchConfiguration('mipi_camera_calibration_file_path'),
             'mipi_gdc_bin_file': './sc230ai_gdc.bin',
@@ -100,7 +100,7 @@ def generate_launch_description():
             'codec_in_mode': 'ros',
             'codec_out_mode': 'ros',
             'codec_jpg_quality': '85.0',
-            'codec_sub_topic': '/image_combine_raw',
+            'codec_sub_topic': '/ROS2DataCollection/status_image_combine',
             'codec_pub_topic': '/image_combine_jpeg'
         }.items()
     )

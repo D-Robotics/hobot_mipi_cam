@@ -81,7 +81,7 @@ def generate_launch_description():
             description='mipi dual camera right channel'),
         DeclareLaunchArgument(
             'mipi_frame_ts_type',
-            default_value='sensor',
+            default_value='realtime',
             description='type(sensor/realtime) of timestamp for publishing messages'),
         DeclareLaunchArgument(
             'frame_id',
@@ -109,7 +109,7 @@ def generate_launch_description():
             description='mipi camera gdc enable'),
         DeclareLaunchArgument(
             'log_level',
-            default_value='warn',
+            default_value='info',
             description='log level'),
 
         # 启动零拷贝环境配置node
