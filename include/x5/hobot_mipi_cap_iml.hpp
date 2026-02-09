@@ -32,6 +32,8 @@
 #include "codec_cfg.h"
 #include "GC820/nano2D.h"
 #include "GC820/nano2D_util.h"
+#include "opencv2/opencv.hpp"
+#include "hobot_mipi_calibration.hpp"
 
 namespace mipi_cam {
 
@@ -65,6 +67,7 @@ typedef struct pipe_contex_s {
   int gdc_init_valid;
   int gdc_init_valid_r;
   MIPI_CAP_INFO_ST *cap_info_;
+  sensor_otp_t awb_otp_data;
 }pipe_contex_t;
 
 typedef struct video_buffer_s {
@@ -163,6 +166,24 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
 
+  //计算针孔模型下校正后内参对应的FOV（角度） K_rect 校正后的相机内参矩阵，校正后的图像高度和宽度
+  std::pair<double, double> calculatePinholeFOV(const cv::Mat& K_rect, int width, int height);
+  std::pair<double, double> calculateFisheyeFOV(const cv::Mat& K_rect, int width, int height);
+  //基于目标FOV和有效FOV范围，计算初始alpha，目标水平FOV，双目交集的最小FOV和最大FOV，返回初始alpha
+  double computeInitAlpha(double target_hfov, double fov_min, double fov_max);
+
+  //根据目标水平FOV，计算双目立体校正的alpha参数（保证双目FOV一致性）
+  double computeStereoAlphaFromFOV(double target_hfov, const cv::Mat& kl, const cv::Mat& Dl,  
+                                                       const cv::Mat& Kr, const cv::Mat& Dr,
+                                                       const cv::Mat& R_rl, const cv::Mat& t_rl,
+                                                       int in_gdc_width, int in_gdc_height,
+                                                       int out_gdc_width, int out_gdc_height,
+                                                       const std::string& distortion_model,
+                                                       double& actual_hfov_l, double& actual_hfov_r);
+  // -----------------------------------------------------------------------------------------------------
+  
+  int config_awb_otp(pipe_contex_t *pipe_contex); 
+
   bool m_inited_ = false;
   bool started_ = false;
   //x3_vin_info_t vin_info_;
@@ -185,6 +206,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
+  std::vector<Imu_params> imu_info_;
+  std::vector<sensor_otp_t> awb_otp_data_;
 
   std::mutex queue_mtx_;
 

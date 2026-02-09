@@ -171,11 +171,14 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 
 	mipi_calibration& calibration_instance = mipi_calibration::GetInstance();
 	
-	const auto & cal_params = calibration_instance.getCalibrationParams();
-	cam_info_ = cal_params.cam_info_;
-	cap_info_.cal_rotation_ = cal_params.cap_info_.cal_rotation_;
-	eeprom_name_ = cal_params.eeprom_name_;
-
+	if (cam_info_.size() != 2) {
+		const auto & cal_params = calibration_instance.getCalibrationParams();
+		cam_info_ = cal_params.cam_info_;
+		cap_info_.cal_rotation_ = cal_params.cap_info_.cal_rotation_;
+		eeprom_name_ = cal_params.eeprom_name_;
+		imu_info_ = cal_params.imu_info_;
+		awb_otp_data_ = cal_params.awb_otp_data_;
+	}
 	if(strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0) {
 		calibration_instance.getDualCamCalibrationFromEeprom_230ai(cam_info_);
 	}
@@ -210,6 +213,8 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		}	
 	}
 
+	pipe_contex[0].awb_otp_data = awb_otp_data_[0];
+	pipe_contex[1].awb_otp_data = awb_otp_data_[1];
 	ret = create_and_run_vflow(&pipe_contex[1]);
 	ERR_CON_EQ(ret, 0);
 	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index]);
@@ -1162,6 +1167,9 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	// 创建pipeline中的每个node
 	ret = creat_camera_node(pipe_contex->sensor_config.camera_config, &pipe_contex->cam_fd);
 	ERR_CON_EQ(ret, 0);
+	//调用AWB OTP配置函数
+	ret = config_awb_otp(pipe_contex);
+	ERR_CON_EQ(ret, 0);
 	ret = creat_vin_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
 	ret = creat_isp_node(pipe_contex);
@@ -1266,6 +1274,103 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	//  ERR_CON_EQ(ret, 0);
 	//}
 	return 0;
+}
+
+// 封装AWB OTP配置函数（HBN接口方式）
+int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
+	if (pipe_contex->cam_fd < 0) {
+		//RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Invalid cam_fd: %ld for AWB OTP config", cam_fd);
+        return -1;
+	}
+	//初始化AWB OTP配置结构体
+	sensor_otp_t pdata = {0};
+	pdata.otp_awb_enable = 1;          // 启用AWB OTP配置
+    pdata.awb_ct_num = 3;              // AWB色温配置数量
+    pdata.awb_golden_ct_num = 3;       // AWB黄金色温配置数量
+
+    // 配置3100K色温参数
+    pdata.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
+    pdata.awb_data[0].r =   0;        //pipe_contex->awb_otp_data.awb_data[0].r;
+    pdata.awb_data[0].gr =  0;           //pipe_contex->awb_otp_data.awb_data[0].gr;
+    pdata.awb_data[0].gb =  0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
+    pdata.awb_data[0].b =  0;                    //pipe_contex->awb_otp_data.awb_data[0].b;
+    pdata.awb_data[0].rg_ratio = pipe_contex->awb_otp_data.awb_data[0].rg_ratio;
+    pdata.awb_data[0].bg_ratio = pipe_contex->awb_otp_data.awb_data[0].bg_ratio;
+
+    pdata.awb_golden_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
+    pdata.awb_golden_data[0].r = 0;
+    pdata.awb_golden_data[0].gr = 0;
+    pdata.awb_golden_data[0].gb = 0;
+    pdata.awb_golden_data[0].b = 0;
+    pdata.awb_golden_data[0].rg_ratio = pipe_contex->awb_otp_data.awb_golden_data[0].rg_ratio;
+    pdata.awb_golden_data[0].bg_ratio = pipe_contex->awb_otp_data.awb_golden_data[0].bg_ratio;
+
+    // 配置4000K色温参数
+    pdata.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+    pdata.awb_data[1].r =    0;             //pipe_contex->awb_otp_data.awb_data[0].r;
+    pdata.awb_data[1].gr =     0;         //pipe_contex->awb_otp_data.awb_data[0].gr;
+    pdata.awb_data[1].gb =   0;                //pipe_contex->awb_otp_data.awb_data[0].gb;
+    pdata.awb_data[1].b =   0;               //pipe_contex->awb_otp_data.awb_data[0].b;
+    pdata.awb_data[1].rg_ratio = pipe_contex->awb_otp_data.awb_data[1].rg_ratio;
+    pdata.awb_data[1].bg_ratio = pipe_contex->awb_otp_data.awb_data[1].bg_ratio;
+
+    pdata.awb_golden_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+    pdata.awb_golden_data[1].r = 0;
+    pdata.awb_golden_data[1].gr = 0;
+    pdata.awb_golden_data[1].gb = 0;
+    pdata.awb_golden_data[1].b = 0;
+    pdata.awb_golden_data[1].rg_ratio = pipe_contex->awb_otp_data.awb_golden_data[1].rg_ratio;
+    pdata.awb_golden_data[1].bg_ratio = pipe_contex->awb_otp_data.awb_golden_data[1].bg_ratio;
+
+    // 配置5800K色温参数
+    pdata.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+    pdata.awb_data[2].r =      0;            //pipe_contex->awb_otp_data.awb_data[0].r;
+    pdata.awb_data[2].gr =   0;                   //pipe_contex->awb_otp_data.awb_data[0].gr;
+    pdata.awb_data[2].gb =   0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
+    pdata.awb_data[2].b =    0;                  //pipe_contex->awb_otp_data.awb_data[0].b;
+    pdata.awb_data[2].rg_ratio = pipe_contex->awb_otp_data.awb_data[2].rg_ratio;
+    pdata.awb_data[2].bg_ratio = pipe_contex->awb_otp_data.awb_data[2].bg_ratio;
+
+    pdata.awb_golden_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+    pdata.awb_golden_data[2].r = 0;
+    pdata.awb_golden_data[2].gr = 0;
+    pdata.awb_golden_data[2].gb = 0;
+    pdata.awb_golden_data[2].b = 0;
+    pdata.awb_golden_data[2].rg_ratio = pipe_contex->awb_otp_data.awb_golden_data[2].rg_ratio;
+    pdata.awb_golden_data[2].bg_ratio = pipe_contex->awb_otp_data.awb_golden_data[2].bg_ratio;
+
+    // 打印日志+调用HBN接口启用AWB OTP
+	//printf("awb otp enable\n");
+    //RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "AWB OTP config enable, cam_fd: %ld", pipe_contex->cam_fd);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ================== all awb otp data ==================");
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[0].rg_ratio: %ld", pdata.awb_golden_data[0].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[0].bg_ratio: %ld",  pdata.awb_golden_data[0].bg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[1].rg_ratio: %ld",  pdata.awb_golden_data[1].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[1].bg_ratio: %ld",  pdata.awb_golden_data[1].bg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[2].rg_ratio: %ld",  pdata.awb_golden_data[2].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[2].bg_ratio: %ld",  pdata.awb_golden_data[2].bg_ratio);
+
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].rg_ratio: %ld", pipe_contex->awb_otp_data.awb_data[0].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].bg_ratio: %ld",  pipe_contex->awb_otp_data.awb_data[0].bg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].rg_ratio: %ld",  pipe_contex->awb_otp_data.awb_data[1].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].bg_ratio: %ld",  pipe_contex->awb_otp_data.awb_data[1].bg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].rg_ratio: %ld",  pipe_contex->awb_otp_data.awb_data[2].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].bg_ratio: %ld",  pipe_contex->awb_otp_data.awb_data[2].bg_ratio);
+
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pipe_contex->awb_otp_data.awb_data[0].r);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pipe_contex->awb_otp_data.awb_data[0].gr);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pipe_contex->awb_otp_data.awb_data[0].gb);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pipe_contex->awb_otp_data.awb_data[0].b);
+
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pdata.awb_data[0].r);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pdata.awb_data[0].gr);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pdata.awb_data[0].gb);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pdata.awb_data[0].b);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ================== all awb otp data ==================");
+
+    int32_t ret = hbn_camera_enable_otp(pipe_contex->cam_fd, &pdata);                    ////cam_fd由hbn_camera_create创建
+	ERR_CON_EQ(ret, 0);
+    return 0;
 }
 
 void HobotMipiCapIml::listMipiHost(std::vector<int> &mipi_hosts, 
@@ -1612,11 +1717,25 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 		<< "\n===================="
 	);
 
-	double alpha = 0.0;
-	if (cal_alpha <= 1.0) {
-		alpha = cal_alpha;
+	double target_hfov = 90.0; // 目标FOV（可从配置/外部输入）
+	double actual_hfov_l, actual_hfov_r;
+	// 调用核心函数计算alpha
+	double alpha = computeStereoAlphaFromFOV(
+    target_hfov,
+    Kl, Dl, Kr, Dr, R_rl, t_rl,
+    in_gdc_width, in_gdc_height,
+    out_gdc_width, out_gdc_height,
+    cam_info[0].distortion_model,
+    actual_hfov_l, actual_hfov_r);
+	//double alpha = 0.0;
+	if (alpha <= 0) {
+		alpha = 0;
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "Use default alpha=0.0 (target FOV invalid)");
+	} else {
+		// RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+        // 	"Auto compute alpha: %f\n , Left actual FOV: %f\n, Right actual FOV: %f\n ", alpha, actual_hfov_l, actual_hfov_r);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Auto compute alpha: %f", alpha);
 	}
-
 	// TODO: Set alpha from config
 	// cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0.391 ,cv::Size(out_gdc_width, out_gdc_height));
 	if (cam_info[0].distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
@@ -1989,6 +2108,160 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	);
 
 	return gdc_bin_buf;
+}
+
+std::pair<double, double> HobotMipiCapIml::calculatePinholeFOV(const cv::Mat& K_rect, int width, int hight) {
+	if (K_rect.type() != CV_64F || K_rect.rows != 3 || K_rect.cols != 3) {
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Invalid Camera matrix!");
+		return {0.0, 0.0};
+	}
+	double fx = K_rect.at<double>(0, 0);
+	double fy = K_rect.at<double>(1, 1);
+	double h_fov = 2 * atan2(static_cast<double>(width)/2, fx) * 180.0 / CV_PI;
+	double v_fov = 2 * atan2(static_cast<double>(hight)/2, fy) * 180.0 / CV_PI;
+	return {h_fov, v_fov};
+}
+
+std::pair<double, double> HobotMipiCapIml::calculateFisheyeFOV(const cv::Mat& K_rect, int width, int hight) {
+	return calculatePinholeFOV(K_rect, width, hight);
+}
+
+double HobotMipiCapIml::computeInitAlpha(double target_hfov, double fov_min, double fov_max) {
+	if (target_hfov <= fov_min - 1e-3) return 0.0;
+    if (target_hfov >= fov_max + 1e-3) return 1.0;
+    return (target_hfov - fov_min) / (fov_max - fov_min);
+}
+
+double HobotMipiCapIml::computeStereoAlphaFromFOV(
+    double target_hfov,
+    const cv::Mat& Kl, const cv::Mat& Dl,
+    const cv::Mat& Kr, const cv::Mat& Dr,
+    const cv::Mat& R_rl, const cv::Mat& t_rl,
+    int in_gdc_width, int in_gdc_height,
+    int out_gdc_width, int out_gdc_height,
+    const std::string& distortion_model,
+    double& actual_hfov_l, double& actual_hfov_r) {
+
+	// ------------ 步骤1：计算alpha=0时的双目FOV（FOV_min） ------------
+    cv::Mat Rl0, Rr0, Pl0, Pr0, Q0;
+    if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
+        cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                                   R_rl, t_rl, Rl0, Rr0, Pl0, Pr0, Q0,
+                                   cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), 0.0);
+    } else {
+        cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                          R_rl, t_rl, Rl0, Rr0, Pl0, Pr0, Q0,
+                          cv::CALIB_ZERO_DISPARITY, 0.0, cv::Size(out_gdc_width, out_gdc_height));
+    }
+    // 提取校正后内参（投影矩阵Pl/Pr的前3x3）
+    cv::Mat K_l0 = Pl0(cv::Rect(0,0,3,3)).clone();
+    cv::Mat K_r0 = Pr0(cv::Rect(0,0,3,3)).clone();
+    // 计算alpha=0时的FOV
+    auto [fov_l0, _] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) 
+                        ? calculateFisheyeFOV(K_l0, out_gdc_width, out_gdc_height)
+                        : calculatePinholeFOV(K_l0, out_gdc_width, out_gdc_height);
+    auto [fov_r0, __] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                        ? calculateFisheyeFOV(K_r0, out_gdc_width, out_gdc_height)
+                        : calculatePinholeFOV(K_r0, out_gdc_width, out_gdc_height);
+
+	// ------------ 步骤2：计算alpha=1时的双目FOV（FOV_max） ------------
+    cv::Mat Rl1, Rr1, Pl1, Pr1, Q1;
+    if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
+        cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                                   R_rl, t_rl, Rl1, Rr1, Pl1, Pr1, Q1,
+                                   cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), 1.0);
+    } else {
+        cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                          R_rl, t_rl, Rl1, Rr1, Pl1, Pr1, Q1,
+                          cv::CALIB_ZERO_DISPARITY, 1.0, cv::Size(out_gdc_width, out_gdc_height));
+    }
+    cv::Mat K_l1 = Pl1(cv::Rect(0,0,3,3)).clone();
+    cv::Mat K_r1 = Pr1(cv::Rect(0,0,3,3)).clone();
+    auto [fov_l1, ___] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                        ? calculateFisheyeFOV(K_l1, out_gdc_width, out_gdc_height)
+                        : calculatePinholeFOV(K_l1, out_gdc_width, out_gdc_height);
+    auto [fov_r1, ____] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                        ? calculateFisheyeFOV(K_r1, out_gdc_width, out_gdc_height)
+                        : calculatePinholeFOV(K_r1, out_gdc_width, out_gdc_height);
+
+	// ------------ 步骤3：确定双目FOV的有效交集 ------------
+    double fov_min = std::max(fov_l0, fov_r0); // 双目最小FOV（取较大值）
+    double fov_max = std::min(fov_l1, fov_r1); // 双目最大FOV（取较小值）
+    if (target_hfov < fov_min - 1e-3 || target_hfov > fov_max + 1e-3) {
+        RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+            "Target FOV %.2f° out of valid range [%.2f°, %.2f°]",
+            target_hfov, fov_min, fov_max);
+        actual_hfov_l = actual_hfov_r = 0.0;
+        return -1.0;
+    }
+
+	// ------------ 步骤4：迭代微调alpha（保证FOV精度） ------------
+    const double eps = 3.0; // FOV允许误差（°）
+    const int max_iter = 10; // 最大迭代次数
+    double alpha = computeInitAlpha(target_hfov, fov_min, fov_max);
+    double left_alpha = 0.0, right_alpha = 1.0;
+    int iter = 0;
+
+    while (iter < max_iter) {
+        // 用当前alpha计算校正后FOV
+        cv::Mat Rl, Rr, Pl, Pr, Q;
+        if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
+            cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                                       R_rl, t_rl, Rl, Rr, Pl, Pr, Q,
+                                       cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), alpha);
+        } else {
+            cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                              R_rl, t_rl, Rl, Rr, Pl, Pr, Q,
+                              cv::CALIB_ZERO_DISPARITY, alpha, cv::Size(out_gdc_width, out_gdc_height));
+        }
+        cv::Mat K_l = Pl(cv::Rect(0,0,3,3)).clone();
+        cv::Mat K_r = Pr(cv::Rect(0,0,3,3)).clone();
+        auto [hfov_l, _] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                            ? calculateFisheyeFOV(K_l, out_gdc_width, out_gdc_height)
+                            : calculatePinholeFOV(K_l, out_gdc_width, out_gdc_height);
+        auto [hfov_r, __] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                            ? calculateFisheyeFOV(K_r, out_gdc_width, out_gdc_height)
+                            : calculatePinholeFOV(K_r, out_gdc_width, out_gdc_height);
+        
+        // 验证双目FOV是否接近目标
+        double avg_hfov = (hfov_l + hfov_r) / 2;
+        if (fabs(avg_hfov - target_hfov) < eps) {
+            actual_hfov_l = hfov_l;
+            actual_hfov_r = hfov_r;
+            return alpha;
+        }
+
+        // 二分法调整alpha
+        if (avg_hfov < target_hfov) {
+            left_alpha = alpha;
+        } else {
+            right_alpha = alpha;
+        }
+        alpha = (left_alpha + right_alpha) / 2;
+        iter++;
+    }
+
+	// ------------ 步骤5：返回最终alpha并输出实际FOV ------------
+    cv::Mat Rl_final, Rr_final, Pl_final, Pr_final, Q_final;
+    if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
+        cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                                   R_rl, t_rl, Rl_final, Rr_final, Pl_final, Pr_final, Q_final,
+                                   cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), alpha);
+    } else {
+        cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                          R_rl, t_rl, Rl_final, Rr_final, Pl_final, Pr_final, Q_final,
+                          cv::CALIB_ZERO_DISPARITY, alpha, cv::Size(out_gdc_width, out_gdc_height));
+    }
+    cv::Mat K_l_final = Pl_final(cv::Rect(0,0,3,3)).clone();
+    cv::Mat K_r_final = Pr_final(cv::Rect(0,0,3,3)).clone();
+    actual_hfov_l = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                    ? calculateFisheyeFOV(K_l_final, out_gdc_width, out_gdc_height).first
+                    : calculatePinholeFOV(K_l_final, out_gdc_width, out_gdc_height).first;
+    actual_hfov_r = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                    ? calculateFisheyeFOV(K_r_final, out_gdc_width, out_gdc_height).first
+                    : calculatePinholeFOV(K_r_final, out_gdc_width, out_gdc_height).first;
+
+    return alpha;										
 }
 
 std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int in_width, int in_height,int out_width, int out_height,

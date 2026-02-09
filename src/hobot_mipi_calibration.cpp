@@ -266,6 +266,38 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
 			return false;
 		}
 		
+		// ===================== 扩展：读取AWB硬件参数 =====================
+		CONFIG_AWB_ST awb_config; // AWB参数缓冲区
+		//读取EEPROM中的AWB配置参数（地址0x0134，长度为DualCamAwbCalib_ST大小）
+		if (readEeprom16(i2c_bus, i2c_addr, 0x0134, (char*)&awb_config, sizeof(CONFIG_AWB_ST)) == false) {
+			return false;
+			// 可返回true（兼容无AWB参数的情况），或false（强制要求AWB参数）
+		}
+		//
+
+		//左右相机的AWB参数
+		DualCamAwbCalib_ST_L awb_info_l;
+		DualCamAwbCalib_ST_R awb_info_r;
+		//1.读取左相机参数
+		if (readEeprom16(i2c_bus, i2c_addr, 0x0166, (char*)&awb_info_l, sizeof(DualCamAwbCalib_ST_L)) == false) {
+			return false;
+			// 可返回true（兼容无AWB参数的情况），或false（强制要求AWB参数）
+		}
+		//2.读取右相机参数
+		if (readEeprom16(i2c_bus, i2c_addr, 0x018A, (char*)&awb_info_r, sizeof(DualCamAwbCalib_ST_R)) == false) {
+			return false;
+			// 可返回true（兼容无AWB参数的情况），或false（强制要求AWB参数）
+		}
+
+		//相机的AWB Golden参数
+		DualCamAwbCalib_ST_Golden awb_info_golden;
+		//3.读取相机golden参数
+		if (readEeprom16(i2c_bus, i2c_addr, 0x01AE, (char*)&awb_info_golden, sizeof(DualCamAwbCalib_ST_Golden)) == false) {
+			return false;
+			// 可返回true（兼容无AWB参数的情况），或false（强制要求AWB参数）
+		}
+
+
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_l======" \
 			"\n ----------------" \
 			"\n width: %d" \
@@ -433,6 +465,87 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
 		cv::Mat P = r_k * RT;
 		std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
 		std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
+
+		// ----------------------------------awb -----------------------------------
+		//左目
+		awb_otp_data_.resize(2);
+		auto& left_awb_otp_data_ = awb_otp_data_[0];
+		left_awb_otp_data_.otp_awb_enable = 1;
+		left_awb_otp_data_.awb_ct_num = 3;
+		left_awb_otp_data_.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
+		left_awb_otp_data_.awb_data[0].rg_ratio = awb_info_l.rg_ratio_3100K;
+		left_awb_otp_data_.awb_data[0].bg_ratio = awb_info_l.bg_ratio_3100K;
+		left_awb_otp_data_.awb_golden_data[0].rg_ratio = awb_info_golden.rg_ratio_3100K;
+		left_awb_otp_data_.awb_golden_data[0].bg_ratio = awb_info_golden.bg_ratio_3100K;
+		left_awb_otp_data_.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+		left_awb_otp_data_.awb_data[1].rg_ratio = awb_info_l.rg_ratio_4000K;
+		left_awb_otp_data_.awb_data[1].bg_ratio = awb_info_l.bg_ratio_4000K;
+		left_awb_otp_data_.awb_golden_data[1].rg_ratio = awb_info_golden.rg_ratio_4000K;
+		left_awb_otp_data_.awb_golden_data[1].bg_ratio = awb_info_golden.bg_ratio_4000K;
+		left_awb_otp_data_.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+		left_awb_otp_data_.awb_data[2].rg_ratio = awb_info_l.rg_ratio_5800K;
+		left_awb_otp_data_.awb_data[2].bg_ratio = awb_info_l.bg_ratio_5800K;
+		left_awb_otp_data_.awb_golden_data[2].rg_ratio = awb_info_golden.rg_ratio_5800K;
+		left_awb_otp_data_.awb_golden_data[2].bg_ratio = awb_info_golden.bg_ratio_5800K;
+
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ================== left awb otp data ==================");
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_golden_data[0].rg_ratio: %ld", left_awb_otp_data_.awb_golden_data[0].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_golden_data[0].bg_ratio: %ld", left_awb_otp_data_.awb_golden_data[0].bg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_golden_data[1].rg_ratio: %ld", left_awb_otp_data_.awb_golden_data[1].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_golden_data[1].bg_ratio: %ld", left_awb_otp_data_.awb_golden_data[1].bg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_golden_data[2].rg_ratio: %ld", left_awb_otp_data_.awb_golden_data[2].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_golden_data[2].bg_ratio: %ld", left_awb_otp_data_.awb_golden_data[2].bg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[0].rg_ratio: %ld", left_awb_otp_data_.awb_data[0].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[0].bg_ratio: %ld", left_awb_otp_data_.awb_data[0].bg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[1].rg_ratio: %ld", left_awb_otp_data_.awb_data[1].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[1].bg_ratio: %ld", left_awb_otp_data_.awb_data[1].bg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[2].rg_ratio: %ld", left_awb_otp_data_.awb_data[2].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "left_awb_otp_data_.awb_data[2].bg_ratio: %ld", left_awb_otp_data_.awb_data[2].bg_ratio);
+
+		left_awb_otp_data_.awb_data[0].r = awb_config.bls_r;
+		left_awb_otp_data_.awb_data[0].gr = awb_config.bls_gr;
+		left_awb_otp_data_.awb_data[0].gb = awb_config.bls_gb;
+		left_awb_otp_data_.awb_data[0].b = awb_config.bls_b;
+
+		//右目
+		auto& right_awb_otp_data_ = awb_otp_data_[1];
+		right_awb_otp_data_.otp_awb_enable = 1;
+		right_awb_otp_data_.awb_ct_num = 3;
+		right_awb_otp_data_.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
+		right_awb_otp_data_.awb_data[0].rg_ratio = awb_info_r.rg_ratio_3100K;
+		right_awb_otp_data_.awb_data[0].bg_ratio = awb_info_r.bg_ratio_3100K;
+		right_awb_otp_data_.awb_golden_data[0].rg_ratio = awb_info_golden.rg_ratio_3100K;
+		right_awb_otp_data_.awb_golden_data[0].bg_ratio = awb_info_golden.bg_ratio_3100K;
+		right_awb_otp_data_.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+		right_awb_otp_data_.awb_data[1].rg_ratio = awb_info_r.rg_ratio_4000K;
+		right_awb_otp_data_.awb_data[1].bg_ratio = awb_info_r.bg_ratio_4000K;
+		right_awb_otp_data_.awb_golden_data[1].rg_ratio = awb_info_golden.rg_ratio_4000K;
+		right_awb_otp_data_.awb_golden_data[1].bg_ratio = awb_info_golden.bg_ratio_4000K;
+		right_awb_otp_data_.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+		right_awb_otp_data_.awb_data[2].rg_ratio = awb_info_r.rg_ratio_5800K;
+		right_awb_otp_data_.awb_data[2].bg_ratio = awb_info_r.bg_ratio_5800K;
+		right_awb_otp_data_.awb_golden_data[2].rg_ratio = awb_info_golden.rg_ratio_5800K;
+		right_awb_otp_data_.awb_golden_data[2].bg_ratio = awb_info_golden.bg_ratio_5800K;
+
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ================== right awb otp data ==================");
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_golden_data[0].rg_ratio: %ld", right_awb_otp_data_.awb_golden_data[0].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_golden_data[0].bg_ratio: %ld", right_awb_otp_data_.awb_golden_data[0].bg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_golden_data[1].rg_ratio: %ld", right_awb_otp_data_.awb_golden_data[1].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_golden_data[1].bg_ratio: %ld", right_awb_otp_data_.awb_golden_data[1].bg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_golden_data[2].rg_ratio: %ld", right_awb_otp_data_.awb_golden_data[2].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_golden_data[2].bg_ratio: %ld", right_awb_otp_data_.awb_golden_data[2].bg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[0].rg_ratio: %ld", right_awb_otp_data_.awb_data[0].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[0].bg_ratio: %ld", right_awb_otp_data_.awb_data[0].bg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[1].rg_ratio: %ld", right_awb_otp_data_.awb_data[1].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[1].bg_ratio: %ld", right_awb_otp_data_.awb_data[1].bg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[2].rg_ratio: %ld", right_awb_otp_data_.awb_data[2].rg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "right_awb_otp_data_.awb_data[2].bg_ratio: %ld", right_awb_otp_data_.awb_data[2].bg_ratio);
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ========================================================");
+
+		right_awb_otp_data_.awb_data[0].r = awb_config.bls_r;
+		right_awb_otp_data_.awb_data[0].gr = awb_config.bls_gr;
+		right_awb_otp_data_.awb_data[0].gb = awb_config.bls_gb;
+		right_awb_otp_data_.awb_data[0].b = awb_config.bls_b;
 		return true;
 	}
 
@@ -715,6 +828,18 @@ bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_add
 			if (readEeprom16(i2c_bus, i2c_addr, 0x01e0, (char*)&r_t_info, sizeof(ImuRTTimeInfo_d_ST)) == false) {
 				return false;
 			}
+
+			imu_info_.emplace_back();
+			auto& imu_param = imu_info_.back();
+			imu_param.acc_mislign_ = acc_mislign;
+			imu_param.acc_scale_ = acc_scale;
+			imu_param.acc_bias_ = acc_bias;
+			imu_param.acc_n_w_ = acc_n_w;
+			imu_param.gyro_mislign_ = gyro_mislign;
+			imu_param.gyro_scale_ = gyro_scale;
+			imu_param.gyro_bias_ = gyro_bias;
+			imu_param.gyro_n_w_ = gyro_n_w;
+			imu_param.r_t_info_ = r_t_info;
 
 			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====acc_info======" \
 				"\n ----------------" \
@@ -1080,7 +1205,7 @@ bool mipi_calibration::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_add
   }
 
 
-bool mipi_calibration::getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_msgs::msg::CameraInfo> &cam_info_) {
+bool mipi_calibration::getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_msgs::msg::CameraInfo> &cam_info) {
   int i2c_bus;
   uint16_t i2c_addr;
   std::string device;
@@ -1102,16 +1227,16 @@ bool mipi_calibration::getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_
 	sum += static_cast<int>(c);
   });
   if (((sum % 255) + 1) == chech_value) {
-	cam_info_.resize(2);
-	cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
+	cam_info.resize(2);
+	cam_info[0].distortion_model = cam_info[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
 	CalDualCamInfo_ST* i2c_buf_ptr = (CalDualCamInfo_ST *)i2c_buf.data();
 	int width = (i2c_buf_ptr->h_v[0] << 8) | i2c_buf_ptr->h_v[1];
 	int height = (i2c_buf_ptr->h_v[2] << 8) | i2c_buf_ptr->h_v[3];
 
-	cam_info_[0].width = width;
-    cam_info_[0].height = height;
-	cam_info_[1].width = width;
-    cam_info_[1].height = height;
+	cam_info[0].width = width;
+    cam_info[0].height = height;
+	cam_info[1].width = width;
+    cam_info[1].height = height;
 
 	cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
 	l_k.at<double>(0,0) = i2c_buf_ptr->fxl;
@@ -1119,24 +1244,24 @@ bool mipi_calibration::getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_
 	l_k.at<double>(1,1) = i2c_buf_ptr->fyl;
 	l_k.at<double>(1,2) = i2c_buf_ptr->cyl;
 	l_k.at<double>(2,2) = 1;
-	std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
+	std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info[0].k.begin());
 
-	cam_info_[0].d.resize(8);
-	cam_info_[0].d[0] = i2c_buf_ptr->k1l;
-	cam_info_[0].d[1] = i2c_buf_ptr->k2l;
-	cam_info_[0].d[2] = i2c_buf_ptr->p1l;
-	cam_info_[0].d[3] = i2c_buf_ptr->p2l;
-	cam_info_[0].d[4] = i2c_buf_ptr->k3l;
-	cam_info_[0].d[5] = i2c_buf_ptr->k4l;
-	cam_info_[0].d[6] = i2c_buf_ptr->k5l;
-	cam_info_[0].d[7] = i2c_buf_ptr->k6l;
+	cam_info[0].d.resize(8);
+	cam_info[0].d[0] = i2c_buf_ptr->k1l;
+	cam_info[0].d[1] = i2c_buf_ptr->k2l;
+	cam_info[0].d[2] = i2c_buf_ptr->p1l;
+	cam_info[0].d[3] = i2c_buf_ptr->p2l;
+	cam_info[0].d[4] = i2c_buf_ptr->k3l;
+	cam_info[0].d[5] = i2c_buf_ptr->k4l;
+	cam_info[0].d[6] = i2c_buf_ptr->k5l;
+	cam_info[0].d[7] = i2c_buf_ptr->k6l;
 
 	cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
-    std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
+    std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info[0].r.begin());
 
 	cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
     cv::Mat l_p = l_k * l_p_eye;
-    std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
+    std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info[0].p.begin());
 
 	cv::Mat r_k= cv::Mat::zeros(3,3,CV_64F);
 	r_k.at<double>(0,0) = i2c_buf_ptr->fxr;
@@ -1144,17 +1269,17 @@ bool mipi_calibration::getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_
 	r_k.at<double>(1,1) = i2c_buf_ptr->fyr;
 	r_k.at<double>(1,2) = i2c_buf_ptr->cyr;
 	r_k.at<double>(2,2) = 1;
-	std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
+	std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info[1].k.begin());
 
-	cam_info_[1].d.resize(8);
-	cam_info_[1].d[0] = i2c_buf_ptr->k1r;
-	cam_info_[1].d[1] = i2c_buf_ptr->k2r;
-	cam_info_[1].d[2] = i2c_buf_ptr->p1r;
-	cam_info_[1].d[3] = i2c_buf_ptr->p2r;
-	cam_info_[1].d[4] = i2c_buf_ptr->k3r;
-	cam_info_[1].d[5] = i2c_buf_ptr->k4r;
-	cam_info_[1].d[6] = i2c_buf_ptr->k5r;
-	cam_info_[1].d[7] = i2c_buf_ptr->k6r;
+	cam_info[1].d.resize(8);
+	cam_info[1].d[0] = i2c_buf_ptr->k1r;
+	cam_info[1].d[1] = i2c_buf_ptr->k2r;
+	cam_info[1].d[2] = i2c_buf_ptr->p1r;
+	cam_info[1].d[3] = i2c_buf_ptr->p2r;
+	cam_info[1].d[4] = i2c_buf_ptr->k3r;
+	cam_info[1].d[5] = i2c_buf_ptr->k4r;
+	cam_info[1].d[6] = i2c_buf_ptr->k5r;
+	cam_info[1].d[7] = i2c_buf_ptr->k6r;
 
 	cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
 	R.at<double>(0,0) = i2c_buf_ptr->r11;
@@ -1175,8 +1300,8 @@ bool mipi_calibration::getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_
 	cv::Mat RT;
 	cv::hconcat(R, T, RT);
 	cv::Mat P = r_k * RT;
-    std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
-    std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
+    std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info[1].r.begin());
+    std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info[1].p.begin());
 	return true;
   }
   return false;

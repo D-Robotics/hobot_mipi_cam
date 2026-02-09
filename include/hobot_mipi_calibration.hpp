@@ -9,6 +9,7 @@
 
 #include "hobot_mipi_comm.hpp"
 #include "hobot_mipi_cap.hpp"
+#include "hb_camera_data_info.h"
 
 namespace mipi_cam {
 
@@ -230,6 +231,105 @@ typedef struct imu_n_w_st {
 } ImuNW_ST;
 #pragma pack()
 
+struct Imu_params
+{
+  ImuMislign_ST acc_mislign_;
+  ImuMislign_ST gyro_mislign_;
+  ImuScale_ST acc_scale_;
+  ImuScale_ST gyro_scale_;
+  ImuBias_ST acc_bias_;
+  ImuBias_ST gyro_bias_;
+  ImuNW_ST acc_n_w_;
+  ImuNW_ST gyro_n_w_;
+  ImuRTTimeInfo_d_ST r_t_info_;
+};
+
+// ----------------------------------    awb -------------------------------------------------
+//AWB配置参数
+#pragma pack(4)
+typedef struct cal_awb_st {
+  int width;
+  int height;
+  uint8_t pattern;          // 0x0138: 拜耳阵列格式（0x00=RGGB, 0x01=GRBG等）
+  uint16_t bls_r;
+  uint16_t bls_gr;
+  uint16_t bls_gb;
+  uint16_t bls_b;
+  uint8_t awb_ratio;
+} CONFIG_AWB_ST;
+#pragma pack()
+
+#pragma pack(4)
+typedef struct dual_cam_awb_st_l {
+    unsigned short r_3100K;
+    unsigned short gr_3100K;
+    unsigned short gb_3100K;
+    unsigned short b_3100K;
+    unsigned short rg_ratio_3100K;
+    unsigned short bg_ratio_3100K;
+    unsigned short r_4000K;
+    unsigned short gr_4000K;
+    unsigned short gb_4000K;
+    unsigned short b_4000K;
+    unsigned short rg_ratio_4000K;
+    unsigned short bg_ratio_4000K;
+    unsigned short r_5800K;
+    unsigned short gr_5800K;
+    unsigned short gb_5800K;
+    unsigned short b_5800K;
+    unsigned short rg_ratio_5800K;
+    unsigned short bg_ratio_5800K;
+} DualCamAwbCalib_ST_L;
+#pragma pack()
+
+#pragma pack(4)
+typedef struct dual_cam_awb_st_r {
+    unsigned short r_3100K;
+    unsigned short gr_3100K;
+    unsigned short gb_3100K;
+    unsigned short b_3100K;
+    unsigned short rg_ratio_3100K;
+    unsigned short bg_ratio_3100K;
+    unsigned short r_4000K;
+    unsigned short gr_4000K;
+    unsigned short gb_4000K;
+    unsigned short b_4000K;
+    unsigned short rg_ratio_4000K;
+    unsigned short bg_ratio_4000K;
+    unsigned short r_5800K;
+    unsigned short gr_5800K;
+    unsigned short gb_5800K;
+    unsigned short b_5800K;
+    unsigned short rg_ratio_5800K;
+    unsigned short bg_ratio_5800K;
+} DualCamAwbCalib_ST_R;
+#pragma pack()
+
+
+#pragma pack(4)
+typedef struct dual_cam_awb_st_golden {
+    unsigned short r_3100K;
+    unsigned short gr_3100K;
+    unsigned short gb_3100K;
+    unsigned short b_3100K;
+    unsigned short rg_ratio_3100K;
+    unsigned short bg_ratio_3100K;
+    unsigned short r_4000K;
+    unsigned short gr_4000K;
+    unsigned short gb_4000K;
+    unsigned short b_4000K;
+    unsigned short rg_ratio_4000K;
+    unsigned short bg_ratio_4000K;
+    unsigned short r_5800K;
+    unsigned short gr_5800K;
+    unsigned short gb_5800K;
+    unsigned short b_5800K;
+    unsigned short rg_ratio_5800K;
+    unsigned short bg_ratio_5800K;
+} DualCamAwbCalib_ST_Golden;
+#pragma pack()
+// ---------------------------------------------  awb ------------------------------------------------------------------------
+
 //单例类
 class mipi_calibration {
 
@@ -245,12 +345,16 @@ struct CalibrationParams
   const std::vector<sensor_msgs::msg::CameraInfo>& cam_info_;
   const MIPI_CAP_INFO_ST& cap_info_;
   const std::string& eeprom_name_;
+  const std::vector<Imu_params>& imu_info_;
+  const std::vector<sensor_otp_t>& awb_otp_data_;
 
   //禁止外部构造，仅类内初始化
   CalibrationParams() = delete;
   explicit CalibrationParams(mipi_calibration& parent) 
   :   cam_info_(parent.cam_info_),
       cap_info_(parent.cap_info_),
+      imu_info_(parent.imu_info_),
+      awb_otp_data_(parent.awb_otp_data_),
       eeprom_name_(parent.eeprom_name_) {}
 };
 
@@ -261,7 +365,7 @@ const CalibrationParams& getCalibrationParams() const {
   return params;
 }
 
-bool getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_msgs::msg::CameraInfo> &cam_info_);  
+bool getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_msgs::msg::CameraInfo> &cam_info);  
 
 // ===== 禁止拷贝/赋值（单例核心，单例唯一性）=====
 mipi_calibration(const mipi_calibration&) = delete;
@@ -304,6 +408,9 @@ MIPI_CAP_INFO_ST cap_info_;
 std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
 std::mutex mutex_;
 bool is_inited_;
+std::vector<Imu_params> imu_info_;
+std::vector<sensor_otp_t> awb_otp_data_;
+//---------------------------------------------------------------------------------
 };
 }
 #endif
