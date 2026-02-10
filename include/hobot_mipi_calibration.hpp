@@ -333,84 +333,69 @@ typedef struct dual_cam_awb_st_golden {
 //单例类
 class mipi_calibration {
 
-public: 
+  public: 
 
-static mipi_calibration & GetInstance() {
-    static mipi_calibration instance;
-    return instance;
-}
+  static mipi_calibration & GetInstance() {
+      static mipi_calibration instance;
+      return instance;
+  }
 
-struct CalibrationParams
-{
-  const std::vector<sensor_msgs::msg::CameraInfo>& cam_info_;
-  const MIPI_CAP_INFO_ST& cap_info_;
-  const std::string& eeprom_name_;
-  const std::vector<Imu_params>& imu_info_;
-  const std::vector<sensor_otp_t>& awb_otp_data_;
+  struct CalibrationParams
+  {
+    std::string eeprom_name_;
+    int i2c_bus;
+    double cal_rotation_;
+    std::vector<sensor_msgs::msg::CameraInfo> cam_info_;    
+    std::vector<Imu_params> imu_info_;
+    std::vector<sensor_otp_t> awb_otp_data_;
+  };
 
-  //禁止外部构造，仅类内初始化
-  CalibrationParams() = delete;
-  explicit CalibrationParams(mipi_calibration& parent) 
-  :   cam_info_(parent.cam_info_),
-      cap_info_(parent.cap_info_),
-      imu_info_(parent.imu_info_),
-      awb_otp_data_(parent.awb_otp_data_),
-      eeprom_name_(parent.eeprom_name_) {}
-};
 
-//返回结构体的const引用(零拷贝)
-const CalibrationParams& getCalibrationParams() const {
-  //静态结构体，初始化一次
-  static CalibrationParams params(*const_cast<mipi_calibration*>(this));
-  return params;
-}
 
-bool getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_msgs::msg::CameraInfo> &cam_info);  
+  //返回结构体的const引用(零拷贝)
+  std::vector<struct CalibrationParams>& getCalibrationParams() {
+    //静态结构体，初始化一次
+    return v_cal_params_;
+  }
 
-// ===== 禁止拷贝/赋值（单例核心，单例唯一性）=====
-mipi_calibration(const mipi_calibration&) = delete;
-mipi_calibration & operator = (const mipi_calibration&) = delete;
+  bool getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_msgs::msg::CameraInfo> &cam_info);  
 
-private:
+  // ===== 禁止拷贝/赋值（单例核心，单例唯一性）=====
+  mipi_calibration(const mipi_calibration&) = delete;
+  mipi_calibration & operator = (const mipi_calibration&) = delete;
 
-//私有构造函数——仅在首次获取实例时执行，完成Eeprom读取
-mipi_calibration()  : is_inited_(false) 
-{
-    InitMipiCalibration();
-}
+  private:
 
-~mipi_calibration() = default;
+  //私有构造函数——仅在首次获取实例时执行，完成Eeprom读取
+  mipi_calibration()  : is_inited_(false) 
+  {
+      InitMipiCalibration();
+  }
 
-bool getDualCamCalibrationFromEeprom();
-bool getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr);
-bool getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr);
-bool getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_addr);
+  ~mipi_calibration() = default;
 
-bool readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize);
-int detectEeprom_drobot(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
-int detectEeprom_lianhe(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
+  bool getCamCalibrationFromEeprom();
+  bool getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr);
+  bool getCamCalibration_union(int i2c_bus, uint16_t i2c_addr);
+  bool getCamCalibration_abham(int i2c_bus, uint16_t i2c_addr);
 
-void InitMipiCalibration() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (is_inited_) {
-        return;
-    }
+  bool readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize);
+  int detectEeprom_drobot(int i2c_bus, std::string &device, uint16_t &i2c_addr);
+  int detectEeprom_lianhe(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
+  std::vector<int> i2c_bus_detect();
 
-    getDualCamCalibrationFromEeprom();
-
-    is_inited_ = true;
-}
-
-std::string eeprom_name_ = "";
-char cal_tpye_ = 0; //0x00:针孔标定；0x01：鱼眼标定。
-MIPI_CAP_INFO_ST cap_info_;
-
-std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
-std::mutex mutex_;
-bool is_inited_;
-std::vector<Imu_params> imu_info_;
-std::vector<sensor_otp_t> awb_otp_data_;
-//---------------------------------------------------------------------------------
+  void InitMipiCalibration() {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (is_inited_) {
+          return;
+      }
+      getCamCalibrationFromEeprom();
+      is_inited_ = true;
+  }
+  std::vector<struct CalibrationParams> v_cal_params_;
+  std::mutex mutex_;
+  bool is_inited_;
+  //---------------------------------------------------------------------------------
 };
 }
 #endif

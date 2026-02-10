@@ -59,6 +59,7 @@
 		}\
 	} while(0)\
 
+
 namespace mipi_cam {
 
 int HobotMipiCapIml::initEnv() {
@@ -172,14 +173,16 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	mipi_calibration& calibration_instance = mipi_calibration::GetInstance();
 	
 	if (cam_info_.size() != 2) {
-		const auto & cal_params = calibration_instance.getCalibrationParams();
-		cam_info_ = cal_params.cam_info_;
-		cap_info_.cal_rotation_ = cal_params.cap_info_.cal_rotation_;
-		eeprom_name_ = cal_params.eeprom_name_;
-		imu_info_ = cal_params.imu_info_;
-		awb_otp_data_ = cal_params.awb_otp_data_;
+		auto cal_params = mipi_calibration::GetInstance().getCalibrationParams();
+		if (cal_params.size() >= 1) {
+			cam_info_ = cal_params[0].cam_info_;
+			cap_info_.cal_rotation_ = cal_params[0].cal_rotation_;
+			eeprom_name_ = cal_params[0].eeprom_name_;
+			imu_info_ = cal_params[0].imu_info_;
+			awb_otp_data_ = cal_params[0].awb_otp_data_;
+		}
 	}
-	if(strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0) {
+	if((cam_info_.size() != 2) && (strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0)) {
 		calibration_instance.getDualCamCalibrationFromEeprom_230ai(cam_info_);
 	}
 

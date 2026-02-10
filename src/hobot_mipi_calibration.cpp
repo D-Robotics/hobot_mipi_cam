@@ -15,11 +15,15 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <unistd.h>
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
+#include <vector>
+#include <filesystem>
+#include <linux/i2c-dev.h>
+#include <linux/i2c.h>
+#include <algorithm>
 
 #include <sys/select.h>
 
@@ -28,6 +32,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <json/json.h>
+namespace fs = std::filesystem; 
 
 namespace mipi_cam {
 
@@ -81,6 +86,28 @@ bool mipi_calibration::readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg
 	return true;
 }
 
+std::vector<int> mipi_calibration::i2c_bus_detect() {
+	std::vector<int> buses;
+    std::string path = "/sys/class/i2c-dev";
+
+    // 1. 获取所有 I2C 总线 ID
+    try {
+        for (const auto& entry : fs::directory_iterator(path)) {
+            std::string dirname = entry.path().filename().string(); // 例如 "i2c-1"
+            if (dirname.find("i2c-") == 0) {
+                int id = std::stoi(dirname.substr(4));
+                buses.push_back(id);
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "无法访问总线目录: " << e.what() << std::endl;
+		std::sort(buses.begin(), buses.end());
+        return buses;
+    }
+
+    std::sort(buses.begin(), buses.end());
+	return buses;
+}
 
 int mipi_calibration::detectEeprom_lianhe(std::string &device, int &i2c_bus, uint16_t &i2c_addr) {
 
@@ -88,7 +115,7 @@ int mipi_calibration::detectEeprom_lianhe(std::string &device, int &i2c_bus, uin
   EEPROM_ID_T eeprom_id_list[] = {
     {1, 0x50, I2C_ADDR_16, 0x21, 0x01, "P24C64G-C4H-MIR"},  // P24C64G-C4H-MIR
   };
-  std::vector<int> i2c_buss= {0,1,2,3,4,5,6,7,8,9,10};
+  std::vector<int> i2c_buss= i2c_bus_detect();
 
   char buf[512];
   std::vector<char> buf_type;
@@ -139,63 +166,57 @@ int mipi_calibration::detectEeprom_lianhe(std::string &device, int &i2c_bus, uin
   return -1;
 }
 
-int mipi_calibration::detectEeprom_drobot(std::string &device, int &i2c_bus, uint16_t &i2c_addr) {
+int mipi_calibration::detectEeprom_drobot(int i2c_bus, std::string &device, uint16_t &i2c_addr) {
 
-  // mipi sensor的信息数组
-  EEPROM_DETECT_T eeprom_detect_list[] = {
-    {1, 0x50, I2C_ADDR_16, 0x00, "SZYGSJKJ", "yuguang"},  // P24C64G-C4H-MIR
-	{1, 0x50, I2C_ADDR_16, 0x00, "UNION", "union"},  // P24C64G-C4H-MIR
-	{1, 0x50, I2C_ADDR_16, 0x00, "SZ_ABHAM", "sz_abham"},  // P24C64G-C4H-MIR
-  };
-  std::vector<int> i2c_buss= {0,1,2,3,4,5,6,7,8,9,10};
+	// mipi sensor的信息数组
+	EEPROM_DETECT_T eeprom_detect_list[] = {
+		{1, 0x50, I2C_ADDR_16, 0x00, "SZYGSJKJ", "yuguang"},  // P24C64G-C4H-MIR
+		{1, 0x50, I2C_ADDR_16, 0x00, "UNION", "union"},  // P24C64G-C4H-MIR
+		{1, 0x50, I2C_ADDR_16, 0x00, "SZ_ABHAM", "sz_abham"},  // P24C64G-C4H-MIR
+	};
 
-  char buf[9] = {0};
-  std::vector<char> buf_type;
-  buf_type.resize(0x1f);
-  char check_0;
-  char checksum;
-  std::string chip_type;
+	char buf[9] = {0};
+	std::vector<char> buf_type;
+	buf_type.resize(0x1f);
+	char check_0;
+	char checksum;
+	std::string chip_type;
   
-  for (auto num : i2c_buss) {
-    for (auto eeprom_id : eeprom_detect_list) {
-      if (readEeprom16(num, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 8)) {
+	for (auto eeprom_id : eeprom_detect_list) {
+		if (readEeprom16(i2c_bus, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 8)) {
 		std::string buf_str = buf;
-		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),"i2c bus: %d, EEPROM FLAG: %s\n", num, buf_str.c_str());
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),"i2c bus: %d, EEPROM FLAG: %s\n", i2c_bus, buf_str.c_str());
 		if (eeprom_id.check_str == buf_str) {
-			i2c_bus = num;
 			i2c_addr = eeprom_id.i2c_dev_addr;
 			device = eeprom_id.device_name;
 			return 0;
 		}
-      }
-    }
-  }
-  return -1;
+		}
+	}
+    return -1;
 }
 
 
-bool mipi_calibration::getDualCamCalibrationFromEeprom() {
-  int i2c_bus;
+bool mipi_calibration::getCamCalibrationFromEeprom() {
   uint16_t i2c_addr;
   std::string device;
-  std::vector<char> i2c_buf;
-  i2c_buf.resize(sizeof(CalDualCamInfo_ST));
-  char chech_value;
-  if (detectEeprom_drobot(device, i2c_bus, i2c_addr) == -1) {
-	return false;
+  auto v_i2c_bus = i2c_bus_detect(); 
+  for(auto i2c_bus : v_i2c_bus) {
+	if (detectEeprom_drobot(i2c_bus, device, i2c_addr) == -1) {
+		continue;
+	}
+	if (device == "yuguang") {
+		getCamCalibration_yugang(i2c_bus, i2c_addr);
+	} else if (device == "union") {
+		getCamCalibration_union(i2c_bus, i2c_addr);
+	} else if (device == "sz_abham") {
+		getCamCalibration_abham(i2c_bus, i2c_addr);
+	} 
   }
-  eeprom_name_ = device;
-  if (device == "yuguang") {
-	getDualCamCalibration_yugang(i2c_bus, i2c_addr);
-  } else if (device == "union") {
-	getDualCamCalibration_union(i2c_bus, i2c_addr);
-  } else if (device == "sz_abham") {
-	getDualCamCalibration_abham(i2c_bus, i2c_addr);
-  } 
   return true;
 }
 
-bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) {
+bool mipi_calibration::getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) {
   std::string device;
   std::vector<char> head_buf;
   head_buf.resize(sizeof(EepromDrobotHead_ST));
@@ -213,6 +234,10 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
   });
   if (((sum % 255) + 1) == chech_value) {
 	EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
+	struct CalibrationParams cal_param;
+	cal_param.eeprom_name_ = "yuguang";
+	cal_param.i2c_bus = i2c_bus;
+
 
 	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
 		"\n ----------------" \
@@ -236,23 +261,21 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
 	);
 
 	if (head_buf_ptr->angle == 0x00) {
-		cap_info_.cal_rotation_ = 0.0;
+		cal_param.cal_rotation_ = 0.0;
 	} else if (head_buf_ptr->angle == 0x01) {
-		cap_info_.cal_rotation_ = 90.0;
+		cal_param.cal_rotation_ = 90.0;
 	} else if (head_buf_ptr->angle == 0x02) {
-		cap_info_.cal_rotation_ = 180.0;
+		cal_param.cal_rotation_ = 180.0;
 	} else if (head_buf_ptr->angle == 0x03) {
-		cap_info_.cal_rotation_ = 270.0;
+		cal_param.cal_rotation_ = 270.0;
 	}
 
-
-
 	if (head_buf_ptr->camType == 0x01) {
-		cam_info_.resize(2);
+		cal_param.cam_info_.resize(2);
 		if (head_buf_ptr->cal_tpye == 0x01) {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
+			cal_param.cam_info_[0].distortion_model = cal_param.cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
 		} else {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
+			cal_param.cam_info_[0].distortion_model = cal_param.cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
 		} 
 		CalDualMDInfo_ST m_d_info_l, m_d_info_r;
 		CalDualRTInfo_ST r_t_info;
@@ -382,10 +405,10 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
 			r_t_info.tz
 		);
 
-		cam_info_[0].width = m_d_info_l.width;
-		cam_info_[0].height = m_d_info_l.height;
-		cam_info_[1].width = m_d_info_r.width;
-		cam_info_[1].height = m_d_info_r.height;
+		cal_param.cam_info_[0].width = m_d_info_l.width;
+		cal_param.cam_info_[0].height = m_d_info_l.height;
+		cal_param.cam_info_[1].width = m_d_info_r.width;
+		cal_param.cam_info_[1].height = m_d_info_r.height;
 
 		cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
 		l_k.at<double>(0,0) = m_d_info_l.fx;
@@ -393,15 +416,15 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
 		l_k.at<double>(1,1) = m_d_info_l.fy;
 		l_k.at<double>(1,2) = m_d_info_l.cy;
 		l_k.at<double>(2,2) = 1;
-		std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
+		std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cal_param.cam_info_[0].k.begin());
 		
 		int d_num = 8;
 		if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
 			d_num = head_buf_ptr->d_num;
 		}
-		cam_info_[0].d.resize(d_num);
+		cal_param.cam_info_[0].d.resize(d_num);
 		for (int i = 0; i < d_num; i++) {
-			cam_info_[0].d[i] = m_d_info_l.d[i];
+			cal_param.cam_info_[0].d[i] = m_d_info_l.d[i];
 		}
 		// cam_info_[0].d[0] = m_d_info_l.k1;
 		// cam_info_[0].d[1] = m_d_info_l.k2;
@@ -413,11 +436,11 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
 		// cam_info_[0].d[7] = m_d_info_l.k6;
 
 		cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
-		std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
+		std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cal_param.cam_info_[0].r.begin());
 
 		cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
 		cv::Mat l_p = l_k * l_p_eye;
-		std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
+		std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cal_param.cam_info_[0].p.begin());
 
 
 
@@ -427,7 +450,7 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
 		r_k.at<double>(1,1) = m_d_info_r.fy;
 		r_k.at<double>(1,2) = m_d_info_r.cy;
 		r_k.at<double>(2,2) = 1;
-		std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
+		std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cal_param.cam_info_[1].k.begin());
 
 		// cam_info_[1].d.resize(8);
 		// cam_info_[1].d[0] = m_d_info_r.k1;
@@ -439,9 +462,9 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
 		// cam_info_[1].d[6] = m_d_info_r.k5;
 		// cam_info_[1].d[7] = m_d_info_r.k6;
 
-		cam_info_[1].d.resize(d_num);
+		cal_param.cam_info_[1].d.resize(d_num);
 		for (int i = 0; i < d_num; i++) {
-			cam_info_[1].d[i] = m_d_info_r.d[i];
+			cal_param.cam_info_[1].d[i] = m_d_info_r.d[i];
 		}
 
 		cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
@@ -463,13 +486,13 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
 		cv::Mat RT;
 		cv::hconcat(R, T, RT);
 		cv::Mat P = r_k * RT;
-		std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
-		std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
+		std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cal_param.cam_info_[1].r.begin());
+		std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cal_param.cam_info_[1].p.begin());
 
 		// ----------------------------------awb -----------------------------------
 		//左目
-		awb_otp_data_.resize(2);
-		auto& left_awb_otp_data_ = awb_otp_data_[0];
+		cal_param.awb_otp_data_.resize(2);
+		auto& left_awb_otp_data_ = cal_param.awb_otp_data_[0];
 		left_awb_otp_data_.otp_awb_enable = 1;
 		left_awb_otp_data_.awb_ct_num = 3;
 		left_awb_otp_data_.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
@@ -508,7 +531,7 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
 		left_awb_otp_data_.awb_data[0].b = awb_config.bls_b;
 
 		//右目
-		auto& right_awb_otp_data_ = awb_otp_data_[1];
+		auto& right_awb_otp_data_ = cal_param.awb_otp_data_[1];
 		right_awb_otp_data_.otp_awb_enable = 1;
 		right_awb_otp_data_.awb_ct_num = 3;
 		right_awb_otp_data_.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
@@ -546,14 +569,14 @@ bool mipi_calibration::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_ad
 		right_awb_otp_data_.awb_data[0].gr = awb_config.bls_gr;
 		right_awb_otp_data_.awb_data[0].gb = awb_config.bls_gb;
 		right_awb_otp_data_.awb_data[0].b = awb_config.bls_b;
+		v_cal_params_.push_back(cal_param);
 		return true;
 	}
-
   }
   return false;
 }
 
-bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr) {
+bool mipi_calibration::getCamCalibration_union(int i2c_bus, uint16_t i2c_addr) {
 	std::string device;
 	std::vector<char> head_buf;
 	head_buf.resize(sizeof(EepromDrobotHead_ST));
@@ -572,7 +595,9 @@ bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_add
 	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"sum % 255 + 1 : %x, check_value : %x", sum % 255 + 1, check_value);
 	if (((sum % 255) + 1) == check_value) {
 	  EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
-  
+  	  struct CalibrationParams cal_param;
+	  cal_param.eeprom_name_ = "union";
+	  cal_param.i2c_bus = i2c_bus;
 	  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
 		  "\n ----------------" \
 		  "\n bus: %d" \
@@ -595,21 +620,21 @@ bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_add
 	  );
   
 	  if (head_buf_ptr->angle == 0x00) {
-		  cap_info_.cal_rotation_ = 0.0;
+		  cal_param.cal_rotation_ = 0.0;
 	  } else if (head_buf_ptr->angle == 0x01) {
-		  cap_info_.cal_rotation_ = 90.0;
+		  cal_param.cal_rotation_ = 90.0;
 	  } else if (head_buf_ptr->angle == 0x02) {
-		  cap_info_.cal_rotation_ = 180.0;
+		  cal_param.cal_rotation_ = 180.0;
 	  } else if (head_buf_ptr->angle == 0x03) {
-		  cap_info_.cal_rotation_ = 270.0;
+		  cal_param.cal_rotation_ = 270.0;
 	  }
   
 	  if ((head_buf_ptr->camType == 0x01) || (head_buf_ptr->camType == 0x11)) {
-		  cam_info_.resize(2);
+		  cal_param.cam_info_.resize(2);
 		  if (head_buf_ptr->cal_tpye == 0x01) {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
+			cal_param.cam_info_[0].distortion_model = cal_param.cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
 		  } else {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
+			cal_param.cam_info_[0].distortion_model = cal_param.cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
 		  } 
 		  CalDualMDInfo_d_ST m_d_info_l, m_d_info_r;
 		  CalDualRTInfo_d_ST r_t_info;
@@ -712,10 +737,10 @@ bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_add
 			  r_t_info.tz
 		  );
   
-		  cam_info_[0].width = w_h_info.width;
-		  cam_info_[0].height = w_h_info.height;
-		  cam_info_[1].width = w_h_info.width;
-		  cam_info_[1].height = w_h_info.height;
+		  cal_param.cam_info_[0].width = w_h_info.width;
+		  cal_param.cam_info_[0].height = w_h_info.height;
+		  cal_param.cam_info_[1].width = w_h_info.width;
+		  cal_param.cam_info_[1].height = w_h_info.height;
   
 		  cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
 		  l_k.at<double>(0,0) = m_d_info_l.fx;
@@ -723,15 +748,15 @@ bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_add
 		  l_k.at<double>(1,1) = m_d_info_l.fy;
 		  l_k.at<double>(1,2) = m_d_info_l.cy;
 		  l_k.at<double>(2,2) = 1;
-		  std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
+		  std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cal_param.cam_info_[0].k.begin());
 		  
 		  int d_num = 8;
 		  if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
 			  d_num = head_buf_ptr->d_num;
 		  }
-		  cam_info_[0].d.resize(d_num);
+		  cal_param.cam_info_[0].d.resize(d_num);
 		  for (int i = 0; i < d_num; i++) {
-			  cam_info_[0].d[i] = m_d_info_l.d[i];
+			  cal_param.cam_info_[0].d[i] = m_d_info_l.d[i];
 		  }
 		  // cam_info_[0].d[0] = m_d_info_l.k1;
 		  // cam_info_[0].d[1] = m_d_info_l.k2;
@@ -743,11 +768,11 @@ bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_add
 		  // cam_info_[0].d[7] = m_d_info_l.k6;
   
 		  cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
-		  std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
+		  std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cal_param.cam_info_[0].r.begin());
   
 		  cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
 		  cv::Mat l_p = l_k * l_p_eye;
-		  std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
+		  std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cal_param.cam_info_[0].p.begin());
   
   
   
@@ -757,7 +782,7 @@ bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_add
 		  r_k.at<double>(1,1) = m_d_info_r.fy;
 		  r_k.at<double>(1,2) = m_d_info_r.cy;
 		  r_k.at<double>(2,2) = 1;
-		  std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
+		  std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cal_param.cam_info_[1].k.begin());
   
 		  // cam_info_[1].d.resize(8);
 		  // cam_info_[1].d[0] = m_d_info_r.k1;
@@ -769,9 +794,9 @@ bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_add
 		  // cam_info_[1].d[6] = m_d_info_r.k5;
 		  // cam_info_[1].d[7] = m_d_info_r.k6;
   
-		  cam_info_[1].d.resize(d_num);
+		  cal_param.cam_info_[1].d.resize(d_num);
 		  for (int i = 0; i < d_num; i++) {
-			  cam_info_[1].d[i] = m_d_info_r.d[i];
+			  cal_param.cam_info_[1].d[i] = m_d_info_r.d[i];
 		  }
   
 		  cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
@@ -793,8 +818,8 @@ bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_add
 		  cv::Mat RT;
 		  cv::hconcat(R, T, RT);
 		  cv::Mat P = r_k * RT;
-		  std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
-		  std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
+		  std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cal_param.cam_info_[1].r.begin());
+		  std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cal_param.cam_info_[1].p.begin());
 		  if (head_buf_ptr->camType == 0x11) {
 			ImuMislign_ST acc_mislign, gyro_mislign;
 			ImuScale_ST acc_scale, gyro_scale;
@@ -829,8 +854,8 @@ bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_add
 				return false;
 			}
 
-			imu_info_.emplace_back();
-			auto& imu_param = imu_info_.back();
+			cal_param.imu_info_.emplace_back();
+			auto& imu_param = cal_param.imu_info_.back();
 			imu_param.acc_mislign_ = acc_mislign;
 			imu_param.acc_scale_ = acc_scale;
 			imu_param.acc_bias_ = acc_bias;
@@ -961,7 +986,7 @@ bool mipi_calibration::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_add
 }
     
 
-bool mipi_calibration::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_addr) {
+bool mipi_calibration::getCamCalibration_abham(int i2c_bus, uint16_t i2c_addr) {
 	std::string device;
 	std::vector<char> head_buf;
 	head_buf.resize(sizeof(EepromDrobotHead_ST));
@@ -979,7 +1004,9 @@ bool mipi_calibration::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_add
 	});
 	if (((sum % 255) + 1) == chech_value) {
 	  EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
-  
+  	  struct CalibrationParams cal_param;
+	  cal_param.eeprom_name_ = "sz_abham";
+	  cal_param.i2c_bus = i2c_bus;  
 	  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
 		  "\n ----------------" \
 		  "\n bus: %d" \
@@ -1002,21 +1029,21 @@ bool mipi_calibration::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_add
 	  );
   
 	  if (head_buf_ptr->angle == 0x00) {
-		  cap_info_.cal_rotation_ = 0.0;
+		  cal_param.cal_rotation_ = 0.0;
 	  } else if (head_buf_ptr->angle == 0x01) {
-		  cap_info_.cal_rotation_ = 90.0;
+		  cal_param.cal_rotation_ = 90.0;
 	  } else if (head_buf_ptr->angle == 0x02) {
-		  cap_info_.cal_rotation_ = 180.0;
+		  cal_param.cal_rotation_ = 180.0;
 	  } else if (head_buf_ptr->angle == 0x03) {
-		  cap_info_.cal_rotation_ = 270.0;
+		  cal_param.cal_rotation_ = 270.0;
 	  }
   
 	  if (head_buf_ptr->camType == 0x01) {
-		  cam_info_.resize(2);
+		  cal_param.cam_info_.resize(2);
 		  if (head_buf_ptr->cal_tpye == 0x01) {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
+			cal_param.cam_info_[0].distortion_model = cal_param.cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
 		  } else {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
+			cal_param.cam_info_[0].distortion_model = cal_param.cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
 		  } 
 		  CalDualMDInfo_ST m_d_info_l, m_d_info_r;
 		  CalDualRTInfo_ST r_t_info;
@@ -1114,10 +1141,10 @@ bool mipi_calibration::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_add
 			  r_t_info.tz
 		  );
   
-		  cam_info_[0].width = m_d_info_l.width;
-		  cam_info_[0].height = m_d_info_l.height;
-		  cam_info_[1].width = m_d_info_r.width;
-		  cam_info_[1].height = m_d_info_r.height;
+		  cal_param.cam_info_[0].width = m_d_info_l.width;
+		  cal_param.cam_info_[0].height = m_d_info_l.height;
+		  cal_param.cam_info_[1].width = m_d_info_r.width;
+		  cal_param.cam_info_[1].height = m_d_info_r.height;
   
 		  cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
 		  l_k.at<double>(0,0) = m_d_info_l.fx;
@@ -1125,15 +1152,15 @@ bool mipi_calibration::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_add
 		  l_k.at<double>(1,1) = m_d_info_l.fy;
 		  l_k.at<double>(1,2) = m_d_info_l.cy;
 		  l_k.at<double>(2,2) = 1;
-		  std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
+		  std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cal_param.cam_info_[0].k.begin());
 		  
 		  int d_num = 8;
 		  if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
 			  d_num = head_buf_ptr->d_num;
 		  }
-		  cam_info_[0].d.resize(d_num);
+		  cal_param.cam_info_[0].d.resize(d_num);
 		  for (int i = 0; i < d_num; i++) {
-			  cam_info_[0].d[i] = m_d_info_l.d[i];
+			  cal_param.cam_info_[0].d[i] = m_d_info_l.d[i];
 		  }
 		  // cam_info_[0].d[0] = m_d_info_l.k1;
 		  // cam_info_[0].d[1] = m_d_info_l.k2;
@@ -1145,11 +1172,11 @@ bool mipi_calibration::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_add
 		  // cam_info_[0].d[7] = m_d_info_l.k6;
   
 		  cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
-		  std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
+		  std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cal_param.cam_info_[0].r.begin());
   
 		  cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
 		  cv::Mat l_p = l_k * l_p_eye;
-		  std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
+		  std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cal_param.cam_info_[0].p.begin());
   
   
   
@@ -1159,7 +1186,7 @@ bool mipi_calibration::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_add
 		  r_k.at<double>(1,1) = m_d_info_r.fy;
 		  r_k.at<double>(1,2) = m_d_info_r.cy;
 		  r_k.at<double>(2,2) = 1;
-		  std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
+		  std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cal_param.cam_info_[1].k.begin());
   
 		  // cam_info_[1].d.resize(8);
 		  // cam_info_[1].d[0] = m_d_info_r.k1;
@@ -1171,9 +1198,9 @@ bool mipi_calibration::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_add
 		  // cam_info_[1].d[6] = m_d_info_r.k5;
 		  // cam_info_[1].d[7] = m_d_info_r.k6;
   
-		  cam_info_[1].d.resize(d_num);
+		  cal_param.cam_info_[1].d.resize(d_num);
 		  for (int i = 0; i < d_num; i++) {
-			  cam_info_[1].d[i] = m_d_info_r.d[i];
+			  cal_param.cam_info_[1].d[i] = m_d_info_r.d[i];
 		  }
   
 		  cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
@@ -1195,8 +1222,8 @@ bool mipi_calibration::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_add
 		  cv::Mat RT;
 		  cv::hconcat(R, T, RT);
 		  cv::Mat P = r_k * RT;
-		  std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
-		  std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
+		  std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cal_param.cam_info_[1].r.begin());
+		  std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cal_param.cam_info_[1].p.begin());
 		  return true;
 	  }
   
