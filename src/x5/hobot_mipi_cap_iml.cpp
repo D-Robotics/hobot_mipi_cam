@@ -2095,6 +2095,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 			break;
     }
 
+#if 0
 	RT = cv::Mat::eye(3, 4, CV_64F);
 	cv::Mat P = K * RT;
 
@@ -2122,8 +2123,57 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	memcpy(tmp_cam_info.p.data(), P.data, sizeof(tmp_cam_info.p));
 	cal_cam_info.push_back(tmp_cam_info);
 
+#else
+	cv::Mat S = cv::Mat::eye(3, 3, CV_64F);
 
-	
+    switch(rotation_diff_int) {	
+        case 90:
+			S.at<double>(0,0) = 0;
+			S.at<double>(0,1) = -1;
+			S.at<double>(0,2) = (double)(out_height - 1);
+			S.at<double>(1,0) = 1;
+			S.at<double>(1,1) = 0;
+			S.at<double>(1,2) = 0;
+			break;
+		case 180:
+			S.at<double>(0,0) = -1;
+			S.at<double>(0,1) = 0;
+			S.at<double>(0,2) = (double)(out_width - 1);
+			S.at<double>(1,0) = 0;
+			S.at<double>(1,1) = -1;
+			S.at<double>(1,2) = (double)(out_height - 1);
+			break;			
+		case 270:
+			S.at<double>(0,0) = 0;
+			S.at<double>(0,1) = 1;
+			S.at<double>(0,2) = 0;
+			S.at<double>(1,0) = -1;
+			S.at<double>(1,1) = 0;
+			S.at<double>(1,2) = (double)(out_width - 1);
+            break;
+		default:
+			break;
+    }
+
+	sensor_msgs::msg::CameraInfo tmp_cam_info; 
+	tmp_cam_info.width = out_width;
+	tmp_cam_info.height = out_height;
+	tmp_cam_info.d.resize(5, 0.0);
+	memcpy(tmp_cam_info.k.data(), K.data, sizeof(tmp_cam_info.k));
+	cv::Mat new_Rl = S * Rl;
+	memcpy(tmp_cam_info.r.data(), new_Rl.data, sizeof(tmp_cam_info.r));
+	cv::Mat new_Pl = S * Pl;
+	memcpy(tmp_cam_info.p.data(), new_Pl.data, sizeof(tmp_cam_info.p));
+	cal_cam_info.push_back(tmp_cam_info);
+
+	cv::Mat new_Rr = S * Rr;
+	memcpy(tmp_cam_info.r.data(), new_Rr.data, sizeof(tmp_cam_info.r));
+	cv::Mat new_Pr = S * Pr;
+	memcpy(tmp_cam_info.p.data(), new_Pr.data, sizeof(tmp_cam_info.p));
+	cal_cam_info.push_back(tmp_cam_info);
+#endif
+
+
 	RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cap"),"===Corrected stetreo calibration ===" 
 		<< "\nKl : \n" << Kl 
 		<< "\nDl : \n" << Dl 
