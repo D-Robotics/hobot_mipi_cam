@@ -59,6 +59,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->link_type_ = 0; 
   nodePare_->link_port_ = 0; 
   nodePare_->cal_alpha_ = 0.0; 
+  nodePare_->stream_mode_ = 0; 
   nodePare_->sub_stream_flag_ = false; 
   frame_id_ = "default_cam";
   io_method_name_ = "ros"; //shared_mem, ros;
@@ -89,6 +90,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<int>("link_type", nodePare_->link_type_); // 0:表示mipi接口，1：表示解串器接口。
   this->declare_parameter<int>("link_port", nodePare_->link_port_);
   this->declare_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
+  this->declare_parameter<int>("stream_mode", nodePare_->stream_mode_);
 
   this->get_parameter<std::string>("frame_id", frame_id_);
   this->get_parameter<std::string>("io_method", io_method_name_); 
@@ -115,6 +117,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<int>("link_type", nodePare_->link_type_);
   this->get_parameter<int>("link_port", nodePare_->link_port_);
   this->get_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
+   this->get_parameter<int>("stream_mode", nodePare_->stream_mode_);
 
   nodePare_->framerate_ = static_cast<int>(framerate);
 
