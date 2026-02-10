@@ -44,8 +44,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->camera_calibration_file_path_ = "";
   nodePare_->out_format_name_ = "bgr8"; //nv12, bgr8;
   nodePare_->gdc_bin_file_ = "";
-  nodePare_->image_width_ = 1920;
-  nodePare_->image_height_ = 1080;
+  nodePare_->image_width_ = 1088;
+  nodePare_->image_height_ = 1280;
   nodePare_->sub_image_width_ = 960;
   nodePare_->sub_image_height_ = 540;
   nodePare_->framerate_ = 30;
@@ -64,6 +64,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   frame_id_ = "default_cam";
   io_method_name_ = "ros"; //shared_mem, ros;
   double framerate = 30.0;
+  imu_type_ = "";
 
   this->declare_parameter<std::string>("frame_id", frame_id_);
   this->declare_parameter<std::string>("io_method", io_method_name_); 
@@ -89,6 +90,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<std::string>("frame_ts_type", nodePare_->frame_ts_type_);
   this->declare_parameter<int>("link_type", nodePare_->link_type_); // 0:表示mipi接口，1：表示解串器接口。
   this->declare_parameter<int>("link_port", nodePare_->link_port_);
+  this->declare_parameter<std::string>("imu_type", imu_type_);
   this->declare_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
   this->declare_parameter<int>("stream_mode", nodePare_->stream_mode_);
 
@@ -116,8 +118,9 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<std::string>("frame_ts_type", nodePare_->frame_ts_type_);
   this->get_parameter<int>("link_type", nodePare_->link_type_);
   this->get_parameter<int>("link_port", nodePare_->link_port_);
+  this->get_parameter<std::string>("imu_type", imu_type_);
   this->get_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
-   this->get_parameter<int>("stream_mode", nodePare_->stream_mode_);
+  this->get_parameter<int>("stream_mode", nodePare_->stream_mode_);
 
   nodePare_->framerate_ = static_cast<int>(framerate);
 
@@ -174,6 +177,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   );
 
   init();
+
 }
 
 MipiCamNode::~MipiCamNode() {
@@ -199,6 +203,12 @@ MipiCamNode::~MipiCamNode() {
     pub.info_pub_.reset();
     pub.info_pub2_.reset();
   }
+
+  is_imu_running_ = false;
+  for (auto timer : imu_timer_) {
+    timer->join();
+  }
+  imu_timer_.clear();
 }
 
 void MipiCamNode::init() {
@@ -349,6 +359,14 @@ void MipiCamNode::init() {
   RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_node"),
                      "starting timer " << period_ms);
   m_bIsInit = 1;
+
+  imu_manager_ = std::make_shared<imu_sensor::ImuManager>();
+  if (0 == imu_manager_->init_sensor(imu_type_)) {
+    pub_imu_ = this->create_publisher<sensor_msgs::msg::Imu>("/imu_data", 10);
+    imu_timer_.emplace_back(std::make_shared<std::thread>([this]() { while(rclcpp::ok()) {this->read_imu_data();}}));
+    is_imu_running_ = true;
+  }
+
 }
 
 void MipiCamNode::init_publisher(Publisher_info_st&  Pub_info, std::string topic, std::string topic_type,
@@ -510,6 +528,32 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
     }
   }
 }
+
+void MipiCamNode::read_imu_data() {
+  sensor_msgs::msg::Imu imu_msg;
+  imu_msg.header.frame_id = "imu_link";
+  imu_sensor::ImuData_T imu_data;
+
+  while (is_imu_running_ ) {
+    size_t subscriber_count = pub_imu_->get_subscription_count();
+    if (subscriber_count > 0) {
+      imu_manager_->read_sensor_data(&imu_data);
+      imu_msg.header.stamp.set__sec(imu_data.timestamp / 1e9);
+      imu_msg.header.stamp.set__nanosec(imu_data.timestamp - imu_msg.header.stamp.sec * 1e9);
+      imu_msg.linear_acceleration.x = imu_data.ax;
+      imu_msg.linear_acceleration.y = imu_data.ay;
+      imu_msg.linear_acceleration.z = imu_data.az;
+      imu_msg.angular_velocity.x = imu_data.gx;
+      imu_msg.angular_velocity.y = imu_data.gy;
+      imu_msg.angular_velocity.z = imu_data.gz;
+      pub_imu_->publish(imu_msg);
+    } else {
+      usleep(1000*1000);
+    }
+    usleep(1*1000);
+  }
+}
+
 
 void MipiCamNode::save_yuv(const builtin_interfaces::msg::Time stamp,
      void *data, int data_size) {
