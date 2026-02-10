@@ -223,7 +223,6 @@ void MipiCamNode::init() {
 
   if (io_method_name_.compare("ros") == 0) {
     if (nodePare_->device_mode_.compare("dual") == 0) {
-
       if (nodePare_->dual_combine_ == 1) {
         Pub_info_.resize(3);
         init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
@@ -355,10 +354,7 @@ void MipiCamNode::init() {
 void MipiCamNode::init_publisher(Publisher_info_st&  Pub_info, std::string topic, std::string topic_type,
                     std::string frame_id){
   Pub_info.image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(topic, PUB_BUF_NUM);
-  Pub_info.img_ = std::make_unique<sensor_msgs::msg::Image>(
-    rosidl_runtime_cpp::MessageInitialization::SKIP);
-
-  Pub_info.img_->header.frame_id = frame_id;
+  Pub_info.frame_id = frame_id;
   Pub_info.topic_type = topic_type;
   Pub_info.time_start_ = std::chrono::system_clock::now();
 }
@@ -396,6 +392,7 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info,
                 "get camera calibration parameters failed");
     return;
   }
+
   Pub_info->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
     info_topic, PUB_BUF_NUM);
   Pub_info->info_pub2_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
@@ -416,6 +413,7 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info, Publis
                 "get camera calibration parameters failed");
     return;
   }
+
   Pub_info->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
     info_topic, PUB_BUF_NUM);
   Pub_info2->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
@@ -426,12 +424,15 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info, Publis
 
 void MipiCamNode::update(Publisher_info_st* pub_info) {
   if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing()) {
-    if (!mipiCam_ptr_->getImage(pub_info->img_->header.stamp,
-                          pub_info->img_->encoding,
-                          pub_info->img_->height,
-                          pub_info->img_->width,
-                          pub_info->img_->step,
-                          pub_info->img_->data,
+    auto img = std::make_unique<sensor_msgs::msg::Image>(rosidl_runtime_cpp::MessageInitialization::SKIP);
+    img->header.frame_id = pub_info->frame_id;
+    
+    if (!mipiCam_ptr_->getImage(img->header.stamp,
+                          img->encoding,
+                          img->height,
+                          img->width,
+                          img->step,
+                          img->data,
                           pub_info->topic_type)) {
       auto time_after = std::chrono::system_clock::now();
       auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(time_after - pub_info->time_start_).count();
@@ -444,24 +445,21 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
     if ("realtime" == nodePare_->frame_ts_type_) {
       struct timespec ts;
       clock_gettime(CLOCK_REALTIME, &ts);
-      pub_info->img_->header.stamp.sec = ts.tv_sec;
-      pub_info->img_->header.stamp.nanosec = ts.tv_nsec;
+      img->header.stamp.sec = ts.tv_sec;
+      img->header.stamp.nanosec = ts.tv_nsec;
     }
 #endif
-    save_jpg(pub_info->img_->header.stamp,pub_info->img_->encoding,pub_info->img_->width,pub_info->img_->height,(void *)&pub_info->img_->data[0]);
-    save_yuv(pub_info->img_->header.stamp, (void *)&pub_info->img_->data[0], pub_info->img_->data.size());
-    // pub_info->image_pub_->publish(*pub_info->img_);
-    pub_info->image_pub_->publish(std::move(pub_info->img_));
-    pub_info->img_ = std::make_unique<sensor_msgs::msg::Image>(rosidl_runtime_cpp::MessageInitialization::SKIP);
+    save_jpg(img->header.stamp,img->encoding,img->width,img->height,(void *)&img->data[0]);
+    save_yuv(img->header.stamp, (void *)&img->data[0], img->data.size());
 
-    if (pub_info->info_pub_) {
-      pub_info->camera_calibration_info_->header.stamp = pub_info->img_->header.stamp;
-      pub_info->info_pub_->publish(*pub_info->camera_calibration_info_);
+    if (pub_info && pub_info->info_pub_ && pub_info->camera_calibration_info_) {
+      sensor_msgs::msg::CameraInfo camera_calibration_info = *pub_info->camera_calibration_info_;
+      camera_calibration_info.header.stamp = img->header.stamp;
+      camera_calibration_info.header.frame_id = pub_info->frame_id;
+      pub_info->info_pub_->publish(camera_calibration_info);
     }
-    if (pub_info->info_pub2_) {
-      pub_info->camera_calibration_info2_->header.stamp = pub_info->img_->header.stamp;
-      pub_info->info_pub2_->publish(*pub_info->camera_calibration_info2_);
-    }
+
+    pub_info->image_pub_->publish(std::move(img));
   }
 }
 

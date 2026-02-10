@@ -37,8 +37,8 @@ namespace mipi_cam
 
 typedef struct Publisher_info_base {
   // shared image message
-  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info_;
-  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info2_;
+  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info_ = nullptr;
+  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info2_ = nullptr;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr info_pub_ = nullptr;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr info_pub2_ = nullptr;
   std::chrono::time_point<std::chrono::system_clock> time_start_;
@@ -46,8 +46,8 @@ typedef struct Publisher_info_base {
 
 typedef struct Publisher_info : Publisher_info_base_st  {
   // shared image message
-  sensor_msgs::msg::Image::UniquePtr img_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_pub_ = nullptr;
+  std::string frame_id = "";
   std::string topic_type;
 } Publisher_info_st;
 
@@ -85,12 +85,12 @@ class MipiCamNode : public rclcpp::Node {
   std::vector<std::shared_ptr<std::thread>> timer_;
   int32_t mSendIdx = 0;
 
-  rclcpp::TimerBase::SharedPtr timer_tmp_;
+  rclcpp::TimerBase::SharedPtr timer_tmp_ = nullptr;
 
   std::vector<Publisher_info_st> Pub_info_;
   std::vector<Publisher_hbmem_info_st> Pub_hbmem_info_;
 
-  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info_;
+  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info_ = nullptr;
   
 
   // parameters
