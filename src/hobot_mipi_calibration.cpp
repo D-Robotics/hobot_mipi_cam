@@ -820,6 +820,7 @@ bool mipi_calibration::getCamCalibration_union(int i2c_bus, uint16_t i2c_addr) {
 		  cv::Mat P = r_k * RT;
 		  std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cal_param.cam_info_[1].r.begin());
 		  std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cal_param.cam_info_[1].p.begin());
+
 		  if (head_buf_ptr->camType == 0x11) {
 			ImuMislign_ST acc_mislign, gyro_mislign;
 			ImuScale_ST acc_scale, gyro_scale;
@@ -976,7 +977,9 @@ bool mipi_calibration::getCamCalibration_union(int i2c_bus, uint16_t i2c_addr) {
 				r_t_info.timeshift,
 				r_t_info.reporject
 			);
-
+			v_cal_params_.push_back(cal_param);
+		  } else {
+			v_cal_params_.push_back(cal_param);
 		  }
 		  return true;
 	  }
@@ -1224,6 +1227,7 @@ bool mipi_calibration::getCamCalibration_abham(int i2c_bus, uint16_t i2c_addr) {
 		  cv::Mat P = r_k * RT;
 		  std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cal_param.cam_info_[1].r.begin());
 		  std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cal_param.cam_info_[1].p.begin());
+		  v_cal_params_.push_back(cal_param);
 		  return true;
 	  }
   
