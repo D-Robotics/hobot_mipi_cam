@@ -49,7 +49,15 @@ def generate_launch_description():
             description='mipi camera out image width'),
         DeclareLaunchArgument(
             'mipi_image_height',
-            default_value='720',
+            default_value='1088',
+            description='mipi camera out image height'),
+        DeclareLaunchArgument(
+            'mipi_sub_image_width',
+            default_value='1280',
+            description='mipi camera out image width'),
+        DeclareLaunchArgument(
+            'mipi_sub_image_height',
+            default_value='1088',
             description='mipi camera out image height'),
         DeclareLaunchArgument(
             'mipi_image_framerate',
@@ -108,6 +116,14 @@ def generate_launch_description():
             default_value='True',
             description='mipi camera gdc enable'),
         DeclareLaunchArgument(
+            'mipi_cal_alpha',
+            default_value='0.0',
+            description='gmsl link port'),
+        DeclareLaunchArgument(
+            'mipi_stream_mode',
+            default_value='0',
+            description='mipi camera output dual stream is no calibration and calibration image'),
+        DeclareLaunchArgument(
             'log_level',
             default_value='warn',
             description='log level'),
@@ -131,6 +147,8 @@ def generate_launch_description():
                 {"out_format": LaunchConfiguration('mipi_out_format')},
                 {"image_width": LaunchConfiguration('mipi_image_width')},
                 {"image_height": LaunchConfiguration('mipi_image_height')},
+                {"sub_image_width": LaunchConfiguration('mipi_sub_image_width')},
+                {"sub_image_height": LaunchConfiguration('mipi_sub_image_height')},
                 {"framerate": LaunchConfiguration('mipi_image_framerate')},
                 {"io_method": LaunchConfiguration('mipi_io_method')},
                 {"video_device": LaunchConfiguration('mipi_video_device')},
@@ -145,6 +163,8 @@ def generate_launch_description():
                 {"cal_rotation": LaunchConfiguration('mipi_cal_rotation')},
                 {"gdc_enable": LaunchConfiguration('mipi_gdc_enable')},
                 {"frame_id": LaunchConfiguration('frame_id')},
+                {"cal_alpha": LaunchConfiguration('mipi_cal_alpha')},
+                {"stream_mode": LaunchConfiguration('mipi_stream_mode')},
             ],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         )

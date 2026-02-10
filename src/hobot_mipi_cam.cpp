@@ -220,6 +220,9 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   cap_info_.frame_ts_type_ = nodePare_->frame_ts_type_;
   cap_info_.link_type_ = nodePare_->link_type_;
   cap_info_.link_port_ = nodePare_->link_port_;
+  cap_info_.cal_alpha_ = nodePare_->cal_alpha_;
+  cap_info_.stream_mode_ = nodePare_->stream_mode_;
+  cap_info_.sub_stream_flag_ = nodePare_->sub_stream_flag_;
 
   if (mipiCap_ptr_->initEnv() < 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
@@ -250,6 +253,7 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   nodePare_->image_width_ = cap_info_.width;
   nodePare_->image_height_ = cap_info_.height;
   nodePare_->video_device_name_ = cap_info_.sensor_type;
+  nodePare_->sub_stream_flag_ = cap_info_.sub_stream_flag_;
 
   RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
     "[%s]->cap %s init success.\r\n", __func__, cap_info_.sensor_type.c_str());
@@ -692,12 +696,14 @@ bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info
     
     int width = fs["image_width"];
     int height = fs["image_height"];
+    std::string dist_model;
     fs["left_camera_matrix"] >> l_k;
     fs["left_distortion_coefficients"] >> l_d;
     fs["right_camera_matrix"] >> r_k;
     fs["right_distortion_coefficients"] >> r_d;
     fs["R"] >> R;
     fs["T"] >> T;
+    fs["distortion_model"] >> dist_model;
     fs.release();
     // 检查数据类型并进行转换（如果需要）
     if (l_k.type() != CV_64F) {
@@ -743,7 +749,16 @@ bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info
     cv::Mat P = r_k * RT;
     std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_r.r.begin());
     std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_r.p.begin());
-    fs.release();
+    if (dist_model == "fisheye") {
+      cam_info_l.distortion_model = cam_info_r.distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
+    } else {
+      cam_info_l.distortion_model = cam_info_r.distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
+      RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
+                 "Camera calibration file did not specify distortion model, "
+                  "assuming plumb bob");
+    }
+
+    //fs.release();
     return true;
   } catch (cv::Exception &e) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),

@@ -66,6 +66,10 @@ def generate_launch_description():
         'mipi_image_framerate',
         default_value='10.0',
         description='mipi camera out image framerate')
+    mipi_frame_ts_type_arg = DeclareLaunchArgument(
+        'mipi_frame_ts_type',
+        default_value='sensor',
+        description='mipi camera out image framerate')
     mipi_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -86,7 +90,7 @@ def generate_launch_description():
             'mipi_rotation': LaunchConfiguration('mipi_rotation'),
             'mipi_cal_rotation': LaunchConfiguration('mipi_cal_rotation'),
             'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
-            'mipi_frame_ts_type': 'sensor'
+            'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type')
         }.items()
     )
 
@@ -132,6 +136,7 @@ def generate_launch_description():
         mipi_cal_rotation_arg,
         mipi_gdc_enable_arg,
         mipi_image_framerate_arg,
+        mipi_frame_ts_type_arg,
         shared_mem_node,
         # image publish
         mipi_node,

@@ -1,4 +1,10 @@
 # Changelog for package mipi_cam
+
+tros_2.4.1 (2026-01-29)
+------------------
+1. 更新到RDK S100 v4.0.5的sdk。
+2. RDK X5 增加了子码流，和固定channel和sensor的启动模式，避免自动检测导致gpio重上电。
+3. 
 tros_2.3.15 (2025-10-27)
 ------------------
 1. 更新到RDK X5 v3.4.0的sdk。
