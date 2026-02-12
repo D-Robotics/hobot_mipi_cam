@@ -48,6 +48,7 @@ typedef struct Publisher_info : Publisher_info_base_st  {
   // shared image message
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_pub_ = nullptr;
   std::string frame_id = "";
+  std::string frame_id2 = "";
   std::string topic_type;
 } Publisher_info_st;
 
@@ -95,6 +96,7 @@ class MipiCamNode : public rclcpp::Node {
 
   // parameters
   std::string frame_id_;
+  std::string frame_id2_;
   std::string io_method_name_;  // hbmem zero mem copy
   //struct NodePara nodePare_;
   std::shared_ptr<struct NodePara> nodePare_;

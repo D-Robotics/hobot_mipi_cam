@@ -61,10 +61,12 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->cal_alpha_ = 0.0; 
   nodePare_->sub_stream_flag_ = true; 
   frame_id_ = "default_cam";
+  frame_id2_ = "default_cam2";
   io_method_name_ = "ros"; //shared_mem, ros;
   double framerate = 30.0;
 
   this->declare_parameter<std::string>("frame_id", frame_id_);
+  this->declare_parameter<std::string>("frame_id2", frame_id2_);
   this->declare_parameter<std::string>("io_method", io_method_name_); 
   this->declare_parameter<std::string>("config_path", nodePare_->config_path_);
   this->declare_parameter<std::string>("video_device", nodePare_->video_device_name_);
@@ -91,6 +93,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
 
   this->get_parameter<std::string>("frame_id", frame_id_);
+  this->get_parameter<std::string>("frame_id2", frame_id2_);
   this->get_parameter<std::string>("io_method", io_method_name_); 
   this->get_parameter<std::string>("config_path", nodePare_->config_path_);
   this->get_parameter<std::string>("video_device", nodePare_->video_device_name_);
@@ -340,6 +343,7 @@ void MipiCamNode::init_publisher(Publisher_info_st&  Pub_info, std::string topic
                     std::string frame_id){
   Pub_info.image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(topic, PUB_BUF_NUM);
   Pub_info.frame_id = frame_id;
+  Pub_info.frame_id2 = frame_id2_;
   Pub_info.topic_type = topic_type;
   Pub_info.time_start_ = std::chrono::system_clock::now();
 }
@@ -411,6 +415,9 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
   if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing()) {
     auto img = std::make_unique<sensor_msgs::msg::Image>(rosidl_runtime_cpp::MessageInitialization::SKIP);
     img->header.frame_id = pub_info->frame_id;
+    if (std::string(pub_info->image_pub_->get_topic_name()) == "/image_right_raw") {
+      img->header.frame_id = pub_info->frame_id2;
+    }
     
     if (!mipiCam_ptr_->getImage(img->header.stamp,
                           img->encoding,
@@ -441,10 +448,14 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
       sensor_msgs::msg::CameraInfo camera_calibration_info = *pub_info->camera_calibration_info_;
       camera_calibration_info.header.stamp = img->header.stamp;
       camera_calibration_info.header.frame_id = pub_info->frame_id;
+      if (std::string(pub_info->info_pub_->get_topic_name()) == "/image_right_raw/camera_info") {
+        camera_calibration_info.header.frame_id = pub_info->frame_id2;
+      }
       pub_info->info_pub_->publish(camera_calibration_info);
     }
 
     pub_info->image_pub_->publish(std::move(img));
+    // RCLCPP_WARN(this->get_logger(), "=>image_pub_ topic name: %s", pub_info->image_pub_->get_topic_name());
   }
 }
 
