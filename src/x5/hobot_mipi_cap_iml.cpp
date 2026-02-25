@@ -18,6 +18,8 @@
 #include "sensor_msgs/distortion_models.hpp"
 #include "opencv2/opencv.hpp"
 
+#include "hobot_mipi_calibration.hpp"
+
 #include <string>
 #include <fstream>
 #include <iostream>
@@ -56,6 +58,7 @@
 			return (ret);\
 		}\
 	} while(0)\
+
 
 namespace mipi_cam {
 
@@ -166,6 +169,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ERR_CON_EQ(ret, 0);
 	gdc_bin_buf_.clear();
 	vp_sensor_config_t *sensor_cof = &pipe_contex[1].sensor_config;
+
 	if ((cap_info_.stream_mode_ == 1) && (cap_info_.rotation_ != 0)) {
 		vp_sensor_config_t *sensor_conf = &pipe_contex[1].sensor_config;
 		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
@@ -175,13 +179,21 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 			pipe_contex[1].gdc_bin_r = gdc_bin;
 		}
 	}
-	if (cam_info_.size() != 2) {
-		if (!getDualCamCalibrationFromEeprom()) {
-			if(strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0) {
-				getDualCamCalibrationFromEeprom_230ai();
-			}
+	mipi_calibration& calibration_instance = mipi_calibration::GetInstance();
+  if (cam_info_.size() != 2) {
+		auto cal_params = mipi_calibration::GetInstance().getCalibrationParams();
+		if (cal_params.size() >= 1) {
+			cam_info_ = cal_params[0].cam_info_;
+			cap_info_.cal_rotation_ = cal_params[0].cal_rotation_;
+			eeprom_name_ = cal_params[0].eeprom_name_;
+			imu_info_ = cal_params[0].imu_info_;
+			awb_otp_data_ = cal_params[0].awb_otp_data_;
 		}
 	}
+	if((cam_info_.size() != 2) && (strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0)) {
+		calibration_instance.getDualCamCalibrationFromEeprom_230ai(cam_info_);
+	}
+
 	if (cap_info_.gdc_enable_) {
 		std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin;
 		if (cap_info_.stream_mode_ == 1) {
@@ -221,6 +233,10 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		}	
 	}
 
+	if (awb_otp_data_.size() == 2) {
+		pipe_contex[0].awb_otp_data = awb_otp_data_[0];
+		pipe_contex[1].awb_otp_data = awb_otp_data_[1];
+	}
 	ret = create_and_run_vflow(&pipe_contex[1]);
 	ERR_CON_EQ(ret, 0);
 	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index]);
@@ -1237,6 +1253,9 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	// 创建pipeline中的每个node
 	ret = creat_camera_node(pipe_contex->sensor_config.camera_config, &pipe_contex->cam_fd);
 	ERR_CON_EQ(ret, 0);
+	//调用AWB OTP配置函数
+	ret = config_awb_otp(pipe_contex);
+	ERR_CON_EQ(ret, 0);
 	ret = creat_vin_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
 	ret = creat_isp_node(pipe_contex);
@@ -1398,6 +1417,108 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	//  ERR_CON_EQ(ret, 0);
 	//}
 	return 0;
+}
+
+// 封装AWB OTP配置函数（HBN接口方式）
+int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
+	if (pipe_contex->cam_fd < 0) {
+		//RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Invalid cam_fd: %ld for AWB OTP config", cam_fd);
+        return -1;
+	}
+
+	if (!pipe_contex->awb_otp_data) {
+		return 0;
+	}
+
+	//初始化AWB OTP配置结构体
+	sensor_otp_t pdata = {0};
+	pdata.otp_awb_enable = 1;          // 启用AWB OTP配置
+    pdata.awb_ct_num = 3;              // AWB色温配置数量
+    pdata.awb_golden_ct_num = 3;       // AWB黄金色温配置数量
+
+    // 配置3100K色温参数
+    pdata.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K; 
+    pdata.awb_data[0].r =   0;        //pipe_contex->awb_otp_data.awb_data[0].r;
+    pdata.awb_data[0].gr =  0;           //pipe_contex->awb_otp_data.awb_data[0].gr;
+    pdata.awb_data[0].gb =  0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
+    pdata.awb_data[0].b =  0;                    //pipe_contex->awb_otp_data.awb_data[0].b;
+    pdata.awb_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_data[0].rg_ratio;
+    pdata.awb_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_data[0].bg_ratio;
+
+    pdata.awb_golden_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
+    pdata.awb_golden_data[0].r = 0;
+    pdata.awb_golden_data[0].gr = 0;
+    pdata.awb_golden_data[0].gb = 0;
+    pdata.awb_golden_data[0].b = 0;
+    pdata.awb_golden_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[0].rg_ratio;
+    pdata.awb_golden_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[0].bg_ratio;
+
+    // 配置4000K色温参数
+    pdata.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+    pdata.awb_data[1].r =    0;             //pipe_contex->awb_otp_data.awb_data[0].r;
+    pdata.awb_data[1].gr =     0;         //pipe_contex->awb_otp_data.awb_data[0].gr;
+    pdata.awb_data[1].gb =   0;                //pipe_contex->awb_otp_data.awb_data[0].gb;
+    pdata.awb_data[1].b =   0;               //pipe_contex->awb_otp_data.awb_data[0].b;
+    pdata.awb_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_data[1].rg_ratio;
+    pdata.awb_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_data[1].bg_ratio;
+
+    pdata.awb_golden_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+    pdata.awb_golden_data[1].r = 0;
+    pdata.awb_golden_data[1].gr = 0;
+    pdata.awb_golden_data[1].gb = 0;
+    pdata.awb_golden_data[1].b = 0;
+    pdata.awb_golden_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[1].rg_ratio;
+    pdata.awb_golden_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[1].bg_ratio;
+
+    // 配置5800K色温参数
+    pdata.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+    pdata.awb_data[2].r =      0;            //pipe_contex->awb_otp_data.awb_data[0].r;
+    pdata.awb_data[2].gr =   0;                   //pipe_contex->awb_otp_data.awb_data[0].gr;
+    pdata.awb_data[2].gb =   0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
+    pdata.awb_data[2].b =    0;                  //pipe_contex->awb_otp_data.awb_data[0].b;
+    pdata.awb_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_data[2].rg_ratio;
+    pdata.awb_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_data[2].bg_ratio;
+
+    pdata.awb_golden_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+    pdata.awb_golden_data[2].r = 0;
+    pdata.awb_golden_data[2].gr = 0;
+    pdata.awb_golden_data[2].gb = 0;
+    pdata.awb_golden_data[2].b = 0;
+    pdata.awb_golden_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[2].rg_ratio;
+    pdata.awb_golden_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[2].bg_ratio;
+
+    // 打印日志+调用HBN接口启用AWB OTP
+	//printf("awb otp enable\n");
+    //RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "AWB OTP config enable, cam_fd: %ld", pipe_contex->cam_fd);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ================== all awb otp data ==================");
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[0].rg_ratio: %ld", pdata.awb_golden_data[0].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[0].bg_ratio: %ld",  pdata.awb_golden_data[0].bg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[1].rg_ratio: %ld",  pdata.awb_golden_data[1].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[1].bg_ratio: %ld",  pdata.awb_golden_data[1].bg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[2].rg_ratio: %ld",  pdata.awb_golden_data[2].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[2].bg_ratio: %ld",  pdata.awb_golden_data[2].bg_ratio);
+
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].rg_ratio: %ld", pipe_contex->awb_otp_data->awb_data[0].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[0].bg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].bg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].bg_ratio);
+
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pipe_contex->awb_otp_data->awb_data[0].r);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pipe_contex->awb_otp_data->awb_data[0].gr);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pipe_contex->awb_otp_data->awb_data[0].gb);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pipe_contex->awb_otp_data->awb_data[0].b);
+
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pdata.awb_data[0].r);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pdata.awb_data[0].gr);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pdata.awb_data[0].gb);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pdata.awb_data[0].b);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ================== all awb otp data ==================");
+
+    int32_t ret = hbn_camera_enable_otp(pipe_contex->cam_fd, &pdata);                    ////cam_fd由hbn_camera_create创建
+	ERR_CON_EQ(ret, 0);
+    return 0;
 }
 
 void HobotMipiCapIml::listMipiHost(std::vector<int> &mipi_hosts, 
@@ -1761,11 +1882,25 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 		<< "\n===================="
 	);
 
-	double alpha = 0.0;
-	if (cal_alpha <= 1.0) {
-		alpha = cal_alpha;
+	double target_hfov = 0.0; // 目标FOV（可从配置/外部输入）
+	double actual_hfov_l, actual_hfov_r;
+	// 调用核心函数计算alpha
+	double alpha = computeStereoAlphaFromFOV(
+    target_hfov,
+    Kl, Dl, Kr, Dr, R_rl, t_rl,
+    in_gdc_width, in_gdc_height,
+    out_gdc_width, out_gdc_height,
+    cam_info[0].distortion_model,
+    actual_hfov_l, actual_hfov_r);
+	//double alpha = 0.0;
+	if (alpha <= 0) {
+		alpha = 0;
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "Use default alpha=0.0 (target FOV invalid)");
+	} else {
+		// RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+        // 	"Auto compute alpha: %f\n , Left actual FOV: %f\n, Right actual FOV: %f\n ", alpha, actual_hfov_l, actual_hfov_r);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Auto compute alpha: %f", alpha);
 	}
-
 	// TODO: Set alpha from config
 	// cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0.391 ,cv::Size(out_gdc_width, out_gdc_height));
 	if (cam_info[0].distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
@@ -2188,6 +2323,160 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	);
 
 	return gdc_bin_buf;
+}
+
+std::pair<double, double> HobotMipiCapIml::calculatePinholeFOV(const cv::Mat& K_rect, int width, int hight) {
+	if (K_rect.type() != CV_64F || K_rect.rows != 3 || K_rect.cols != 3) {
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Invalid Camera matrix!");
+		return {0.0, 0.0};
+	}
+	double fx = K_rect.at<double>(0, 0);
+	double fy = K_rect.at<double>(1, 1);
+	double h_fov = 2 * atan2(static_cast<double>(width)/2, fx) * 180.0 / CV_PI;
+	double v_fov = 2 * atan2(static_cast<double>(hight)/2, fy) * 180.0 / CV_PI;
+	return {h_fov, v_fov};
+}
+
+std::pair<double, double> HobotMipiCapIml::calculateFisheyeFOV(const cv::Mat& K_rect, int width, int hight) {
+	return calculatePinholeFOV(K_rect, width, hight);
+}
+
+double HobotMipiCapIml::computeInitAlpha(double target_hfov, double fov_min, double fov_max) {
+	if (target_hfov <= fov_min - 1e-3) return 0.0;
+    if (target_hfov >= fov_max + 1e-3) return 1.0;
+    return (target_hfov - fov_min) / (fov_max - fov_min);
+}
+
+double HobotMipiCapIml::computeStereoAlphaFromFOV(
+    double target_hfov,
+    const cv::Mat& Kl, const cv::Mat& Dl,
+    const cv::Mat& Kr, const cv::Mat& Dr,
+    const cv::Mat& R_rl, const cv::Mat& t_rl,
+    int in_gdc_width, int in_gdc_height,
+    int out_gdc_width, int out_gdc_height,
+    const std::string& distortion_model,
+    double& actual_hfov_l, double& actual_hfov_r) {
+
+	// ------------ 步骤1：计算alpha=0时的双目FOV（FOV_min） ------------
+    cv::Mat Rl0, Rr0, Pl0, Pr0, Q0;
+    if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
+        cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                                   R_rl, t_rl, Rl0, Rr0, Pl0, Pr0, Q0,
+                                   cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), 0.0);
+    } else {
+        cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                          R_rl, t_rl, Rl0, Rr0, Pl0, Pr0, Q0,
+                          cv::CALIB_ZERO_DISPARITY, 0.0, cv::Size(out_gdc_width, out_gdc_height));
+    }
+    // 提取校正后内参（投影矩阵Pl/Pr的前3x3）
+    cv::Mat K_l0 = Pl0(cv::Rect(0,0,3,3)).clone();
+    cv::Mat K_r0 = Pr0(cv::Rect(0,0,3,3)).clone();
+    // 计算alpha=0时的FOV
+    auto [fov_l0, _] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) 
+                        ? calculateFisheyeFOV(K_l0, out_gdc_width, out_gdc_height)
+                        : calculatePinholeFOV(K_l0, out_gdc_width, out_gdc_height);
+    auto [fov_r0, __] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                        ? calculateFisheyeFOV(K_r0, out_gdc_width, out_gdc_height)
+                        : calculatePinholeFOV(K_r0, out_gdc_width, out_gdc_height);
+
+	// ------------ 步骤2：计算alpha=1时的双目FOV（FOV_max） ------------
+    cv::Mat Rl1, Rr1, Pl1, Pr1, Q1;
+    if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
+        cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                                   R_rl, t_rl, Rl1, Rr1, Pl1, Pr1, Q1,
+                                   cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), 1.0);
+    } else {
+        cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                          R_rl, t_rl, Rl1, Rr1, Pl1, Pr1, Q1,
+                          cv::CALIB_ZERO_DISPARITY, 1.0, cv::Size(out_gdc_width, out_gdc_height));
+    }
+    cv::Mat K_l1 = Pl1(cv::Rect(0,0,3,3)).clone();
+    cv::Mat K_r1 = Pr1(cv::Rect(0,0,3,3)).clone();
+    auto [fov_l1, ___] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                        ? calculateFisheyeFOV(K_l1, out_gdc_width, out_gdc_height)
+                        : calculatePinholeFOV(K_l1, out_gdc_width, out_gdc_height);
+    auto [fov_r1, ____] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                        ? calculateFisheyeFOV(K_r1, out_gdc_width, out_gdc_height)
+                        : calculatePinholeFOV(K_r1, out_gdc_width, out_gdc_height);
+
+	// ------------ 步骤3：确定双目FOV的有效交集 ------------
+    double fov_min = std::max(fov_l0, fov_r0); // 双目最小FOV（取较大值）
+    double fov_max = std::min(fov_l1, fov_r1); // 双目最大FOV（取较小值）
+    if (target_hfov < fov_min - 1e-3 || target_hfov > fov_max + 1e-3) {
+        RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+            "Target FOV %.2f° out of valid range [%.2f°, %.2f°]",
+            target_hfov, fov_min, fov_max);
+        actual_hfov_l = actual_hfov_r = 0.0;
+        return -1.0;
+    }
+
+	// ------------ 步骤4：迭代微调alpha（保证FOV精度） ------------
+    const double eps = 3.0; // FOV允许误差（°）
+    const int max_iter = 10; // 最大迭代次数
+    double alpha = computeInitAlpha(target_hfov, fov_min, fov_max);
+    double left_alpha = 0.0, right_alpha = 1.0;
+    int iter = 0;
+
+    while (iter < max_iter) {
+        // 用当前alpha计算校正后FOV
+        cv::Mat Rl, Rr, Pl, Pr, Q;
+        if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
+            cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                                       R_rl, t_rl, Rl, Rr, Pl, Pr, Q,
+                                       cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), alpha);
+        } else {
+            cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                              R_rl, t_rl, Rl, Rr, Pl, Pr, Q,
+                              cv::CALIB_ZERO_DISPARITY, alpha, cv::Size(out_gdc_width, out_gdc_height));
+        }
+        cv::Mat K_l = Pl(cv::Rect(0,0,3,3)).clone();
+        cv::Mat K_r = Pr(cv::Rect(0,0,3,3)).clone();
+        auto [hfov_l, _] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                            ? calculateFisheyeFOV(K_l, out_gdc_width, out_gdc_height)
+                            : calculatePinholeFOV(K_l, out_gdc_width, out_gdc_height);
+        auto [hfov_r, __] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                            ? calculateFisheyeFOV(K_r, out_gdc_width, out_gdc_height)
+                            : calculatePinholeFOV(K_r, out_gdc_width, out_gdc_height);
+        
+        // 验证双目FOV是否接近目标
+        double avg_hfov = (hfov_l + hfov_r) / 2;
+        if (fabs(avg_hfov - target_hfov) < eps) {
+            actual_hfov_l = hfov_l;
+            actual_hfov_r = hfov_r;
+            return alpha;
+        }
+
+        // 二分法调整alpha
+        if (avg_hfov < target_hfov) {
+            left_alpha = alpha;
+        } else {
+            right_alpha = alpha;
+        }
+        alpha = (left_alpha + right_alpha) / 2;
+        iter++;
+    }
+
+	// ------------ 步骤5：返回最终alpha并输出实际FOV ------------
+    cv::Mat Rl_final, Rr_final, Pl_final, Pr_final, Q_final;
+    if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
+        cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                                   R_rl, t_rl, Rl_final, Rr_final, Pl_final, Pr_final, Q_final,
+                                   cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), alpha);
+    } else {
+        cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                          R_rl, t_rl, Rl_final, Rr_final, Pl_final, Pr_final, Q_final,
+                          cv::CALIB_ZERO_DISPARITY, alpha, cv::Size(out_gdc_width, out_gdc_height));
+    }
+    cv::Mat K_l_final = Pl_final(cv::Rect(0,0,3,3)).clone();
+    cv::Mat K_r_final = Pr_final(cv::Rect(0,0,3,3)).clone();
+    actual_hfov_l = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                    ? calculateFisheyeFOV(K_l_final, out_gdc_width, out_gdc_height).first
+                    : calculatePinholeFOV(K_l_final, out_gdc_width, out_gdc_height).first;
+    actual_hfov_r = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+                    ? calculateFisheyeFOV(K_r_final, out_gdc_width, out_gdc_height).first
+                    : calculatePinholeFOV(K_r_final, out_gdc_width, out_gdc_height).first;
+
+    return alpha;										
 }
 
 std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int in_width, int in_height,int out_width, int out_height,
@@ -2638,1157 +2927,6 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin_json(std::string file
 	gdc_bin_ptr->bin_buf = bin_buf;
 	gdc_bin_ptr->bin_buf_size = bin_buf_size;
 	return gdc_bin_ptr;
-}
-
-bool HobotMipiCapIml::readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize) {
-	int32_t ret;
-	struct i2c_rdwr_ioctl_data data;
-	uint8_t sendbuf[32] = {0};
-	uint8_t readbuf[32] = {0};
-	struct i2c_msg msgs[I2C_RDRW_IOCTL_MAX_MSGS] = {0};
-	char filename[20];
-	int file;
-
-	// Open the I2C bus
-	snprintf(filename, sizeof(filename), "/dev/i2c-%d", bus);
-	file = open(filename, O_RDWR);
-	if (file < 0) {
-		//std::cout << "Failed to open the I2C bus " << bus << std::endl;
-		//perror("open the I2C bus");
-		return false;
-	}
-
-	sendbuf[0] = (uint8_t)((reg_addr >> 8u) & 0xffu);
-	sendbuf[1] = (uint8_t)(reg_addr & 0xffu);
-
-	data.msgs = msgs; /*PRQA S 5118*/
-	data.nmsgs = 2;
-
-	data.msgs[0].len = 2;
-	data.msgs[0].addr = i2c_addr;
-	data.msgs[0].flags = 0;
-	data.msgs[0].buf = sendbuf;
-
-	data.msgs[1].len = bufsize;
-	data.msgs[1].addr = i2c_addr;
-	data.msgs[1].flags = I2C_M_RD;
-	data.msgs[1].buf = (uint8_t*)buf;
-
-	ret = ioctl(file, I2C_RDWR, (uint64_t)&data);
-	if (ret < 0) {
-		// perror("Failed to read from the I2C bus");
-		//*value = 0;
-		close(file);
-		return false;
-	}
-
-	//*value = (uint16_t)((readbuf[0] << 8) | readbuf[1]);
-
-	// Close the I2C bus
-	close(file);
-
-	return true;
-}
-
-
-int HobotMipiCapIml::detectEeprom_lianhe(std::string &device, int &i2c_bus, uint16_t &i2c_addr) {
-
-  // mipi sensor的信息数组
-  EEPROM_ID_T eeprom_id_list[] = {
-    {1, 0x50, I2C_ADDR_16, 0x21, 0x01, "P24C64G-C4H-MIR"},  // P24C64G-C4H-MIR
-  };
-  std::vector<int> i2c_buss= {0,1,2,3,4,5,6,7,8,9,10};
-
-  char buf[512];
-  std::vector<char> buf_type;
-  buf_type.resize(0x1f);
-  char check_0;
-  char checksum;
-  std::string chip_type;
-
-  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"==========detectEeprom lianhe start==========\n");
-
-  for (auto num : i2c_buss) {
-    for (auto eeprom_id : eeprom_id_list) {
-      if (readEeprom16(num, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 1)) {
-		readEeprom16(num, eeprom_id.i2c_dev_addr, 0x0000, &check_0, 1);
-		readEeprom16(num, eeprom_id.i2c_dev_addr, 0x0001, buf_type.data(), 0x1f);
-		readEeprom16(num, eeprom_id.i2c_dev_addr, 0x0020, &checksum, 1);
-		chip_type = buf_type.data();
-		int sum = 0;
-		std::for_each(buf_type.begin(), buf_type.end(), [&sum](char c) {
-			sum += static_cast<int>(c);
-		});
-
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"eeprom infomation:" \
-			"\n ----------------" \
-			"\n bus: %d" \
-			"\n check_0: %s" \
-			"\n chip_type: %s" \
-			"\n checksum: %s" \
-			"\n sum: %s" \
-			"\n ----------------",
-			num,
-			std::to_string(check_0).c_str(),
-			chip_type.c_str(),
-			std::to_string(checksum).c_str(),
-			std::to_string(sum%255).c_str()
-		);
-		if (buf[0] == eeprom_id.check_value) {
-			i2c_bus = num;
-			i2c_addr = eeprom_id.i2c_dev_addr;
-			device = eeprom_id.device_name;
-			return 0;
-		} else {
-			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"eeprom check failure bus: %d, addr: %d, device_name: %s", num, eeprom_id.i2c_dev_addr, eeprom_id.device_name);
-		}
-      }
-    }
-  }
-  return -1;
-}
-
-int HobotMipiCapIml::detectEeprom_drobot(std::string &device, int &i2c_bus, uint16_t &i2c_addr) {
-
-  // mipi sensor的信息数组
-  EEPROM_DETECT_T eeprom_detect_list[] = {
-    {1, 0x50, I2C_ADDR_16, 0x00, "SZYGSJKJ", "yuguang"},  // P24C64G-C4H-MIR
-	{1, 0x50, I2C_ADDR_16, 0x00, "UNION", "union"},  // P24C64G-C4H-MIR
-	{1, 0x50, I2C_ADDR_16, 0x00, "SZ_ABHAM", "sz_abham"},  // P24C64G-C4H-MIR
-  };
-  std::vector<int> i2c_buss= {0,1,2,3,4,5,6,7,8,9,10};
-
-  char buf[9] = {0};
-  std::vector<char> buf_type;
-  buf_type.resize(0x1f);
-  char check_0;
-  char checksum;
-  std::string chip_type;
-  
-  for (auto num : i2c_buss) {
-    for (auto eeprom_id : eeprom_detect_list) {
-      if (readEeprom16(num, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 8)) {
-		std::string buf_str = buf;
-		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),"i2c bus: %d, EEPROM FLAG: %s\n", num, buf_str.c_str());
-		if (eeprom_id.check_str == buf_str) {
-			i2c_bus = num;
-			i2c_addr = eeprom_id.i2c_dev_addr;
-			device = eeprom_id.device_name;
-			return 0;
-		}
-      }
-    }
-  }
-  return -1;
-}
-
-
-bool HobotMipiCapIml::getDualCamCalibrationFromEeprom() {
-  int i2c_bus;
-  uint16_t i2c_addr;
-  std::string device;
-  std::vector<char> i2c_buf;
-  i2c_buf.resize(sizeof(CalDualCamInfo_ST));
-  char chech_value;
-  if (detectEeprom_drobot(device, i2c_bus, i2c_addr) == -1) {
-	return false;
-  }
-  eeprom_name_ = device;
-  if (device == "yuguang") {
-	getDualCamCalibration_yugang(i2c_bus, i2c_addr);
-  } else if (device == "union") {
-	getDualCamCalibration_union(i2c_bus, i2c_addr);
-  } else if (device == "sz_abham") {
-	getDualCamCalibration_abham(i2c_bus, i2c_addr);
-  } 
-  return true;
-}
-
-bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) {
-  std::string device;
-  std::vector<char> head_buf;
-  head_buf.resize(sizeof(EepromDrobotHead_ST));
-  char chech_value;
-  if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(), sizeof(EepromDrobotHead_ST)) == false) {
-	return false;
-  }
-  int chech_index = sizeof(EepromDrobotHead_ST) - 1;
-  chech_value = head_buf[chech_index];
-  head_buf[chech_index] = 0;
-  int sum = 0;
-  
-  std::for_each(head_buf.begin(), head_buf.end(), [&sum](char c) {
-	sum += static_cast<int>(c);
-  });
-  if (((sum % 255) + 1) == chech_value) {
-	EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
-
-	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
-		"\n ----------------" \
-		"\n bus: %d" \
-		"\n flag: %s" \
-		"\n camType: %d" \
-		"\n cal_tpye: %d" \
-		"\n ver_main: %d" \
-		"\n ver_min: %d" \
-		"\n angle: %d" \
-		"\n d_num: %d" \
-		"\n ----------------",
-		i2c_bus,
-		head_buf_ptr->flag,
-		head_buf_ptr->camType,
-		head_buf_ptr->cal_tpye,
-		head_buf_ptr->ver_main,
-		head_buf_ptr->ver_min,
-		head_buf_ptr->angle,
-		head_buf_ptr->d_num
-	);
-
-	if (head_buf_ptr->angle == 0x00) {
-		cap_info_.cal_rotation_ = 0.0;
-	} else if (head_buf_ptr->angle == 0x01) {
-		cap_info_.cal_rotation_ = 90.0;
-	} else if (head_buf_ptr->angle == 0x02) {
-		cap_info_.cal_rotation_ = 180.0;
-	} else if (head_buf_ptr->angle == 0x03) {
-		cap_info_.cal_rotation_ = 270.0;
-	}
-
-
-
-	if (head_buf_ptr->camType == 0x01) {
-		cam_info_.resize(2);
-		if (head_buf_ptr->cal_tpye == 0x01) {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
-		} else {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
-		} 
-		CalDualMDInfo_ST m_d_info_l, m_d_info_r;
-		CalDualRTInfo_ST r_t_info;
-		if (readEeprom16(i2c_bus, i2c_addr, 0x0010, (char*)&m_d_info_l, sizeof(CalDualMDInfo_ST)) == false) {
-			return false;
-		}
-		if (readEeprom16(i2c_bus, i2c_addr, 0x0048, (char*)&m_d_info_r, sizeof(CalDualMDInfo_ST)) == false) {
-			return false;
-		}
-		if (readEeprom16(i2c_bus, i2c_addr, 0x008C, (char*)&r_t_info, sizeof(CalDualRTInfo_ST)) == false) {
-			return false;
-		}
-		
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_l======" \
-			"\n ----------------" \
-			"\n width: %d" \
-			"\n height: %d" \
-			"\n fx: %f" \
-			"\n fx: %f" \
-			"\n fy: %f" \
-			"\n cy: %f" \
-			"\n ----------------",
-			m_d_info_l.width,
-			m_d_info_l.height,
-			m_d_info_l.fx,
-			m_d_info_l.fx,
-			m_d_info_l.fy,
-			m_d_info_l.cy
-		);
-
-		// printf("k1:%f\n",m_d_info_l.k1);
-		// printf("k2:%f\n",m_d_info_l.k2);
-		// printf("p1:%f\n",m_d_info_l.p1);
-		// printf("p2:%f\n",m_d_info_l.p2);
-		// printf("k3:%f\n",m_d_info_l.k3);
-		// printf("k4:%f\n",m_d_info_l.k4);
-		// printf("k5:%f\n",m_d_info_l.k5);
-		// printf("k6:%f\n",m_d_info_l.k6);
-
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_r======" \
-			"\n ----------------" \
-			"\n width: %d" \
-			"\n height: %d" \
-			"\n fx: %f" \
-			"\n fx: %f" \
-			"\n fy: %f" \
-			"\n cy: %f" \
-			"\n ----------------",
-			m_d_info_r.width,
-			m_d_info_r.height,
-			m_d_info_r.fx,
-			m_d_info_r.fx,
-			m_d_info_r.fy,
-			m_d_info_r.cy
-		);
-
-		// printf("k1:%f\n",m_d_info_r.k1);
-		// printf("k2:%f\n",m_d_info_r.k2);
-		// printf("p1:%f\n",m_d_info_r.p1);
-		// printf("p2:%f\n",m_d_info_r.p2);
-		// printf("k3:%f\n",m_d_info_r.k3);
-		// printf("k4:%f\n",m_d_info_r.k4);
-		// printf("k5:%f\n",m_d_info_r.k5);
-		// printf("k6:%f\n",m_d_info_r.k6);
-
-
-
-
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====r_t_info======" \
-			"\n ----------------" \
-			"\n r11: %f" \
-			"\n r12: %f" \
-			"\n r13: %f" \
-			"\n r21: %f" \
-			"\n r22: %f" \
-			"\n r23: %f" \
-			"\n r31: %f" \
-			"\n r32: %f" \
-			"\n r33: %f" \
-			"\n tx: %f" \
-			"\n ty: %f" \
-			"\n tz: %f" \
-			"\n ----------------",
-			r_t_info.r11,
-			r_t_info.r12,
-			r_t_info.r13,
-			r_t_info.r21,
-			r_t_info.r22,
-			r_t_info.r23,
-			r_t_info.r31,
-			r_t_info.r32,
-			r_t_info.r33,
-			r_t_info.tx,
-			r_t_info.ty,
-			r_t_info.tz
-		);
-
-		cam_info_[0].width = m_d_info_l.width;
-		cam_info_[0].height = m_d_info_l.height;
-		cam_info_[1].width = m_d_info_r.width;
-		cam_info_[1].height = m_d_info_r.height;
-
-		cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
-		l_k.at<double>(0,0) = m_d_info_l.fx;
-		l_k.at<double>(0,2) = m_d_info_l.cx;
-		l_k.at<double>(1,1) = m_d_info_l.fy;
-		l_k.at<double>(1,2) = m_d_info_l.cy;
-		l_k.at<double>(2,2) = 1;
-		std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
-		
-		int d_num = 8;
-		if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
-			d_num = head_buf_ptr->d_num;
-		}
-		cam_info_[0].d.resize(d_num);
-		for (int i = 0; i < d_num; i++) {
-			cam_info_[0].d[i] = m_d_info_l.d[i];
-		}
-		// cam_info_[0].d[0] = m_d_info_l.k1;
-		// cam_info_[0].d[1] = m_d_info_l.k2;
-		// cam_info_[0].d[2] = m_d_info_l.p1;
-		// cam_info_[0].d[3] = m_d_info_l.p2;
-		// cam_info_[0].d[4] = m_d_info_l.k3;
-		// cam_info_[0].d[5] = m_d_info_l.k4;
-		// cam_info_[0].d[6] = m_d_info_l.k5;
-		// cam_info_[0].d[7] = m_d_info_l.k6;
-
-		cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
-		std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
-
-		cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
-		cv::Mat l_p = l_k * l_p_eye;
-		std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
-
-
-
-		cv::Mat r_k= cv::Mat::zeros(3,3,CV_64F);
-		r_k.at<double>(0,0) = m_d_info_r.fx;
-		r_k.at<double>(0,2) = m_d_info_r.cx;
-		r_k.at<double>(1,1) = m_d_info_r.fy;
-		r_k.at<double>(1,2) = m_d_info_r.cy;
-		r_k.at<double>(2,2) = 1;
-		std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
-
-		// cam_info_[1].d.resize(8);
-		// cam_info_[1].d[0] = m_d_info_r.k1;
-		// cam_info_[1].d[1] = m_d_info_r.k2;
-		// cam_info_[1].d[2] = m_d_info_r.p1;
-		// cam_info_[1].d[3] = m_d_info_r.p2;
-		// cam_info_[1].d[4] = m_d_info_r.k3;
-		// cam_info_[1].d[5] = m_d_info_r.k4;
-		// cam_info_[1].d[6] = m_d_info_r.k5;
-		// cam_info_[1].d[7] = m_d_info_r.k6;
-
-		cam_info_[1].d.resize(d_num);
-		for (int i = 0; i < d_num; i++) {
-			cam_info_[1].d[i] = m_d_info_r.d[i];
-		}
-
-		cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
-		R.at<double>(0,0) = r_t_info.r11;
-		R.at<double>(0,1) = r_t_info.r12;
-		R.at<double>(0,2) = r_t_info.r13;
-		R.at<double>(1,0) = r_t_info.r21;
-		R.at<double>(1,1) = r_t_info.r22;
-		R.at<double>(1,2) = r_t_info.r23;
-		R.at<double>(2,0) = r_t_info.r31;
-		R.at<double>(2,1) = r_t_info.r32;
-		R.at<double>(2,2) = r_t_info.r33;
-
-		cv::Mat T = cv::Mat::zeros(3, 1, CV_64F);
-		T.at<double>(0,0) = r_t_info.tx;
-		T.at<double>(0,1) = r_t_info.ty;
-		T.at<double>(0,2) = r_t_info.tz;
-
-		cv::Mat RT;
-		cv::hconcat(R, T, RT);
-		cv::Mat P = r_k * RT;
-		std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
-		std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
-		return true;
-	}
-
-  }
-  return false;
-}
-
-bool HobotMipiCapIml::getDualCamCalibration_union(int i2c_bus, uint16_t i2c_addr) {
-	std::string device;
-	std::vector<char> head_buf;
-	head_buf.resize(sizeof(EepromDrobotHead_ST));
-	char check_value;
-	if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(), sizeof(EepromDrobotHead_ST)) == false) {
-	  return false;
-	}
-	int chech_index = sizeof(EepromDrobotHead_ST) - 1;
-	check_value = head_buf[chech_index];
-	head_buf[chech_index] = 0;
-	int sum = 0;
-	
-	std::for_each(head_buf.begin(), head_buf.end(), [&sum](char c) {
-	  sum += static_cast<int>(c);
-	});
-	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"sum % 255 + 1 : %x, check_value : %x", sum % 255 + 1, check_value);
-	if (((sum % 255) + 1) == check_value) {
-	  EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
-  
-	  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
-		  "\n ----------------" \
-		  "\n bus: %d" \
-		  "\n flag: %s" \
-		  "\n camType: %d" \
-		  "\n cal_tpye: %d" \
-		  "\n ver_main: %d" \
-		  "\n ver_min: %d" \
-		  "\n angle: %d" \
-		  "\n d_num: %d" \
-		  "\n ----------------",
-		  i2c_bus,
-		  head_buf_ptr->flag,
-		  head_buf_ptr->camType,
-		  head_buf_ptr->cal_tpye,
-		  head_buf_ptr->ver_main,
-		  head_buf_ptr->ver_min,
-		  head_buf_ptr->angle,
-		  head_buf_ptr->d_num
-	  );
-  
-	  if (head_buf_ptr->angle == 0x00) {
-		  cap_info_.cal_rotation_ = 0.0;
-	  } else if (head_buf_ptr->angle == 0x01) {
-		  cap_info_.cal_rotation_ = 90.0;
-	  } else if (head_buf_ptr->angle == 0x02) {
-		  cap_info_.cal_rotation_ = 180.0;
-	  } else if (head_buf_ptr->angle == 0x03) {
-		  cap_info_.cal_rotation_ = 270.0;
-	  }
-  
-	  if ((head_buf_ptr->camType == 0x01) || (head_buf_ptr->camType == 0x11)) {
-		  cam_info_.resize(2);
-		  if (head_buf_ptr->cal_tpye == 0x01) {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
-		  } else {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
-		  } 
-		  CalDualMDInfo_d_ST m_d_info_l, m_d_info_r;
-		  CalDualRTInfo_d_ST r_t_info;
-		  CalDualWHInfo_d_ST w_h_info,w_h_info_tmp;
-		  if (readEeprom16(i2c_bus, i2c_addr, 0x0010, (char*)&w_h_info, sizeof(CalDualWHInfo_d_ST)) == false) {
-			return false;
-		  }
-		  if (readEeprom16(i2c_bus, i2c_addr, 0x0018, (char*)&m_d_info_l, sizeof(CalDualMDInfo_d_ST)) == false) {
-			  return false;
-		  }
-		  if (readEeprom16(i2c_bus, i2c_addr, 0x0081, (char*)&m_d_info_r, sizeof(CalDualMDInfo_d_ST)) == false) {
-			  return false;
-		  }
-		  if (readEeprom16(i2c_bus, i2c_addr, 0x00EA, (char*)&r_t_info, sizeof(CalDualRTInfo_d_ST)) == false) {
-			  return false;
-		  }
-
-		  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====w_h_info======" \
-			"\n ----------------" \
-			"\n width: %d" \
-			"\n height: %d" \
-			"\n ----------------",
-			w_h_info.width,
-			w_h_info.height
-		  );
-
-		  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_l======" \
-			  "\n ----------------" \
-			  "\n fx: %lf" \
-			  "\n fy: %lf" \
-			  "\n cx: %lf" \
-			  "\n cy: %lf" \
-			  "\n ----------------",
-			  m_d_info_l.fx,
-			  m_d_info_l.fy,
-			  m_d_info_l.cx,
-			  m_d_info_l.cy
-		  );
-  
-		  // printf("k1:%f\n",m_d_info_l.k1);
-		  // printf("k2:%f\n",m_d_info_l.k2);
-		  // printf("p1:%f\n",m_d_info_l.p1);
-		  // printf("p2:%f\n",m_d_info_l.p2);
-		  // printf("k3:%f\n",m_d_info_l.k3);
-		  // printf("k4:%f\n",m_d_info_l.k4);
-		  // printf("k5:%f\n",m_d_info_l.k5);
-		  // printf("k6:%f\n",m_d_info_l.k6);
-  
-		  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_r======" \
-			  "\n ----------------" \
-			  "\n fx: %lf" \
-			  "\n fy: %lf" \
-			  "\n cx: %lf" \
-			  "\n cy: %lf" \
-			  "\n ----------------",
-			  m_d_info_r.fx,
-			  m_d_info_r.fy,
-			  m_d_info_r.cx,
-			  m_d_info_r.cy
-		  );
-  
-		  // printf("k1:%f\n",m_d_info_r.k1);
-		  // printf("k2:%f\n",m_d_info_r.k2);
-		  // printf("p1:%f\n",m_d_info_r.p1);
-		  // printf("p2:%f\n",m_d_info_r.p2);
-		  // printf("k3:%f\n",m_d_info_r.k3);
-		  // printf("k4:%f\n",m_d_info_r.k4);
-		  // printf("k5:%f\n",m_d_info_r.k5);
-		  // printf("k6:%f\n",m_d_info_r.k6);
-  
-  
-  
-  
-		  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====r_t_info======" \
-			  "\n ----------------" \
-			  "\n r11: %lf" \
-			  "\n r12: %lf" \
-			  "\n r13: %lf" \
-			  "\n r21: %lf" \
-			  "\n r22: %lf" \
-			  "\n r23: %lf" \
-			  "\n r31: %lf" \
-			  "\n r32: %lf" \
-			  "\n r33: %lf" \
-			  "\n tx: %lf" \
-			  "\n ty: %lf" \
-			  "\n tz: %lf" \
-			  "\n ----------------",
-			  r_t_info.r11,
-			  r_t_info.r12,
-			  r_t_info.r13,
-			  r_t_info.r21,
-			  r_t_info.r22,
-			  r_t_info.r23,
-			  r_t_info.r31,
-			  r_t_info.r32,
-			  r_t_info.r33,
-			  r_t_info.tx,
-			  r_t_info.ty,
-			  r_t_info.tz
-		  );
-  
-		  cam_info_[0].width = w_h_info.width;
-		  cam_info_[0].height = w_h_info.height;
-		  cam_info_[1].width = w_h_info.width;
-		  cam_info_[1].height = w_h_info.height;
-  
-		  cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
-		  l_k.at<double>(0,0) = m_d_info_l.fx;
-		  l_k.at<double>(0,2) = m_d_info_l.cx;
-		  l_k.at<double>(1,1) = m_d_info_l.fy;
-		  l_k.at<double>(1,2) = m_d_info_l.cy;
-		  l_k.at<double>(2,2) = 1;
-		  std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
-		  
-		  int d_num = 8;
-		  if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
-			  d_num = head_buf_ptr->d_num;
-		  }
-		  cam_info_[0].d.resize(d_num);
-		  for (int i = 0; i < d_num; i++) {
-			  cam_info_[0].d[i] = m_d_info_l.d[i];
-		  }
-		  // cam_info_[0].d[0] = m_d_info_l.k1;
-		  // cam_info_[0].d[1] = m_d_info_l.k2;
-		  // cam_info_[0].d[2] = m_d_info_l.p1;
-		  // cam_info_[0].d[3] = m_d_info_l.p2;
-		  // cam_info_[0].d[4] = m_d_info_l.k3;
-		  // cam_info_[0].d[5] = m_d_info_l.k4;
-		  // cam_info_[0].d[6] = m_d_info_l.k5;
-		  // cam_info_[0].d[7] = m_d_info_l.k6;
-  
-		  cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
-		  std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
-  
-		  cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
-		  cv::Mat l_p = l_k * l_p_eye;
-		  std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
-  
-  
-  
-		  cv::Mat r_k= cv::Mat::zeros(3,3,CV_64F);
-		  r_k.at<double>(0,0) = m_d_info_r.fx;
-		  r_k.at<double>(0,2) = m_d_info_r.cx;
-		  r_k.at<double>(1,1) = m_d_info_r.fy;
-		  r_k.at<double>(1,2) = m_d_info_r.cy;
-		  r_k.at<double>(2,2) = 1;
-		  std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
-  
-		  // cam_info_[1].d.resize(8);
-		  // cam_info_[1].d[0] = m_d_info_r.k1;
-		  // cam_info_[1].d[1] = m_d_info_r.k2;
-		  // cam_info_[1].d[2] = m_d_info_r.p1;
-		  // cam_info_[1].d[3] = m_d_info_r.p2;
-		  // cam_info_[1].d[4] = m_d_info_r.k3;
-		  // cam_info_[1].d[5] = m_d_info_r.k4;
-		  // cam_info_[1].d[6] = m_d_info_r.k5;
-		  // cam_info_[1].d[7] = m_d_info_r.k6;
-  
-		  cam_info_[1].d.resize(d_num);
-		  for (int i = 0; i < d_num; i++) {
-			  cam_info_[1].d[i] = m_d_info_r.d[i];
-		  }
-  
-		  cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
-		  R.at<double>(0,0) = r_t_info.r11;
-		  R.at<double>(0,1) = r_t_info.r12;
-		  R.at<double>(0,2) = r_t_info.r13;
-		  R.at<double>(1,0) = r_t_info.r21;
-		  R.at<double>(1,1) = r_t_info.r22;
-		  R.at<double>(1,2) = r_t_info.r23;
-		  R.at<double>(2,0) = r_t_info.r31;
-		  R.at<double>(2,1) = r_t_info.r32;
-		  R.at<double>(2,2) = r_t_info.r33;
-  
-		  cv::Mat T = cv::Mat::zeros(3, 1, CV_64F);
-		  T.at<double>(0,0) = r_t_info.tx;
-		  T.at<double>(0,1) = r_t_info.ty;
-		  T.at<double>(0,2) = r_t_info.tz;
-  
-		  cv::Mat RT;
-		  cv::hconcat(R, T, RT);
-		  cv::Mat P = r_k * RT;
-		  std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
-		  std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
-		  if (head_buf_ptr->camType == 0x11) {
-			ImuMislign_ST acc_mislign, gyro_mislign;
-			ImuScale_ST acc_scale, gyro_scale;
-			ImuBias_ST acc_bias, gyro_bias;
-			ImuNW_ST acc_n_w, gyro_n_w;
-			ImuRTTimeInfo_d_ST r_t_info;
-			if (readEeprom16(i2c_bus, i2c_addr, 0x0153, (char*)&acc_mislign, sizeof(ImuMislign_ST)) == false) {
-			  return false;
-			}
-			if (readEeprom16(i2c_bus, i2c_addr, 0x0177, (char*)&acc_scale, sizeof(ImuScale_ST)) == false) {
-				return false;
-			}
-			if (readEeprom16(i2c_bus, i2c_addr, 0x0183, (char*)&acc_bias, sizeof(ImuBias_ST)) == false) {
-				return false;
-			}
-			if (readEeprom16(i2c_bus, i2c_addr, 0x018f, (char*)&acc_n_w, sizeof(ImuNW_ST)) == false) {
-				return false;
-			}
-			if (readEeprom16(i2c_bus, i2c_addr, 0x0197, (char*)&gyro_mislign, sizeof(ImuMislign_ST)) == false) {
-				return false;
-			}
-			if (readEeprom16(i2c_bus, i2c_addr, 0x01bb, (char*)&gyro_scale, sizeof(ImuScale_ST)) == false) {
-				return false;
-			}
-			if (readEeprom16(i2c_bus, i2c_addr, 0x01c7, (char*)&gyro_bias, sizeof(ImuBias_ST)) == false) {
-				return false;
-			}
-			if (readEeprom16(i2c_bus, i2c_addr, 0x01d3, (char*)&gyro_n_w, sizeof(ImuNW_ST)) == false) {
-				return false;
-			}
-			if (readEeprom16(i2c_bus, i2c_addr, 0x01e0, (char*)&r_t_info, sizeof(ImuRTTimeInfo_d_ST)) == false) {
-				return false;
-			}
-
-			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====acc_info======" \
-				"\n ----------------" \
-				"\n mislign_00: %lf" \
-				"\n mislign_01: %lf" \
-				"\n mislign_02: %lf" \
-				"\n mislign_10: %lf" \
-				"\n mislign_11: %lf" \
-				"\n mislign_12: %lf" \
-				"\n mislign_20: %lf" \
-				"\n mislign_21: %lf" \
-				"\n mislign_22: %lf" \
-				"\n scale_0: %lf" \
-				"\n scale_1: %lf" \
-				"\n scale_2: %lf" \
-				"\n bias_0: %lf" \
-				"\n bias_1: %lf" \
-				"\n bias_2: %lf" \
-				"\n n: %lf" \
-				"\n w: %lf" \			
-				"\n ----------------",
-				acc_mislign.m00,
-				acc_mislign.m01,
-				acc_mislign.m01,
-				acc_mislign.m10,
-				acc_mislign.m11,
-				acc_mislign.m12,
-				acc_mislign.m20,
-				acc_mislign.m21,
-				acc_mislign.m22,
-				acc_scale.s0,
-				acc_scale.s1,
-				acc_scale.s2,
-				acc_bias.b0,
-				acc_bias.b1,
-				acc_bias.b2,
-				acc_n_w.n,
-				acc_n_w.w
-			);
-			
-			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====gyro_info======" \
-				"\n ----------------" \
-				"\n mislign_00: %lf" \
-				"\n mislign_01: %lf" \
-				"\n mislign_02: %lf" \
-				"\n mislign_10: %lf" \
-				"\n mislign_11: %lf" \
-				"\n mislign_12: %lf" \
-				"\n mislign_20: %lf" \
-				"\n mislign_21: %lf" \
-				"\n mislign_22: %lf" \
-				"\n scale_0: %lf" \
-				"\n scale_1: %lf" \
-				"\n scale_2: %lf" \
-				"\n bias_0: %lf" \
-				"\n bias_1: %lf" \
-				"\n bias_2: %lf" \
-				"\n n: %lf" \
-				"\n w: %lf" \			
-				"\n ----------------",
-				gyro_mislign.m00,
-				gyro_mislign.m01,
-				gyro_mislign.m01,
-				gyro_mislign.m10,
-				gyro_mislign.m11,
-				gyro_mislign.m12,
-				gyro_mislign.m20,
-				gyro_mislign.m21,
-				gyro_mislign.m22,
-				gyro_scale.s0,
-				gyro_scale.s1,
-				gyro_scale.s2,
-				gyro_bias.b0,
-				gyro_bias.b1,
-				gyro_bias.b2,
-				gyro_n_w.n,
-				gyro_n_w.w
-			);
-
-			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====IMU r_t_info======" \
-				"\n ----------------" \
-				"\n r11: %lf" \
-				"\n r12: %lf" \
-				"\n r13: %lf" \
-				"\n r21: %lf" \
-				"\n r22: %lf" \
-				"\n r23: %lf" \
-				"\n r31: %lf" \
-				"\n r32: %lf" \
-				"\n r33: %lf" \
-				"\n tx: %lf" \
-				"\n ty: %lf" \
-				"\n tz: %lf" \
-				"\n timeshift: %lf" \
-				"\n reporject: %lf" \
-				"\n ----------------",
-				r_t_info.r11,
-				r_t_info.r12,
-				r_t_info.r13,
-				r_t_info.r21,
-				r_t_info.r22,
-				r_t_info.r23,
-				r_t_info.r31,
-				r_t_info.r32,
-				r_t_info.r33,
-				r_t_info.tx,
-				r_t_info.ty,
-				r_t_info.tz,
-				r_t_info.timeshift,
-				r_t_info.reporject
-			);
-
-		  }
-		  return true;
-	  }
-  
-	}
-	return false;
-}
-    
-
-bool HobotMipiCapIml::getDualCamCalibration_abham(int i2c_bus, uint16_t i2c_addr) {
-	std::string device;
-	std::vector<char> head_buf;
-	head_buf.resize(sizeof(EepromDrobotHead_ST));
-	char chech_value;
-	if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(), sizeof(EepromDrobotHead_ST)) == false) {
-	  return false;
-	}
-	int chech_index = sizeof(EepromDrobotHead_ST) - 1;
-	chech_value = head_buf[chech_index];
-	head_buf[chech_index] = 0;
-	int sum = 0;
-	
-	std::for_each(head_buf.begin(), head_buf.end(), [&sum](char c) {
-	  sum += static_cast<int>(c);
-	});
-	if (((sum % 255) + 1) == chech_value) {
-	  EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
-  
-	  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
-		  "\n ----------------" \
-		  "\n bus: %d" \
-		  "\n flag: %s" \
-		  "\n camType: %d" \
-		  "\n cal_tpye: %d" \
-		  "\n ver_main: %d" \
-		  "\n ver_min: %d" \
-		  "\n angle: %d" \
-		  "\n d_num: %d" \
-		  "\n ----------------",
-		  i2c_bus,
-		  head_buf_ptr->flag,
-		  head_buf_ptr->camType,
-		  head_buf_ptr->cal_tpye,
-		  head_buf_ptr->ver_main,
-		  head_buf_ptr->ver_min,
-		  head_buf_ptr->angle,
-		  head_buf_ptr->d_num
-	  );
-  
-	  if (head_buf_ptr->angle == 0x00) {
-		  cap_info_.cal_rotation_ = 0.0;
-	  } else if (head_buf_ptr->angle == 0x01) {
-		  cap_info_.cal_rotation_ = 90.0;
-	  } else if (head_buf_ptr->angle == 0x02) {
-		  cap_info_.cal_rotation_ = 180.0;
-	  } else if (head_buf_ptr->angle == 0x03) {
-		  cap_info_.cal_rotation_ = 270.0;
-	  }
-  
-	  if (head_buf_ptr->camType == 0x01) {
-		  cam_info_.resize(2);
-		  if (head_buf_ptr->cal_tpye == 0x01) {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
-		  } else {
-			cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
-		  } 
-		  CalDualMDInfo_ST m_d_info_l, m_d_info_r;
-		  CalDualRTInfo_ST r_t_info;
-		  if (readEeprom16(i2c_bus, i2c_addr, 0x0010, (char*)&m_d_info_l, sizeof(CalDualMDInfo_ST)) == false) {
-			  return false;
-		  }
-		  if (readEeprom16(i2c_bus, i2c_addr, 0x0048, (char*)&m_d_info_r, sizeof(CalDualMDInfo_ST)) == false) {
-			  return false;
-		  }
-		  if (readEeprom16(i2c_bus, i2c_addr, 0x008C, (char*)&r_t_info, sizeof(CalDualRTInfo_ST)) == false) {
-			  return false;
-		  }
-		  
-		  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_l======" \
-			  "\n ----------------" \
-			  "\n width: %d" \
-			  "\n height: %d" \
-			  "\n fx: %f" \
-			  "\n fx: %f" \
-			  "\n fy: %f" \
-			  "\n cy: %f" \
-			  "\n ----------------",
-			  m_d_info_l.width,
-			  m_d_info_l.height,
-			  m_d_info_l.fx,
-			  m_d_info_l.fx,
-			  m_d_info_l.fy,
-			  m_d_info_l.cy
-		  );
-  
-		  // printf("k1:%f\n",m_d_info_l.k1);
-		  // printf("k2:%f\n",m_d_info_l.k2);
-		  // printf("p1:%f\n",m_d_info_l.p1);
-		  // printf("p2:%f\n",m_d_info_l.p2);
-		  // printf("k3:%f\n",m_d_info_l.k3);
-		  // printf("k4:%f\n",m_d_info_l.k4);
-		  // printf("k5:%f\n",m_d_info_l.k5);
-		  // printf("k6:%f\n",m_d_info_l.k6);
-  
-		  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_r======" \
-			  "\n ----------------" \
-			  "\n width: %d" \
-			  "\n height: %d" \
-			  "\n fx: %f" \
-			  "\n fx: %f" \
-			  "\n fy: %f" \
-			  "\n cy: %f" \
-			  "\n ----------------",
-			  m_d_info_r.width,
-			  m_d_info_r.height,
-			  m_d_info_r.fx,
-			  m_d_info_r.fx,
-			  m_d_info_r.fy,
-			  m_d_info_r.cy
-		  );
-  
-		  // printf("k1:%f\n",m_d_info_r.k1);
-		  // printf("k2:%f\n",m_d_info_r.k2);
-		  // printf("p1:%f\n",m_d_info_r.p1);
-		  // printf("p2:%f\n",m_d_info_r.p2);
-		  // printf("k3:%f\n",m_d_info_r.k3);
-		  // printf("k4:%f\n",m_d_info_r.k4);
-		  // printf("k5:%f\n",m_d_info_r.k5);
-		  // printf("k6:%f\n",m_d_info_r.k6);
-  
-  
-  
-  
-		  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====r_t_info======" \
-			  "\n ----------------" \
-			  "\n r11: %f" \
-			  "\n r12: %f" \
-			  "\n r13: %f" \
-			  "\n r21: %f" \
-			  "\n r22: %f" \
-			  "\n r23: %f" \
-			  "\n r31: %f" \
-			  "\n r32: %f" \
-			  "\n r33: %f" \
-			  "\n tx: %f" \
-			  "\n ty: %f" \
-			  "\n tz: %f" \
-			  "\n ----------------",
-			  r_t_info.r11,
-			  r_t_info.r12,
-			  r_t_info.r13,
-			  r_t_info.r21,
-			  r_t_info.r22,
-			  r_t_info.r23,
-			  r_t_info.r31,
-			  r_t_info.r32,
-			  r_t_info.r33,
-			  r_t_info.tx,
-			  r_t_info.ty,
-			  r_t_info.tz
-		  );
-  
-		  cam_info_[0].width = m_d_info_l.width;
-		  cam_info_[0].height = m_d_info_l.height;
-		  cam_info_[1].width = m_d_info_r.width;
-		  cam_info_[1].height = m_d_info_r.height;
-  
-		  cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
-		  l_k.at<double>(0,0) = m_d_info_l.fx;
-		  l_k.at<double>(0,2) = m_d_info_l.cx;
-		  l_k.at<double>(1,1) = m_d_info_l.fy;
-		  l_k.at<double>(1,2) = m_d_info_l.cy;
-		  l_k.at<double>(2,2) = 1;
-		  std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
-		  
-		  int d_num = 8;
-		  if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
-			  d_num = head_buf_ptr->d_num;
-		  }
-		  cam_info_[0].d.resize(d_num);
-		  for (int i = 0; i < d_num; i++) {
-			  cam_info_[0].d[i] = m_d_info_l.d[i];
-		  }
-		  // cam_info_[0].d[0] = m_d_info_l.k1;
-		  // cam_info_[0].d[1] = m_d_info_l.k2;
-		  // cam_info_[0].d[2] = m_d_info_l.p1;
-		  // cam_info_[0].d[3] = m_d_info_l.p2;
-		  // cam_info_[0].d[4] = m_d_info_l.k3;
-		  // cam_info_[0].d[5] = m_d_info_l.k4;
-		  // cam_info_[0].d[6] = m_d_info_l.k5;
-		  // cam_info_[0].d[7] = m_d_info_l.k6;
-  
-		  cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
-		  std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
-  
-		  cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
-		  cv::Mat l_p = l_k * l_p_eye;
-		  std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
-  
-  
-  
-		  cv::Mat r_k= cv::Mat::zeros(3,3,CV_64F);
-		  r_k.at<double>(0,0) = m_d_info_r.fx;
-		  r_k.at<double>(0,2) = m_d_info_r.cx;
-		  r_k.at<double>(1,1) = m_d_info_r.fy;
-		  r_k.at<double>(1,2) = m_d_info_r.cy;
-		  r_k.at<double>(2,2) = 1;
-		  std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
-  
-		  // cam_info_[1].d.resize(8);
-		  // cam_info_[1].d[0] = m_d_info_r.k1;
-		  // cam_info_[1].d[1] = m_d_info_r.k2;
-		  // cam_info_[1].d[2] = m_d_info_r.p1;
-		  // cam_info_[1].d[3] = m_d_info_r.p2;
-		  // cam_info_[1].d[4] = m_d_info_r.k3;
-		  // cam_info_[1].d[5] = m_d_info_r.k4;
-		  // cam_info_[1].d[6] = m_d_info_r.k5;
-		  // cam_info_[1].d[7] = m_d_info_r.k6;
-  
-		  cam_info_[1].d.resize(d_num);
-		  for (int i = 0; i < d_num; i++) {
-			  cam_info_[1].d[i] = m_d_info_r.d[i];
-		  }
-  
-		  cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
-		  R.at<double>(0,0) = r_t_info.r11;
-		  R.at<double>(0,1) = r_t_info.r12;
-		  R.at<double>(0,2) = r_t_info.r13;
-		  R.at<double>(1,0) = r_t_info.r21;
-		  R.at<double>(1,1) = r_t_info.r22;
-		  R.at<double>(1,2) = r_t_info.r23;
-		  R.at<double>(2,0) = r_t_info.r31;
-		  R.at<double>(2,1) = r_t_info.r32;
-		  R.at<double>(2,2) = r_t_info.r33;
-  
-		  cv::Mat T = cv::Mat::zeros(3, 1, CV_64F);
-		  T.at<double>(0,0) = r_t_info.tx;
-		  T.at<double>(0,1) = r_t_info.ty;
-		  T.at<double>(0,2) = r_t_info.tz;
-  
-		  cv::Mat RT;
-		  cv::hconcat(R, T, RT);
-		  cv::Mat P = r_k * RT;
-		  std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
-		  std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
-		  return true;
-	  }
-  
-	}
-	return false;
-  }
-
-
-bool HobotMipiCapIml::getDualCamCalibrationFromEeprom_230ai() {
-  int i2c_bus;
-  uint16_t i2c_addr;
-  std::string device;
-  std::vector<char> i2c_buf;
-  i2c_buf.resize(sizeof(CalDualCamInfo_ST));
-  char chech_value;
-  if (detectEeprom_lianhe(device, i2c_bus, i2c_addr) == -1) {
-	return false;
-  }
-
-  if (readEeprom16(i2c_bus, i2c_addr, 0x0022, i2c_buf.data(), sizeof(CalDualCamInfo_ST)) == false) {
-	return false;
-  }
-  if (readEeprom16(i2c_bus, i2c_addr, 0x0022+sizeof(CalDualCamInfo_ST), &chech_value, 1) == false) {
-	return false;
-  }
-  int sum = 0;
-  std::for_each(i2c_buf.begin(), i2c_buf.end(), [&sum](char c) {
-	sum += static_cast<int>(c);
-  });
-  if (((sum % 255) + 1) == chech_value) {
-	cam_info_.resize(2);
-	cam_info_[0].distortion_model = cam_info_[1].distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
-	CalDualCamInfo_ST* i2c_buf_ptr = (CalDualCamInfo_ST *)i2c_buf.data();
-	int width = (i2c_buf_ptr->h_v[0] << 8) | i2c_buf_ptr->h_v[1];
-	int height = (i2c_buf_ptr->h_v[2] << 8) | i2c_buf_ptr->h_v[3];
-
-	cam_info_[0].width = width;
-    cam_info_[0].height = height;
-	cam_info_[1].width = width;
-    cam_info_[1].height = height;
-
-	cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
-	l_k.at<double>(0,0) = i2c_buf_ptr->fxl;
-	l_k.at<double>(0,2) = i2c_buf_ptr->cxl;
-	l_k.at<double>(1,1) = i2c_buf_ptr->fyl;
-	l_k.at<double>(1,2) = i2c_buf_ptr->cyl;
-	l_k.at<double>(2,2) = 1;
-	std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
-
-	cam_info_[0].d.resize(8);
-	cam_info_[0].d[0] = i2c_buf_ptr->k1l;
-	cam_info_[0].d[1] = i2c_buf_ptr->k2l;
-	cam_info_[0].d[2] = i2c_buf_ptr->p1l;
-	cam_info_[0].d[3] = i2c_buf_ptr->p2l;
-	cam_info_[0].d[4] = i2c_buf_ptr->k3l;
-	cam_info_[0].d[5] = i2c_buf_ptr->k4l;
-	cam_info_[0].d[6] = i2c_buf_ptr->k5l;
-	cam_info_[0].d[7] = i2c_buf_ptr->k6l;
-
-	cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
-    std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
-
-	cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
-    cv::Mat l_p = l_k * l_p_eye;
-    std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
-
-	cv::Mat r_k= cv::Mat::zeros(3,3,CV_64F);
-	r_k.at<double>(0,0) = i2c_buf_ptr->fxr;
-	r_k.at<double>(0,2) = i2c_buf_ptr->cxr;
-	r_k.at<double>(1,1) = i2c_buf_ptr->fyr;
-	r_k.at<double>(1,2) = i2c_buf_ptr->cyr;
-	r_k.at<double>(2,2) = 1;
-	std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
-
-	cam_info_[1].d.resize(8);
-	cam_info_[1].d[0] = i2c_buf_ptr->k1r;
-	cam_info_[1].d[1] = i2c_buf_ptr->k2r;
-	cam_info_[1].d[2] = i2c_buf_ptr->p1r;
-	cam_info_[1].d[3] = i2c_buf_ptr->p2r;
-	cam_info_[1].d[4] = i2c_buf_ptr->k3r;
-	cam_info_[1].d[5] = i2c_buf_ptr->k4r;
-	cam_info_[1].d[6] = i2c_buf_ptr->k5r;
-	cam_info_[1].d[7] = i2c_buf_ptr->k6r;
-
-	cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
-	R.at<double>(0,0) = i2c_buf_ptr->r11;
-	R.at<double>(0,1) = i2c_buf_ptr->r12;
-	R.at<double>(0,2) = i2c_buf_ptr->r13;
-	R.at<double>(1,0) = i2c_buf_ptr->r21;
-	R.at<double>(1,1) = i2c_buf_ptr->r22;
-	R.at<double>(1,2) = i2c_buf_ptr->r23;
-	R.at<double>(2,0) = i2c_buf_ptr->r31;
-	R.at<double>(2,1) = i2c_buf_ptr->r32;
-	R.at<double>(2,2) = i2c_buf_ptr->r33;
-
-	cv::Mat T = cv::Mat::zeros(3, 1, CV_64F);
-	T.at<double>(0,0) = i2c_buf_ptr->tx;
-	T.at<double>(0,1) = i2c_buf_ptr->ty;
-	T.at<double>(0,2) = i2c_buf_ptr->tz;
-
-	cv::Mat RT;
-	cv::hconcat(R, T, RT);
-	cv::Mat P = r_k * RT;
-    std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
-    std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
-	return true;
-  }
-  return false;
 }
 
 }  // namespace mipi_cam
