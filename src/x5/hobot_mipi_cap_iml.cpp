@@ -216,8 +216,10 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		}	
 	}
 
-	pipe_contex[0].awb_otp_data = awb_otp_data_[0];
-	pipe_contex[1].awb_otp_data = awb_otp_data_[1];
+	if (awb_otp_data_.size() == 2) {
+		pipe_contex[0].awb_otp_data = awb_otp_data_[0];
+		pipe_contex[1].awb_otp_data = awb_otp_data_[1];
+	}
 	ret = create_and_run_vflow(&pipe_contex[1]);
 	ERR_CON_EQ(ret, 0);
 	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index]);
@@ -1285,6 +1287,11 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
 		//RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Invalid cam_fd: %ld for AWB OTP config", cam_fd);
         return -1;
 	}
+
+	if (!pipe_contex->awb_otp_data) {
+		return 0;
+	}
+
 	//初始化AWB OTP配置结构体
 	sensor_otp_t pdata = {0};
 	pdata.otp_awb_enable = 1;          // 启用AWB OTP配置
@@ -1292,21 +1299,21 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
     pdata.awb_golden_ct_num = 3;       // AWB黄金色温配置数量
 
     // 配置3100K色温参数
-    pdata.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
+    pdata.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K; 
     pdata.awb_data[0].r =   0;        //pipe_contex->awb_otp_data.awb_data[0].r;
     pdata.awb_data[0].gr =  0;           //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[0].gb =  0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
     pdata.awb_data[0].b =  0;                    //pipe_contex->awb_otp_data.awb_data[0].b;
-    pdata.awb_data[0].rg_ratio = pipe_contex->awb_otp_data.awb_data[0].rg_ratio;
-    pdata.awb_data[0].bg_ratio = pipe_contex->awb_otp_data.awb_data[0].bg_ratio;
+    pdata.awb_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_data[0].rg_ratio;
+    pdata.awb_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_data[0].bg_ratio;
 
     pdata.awb_golden_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
     pdata.awb_golden_data[0].r = 0;
     pdata.awb_golden_data[0].gr = 0;
     pdata.awb_golden_data[0].gb = 0;
     pdata.awb_golden_data[0].b = 0;
-    pdata.awb_golden_data[0].rg_ratio = pipe_contex->awb_otp_data.awb_golden_data[0].rg_ratio;
-    pdata.awb_golden_data[0].bg_ratio = pipe_contex->awb_otp_data.awb_golden_data[0].bg_ratio;
+    pdata.awb_golden_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[0].rg_ratio;
+    pdata.awb_golden_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[0].bg_ratio;
 
     // 配置4000K色温参数
     pdata.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
@@ -1314,16 +1321,16 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
     pdata.awb_data[1].gr =     0;         //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[1].gb =   0;                //pipe_contex->awb_otp_data.awb_data[0].gb;
     pdata.awb_data[1].b =   0;               //pipe_contex->awb_otp_data.awb_data[0].b;
-    pdata.awb_data[1].rg_ratio = pipe_contex->awb_otp_data.awb_data[1].rg_ratio;
-    pdata.awb_data[1].bg_ratio = pipe_contex->awb_otp_data.awb_data[1].bg_ratio;
+    pdata.awb_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_data[1].rg_ratio;
+    pdata.awb_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_data[1].bg_ratio;
 
     pdata.awb_golden_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
     pdata.awb_golden_data[1].r = 0;
     pdata.awb_golden_data[1].gr = 0;
     pdata.awb_golden_data[1].gb = 0;
     pdata.awb_golden_data[1].b = 0;
-    pdata.awb_golden_data[1].rg_ratio = pipe_contex->awb_otp_data.awb_golden_data[1].rg_ratio;
-    pdata.awb_golden_data[1].bg_ratio = pipe_contex->awb_otp_data.awb_golden_data[1].bg_ratio;
+    pdata.awb_golden_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[1].rg_ratio;
+    pdata.awb_golden_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[1].bg_ratio;
 
     // 配置5800K色温参数
     pdata.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
@@ -1331,16 +1338,16 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
     pdata.awb_data[2].gr =   0;                   //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[2].gb =   0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
     pdata.awb_data[2].b =    0;                  //pipe_contex->awb_otp_data.awb_data[0].b;
-    pdata.awb_data[2].rg_ratio = pipe_contex->awb_otp_data.awb_data[2].rg_ratio;
-    pdata.awb_data[2].bg_ratio = pipe_contex->awb_otp_data.awb_data[2].bg_ratio;
+    pdata.awb_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_data[2].rg_ratio;
+    pdata.awb_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_data[2].bg_ratio;
 
     pdata.awb_golden_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
     pdata.awb_golden_data[2].r = 0;
     pdata.awb_golden_data[2].gr = 0;
     pdata.awb_golden_data[2].gb = 0;
     pdata.awb_golden_data[2].b = 0;
-    pdata.awb_golden_data[2].rg_ratio = pipe_contex->awb_otp_data.awb_golden_data[2].rg_ratio;
-    pdata.awb_golden_data[2].bg_ratio = pipe_contex->awb_otp_data.awb_golden_data[2].bg_ratio;
+    pdata.awb_golden_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[2].rg_ratio;
+    pdata.awb_golden_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[2].bg_ratio;
 
     // 打印日志+调用HBN接口启用AWB OTP
 	//printf("awb otp enable\n");
@@ -1353,17 +1360,17 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[2].rg_ratio: %ld",  pdata.awb_golden_data[2].rg_ratio);
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[2].bg_ratio: %ld",  pdata.awb_golden_data[2].bg_ratio);
 
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].rg_ratio: %ld", pipe_contex->awb_otp_data.awb_data[0].rg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].bg_ratio: %ld",  pipe_contex->awb_otp_data.awb_data[0].bg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].rg_ratio: %ld",  pipe_contex->awb_otp_data.awb_data[1].rg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].bg_ratio: %ld",  pipe_contex->awb_otp_data.awb_data[1].bg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].rg_ratio: %ld",  pipe_contex->awb_otp_data.awb_data[2].rg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].bg_ratio: %ld",  pipe_contex->awb_otp_data.awb_data[2].bg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].rg_ratio: %ld", pipe_contex->awb_otp_data->awb_data[0].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[0].bg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].bg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].rg_ratio);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].bg_ratio);
 
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pipe_contex->awb_otp_data.awb_data[0].r);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pipe_contex->awb_otp_data.awb_data[0].gr);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pipe_contex->awb_otp_data.awb_data[0].gb);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pipe_contex->awb_otp_data.awb_data[0].b);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pipe_contex->awb_otp_data->awb_data[0].r);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pipe_contex->awb_otp_data->awb_data[0].gr);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pipe_contex->awb_otp_data->awb_data[0].gb);
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pipe_contex->awb_otp_data->awb_data[0].b);
 
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pdata.awb_data[0].r);
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pdata.awb_data[0].gr);
@@ -1720,7 +1727,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 		<< "\n===================="
 	);
 
-	double target_hfov = 90.0; // 目标FOV（可从配置/外部输入）
+	double target_hfov = 0.0; // 目标FOV（可从配置/外部输入）
 	double actual_hfov_l, actual_hfov_r;
 	// 调用核心函数计算alpha
 	double alpha = computeStereoAlphaFromFOV(

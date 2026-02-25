@@ -2,6 +2,7 @@
 #define HOBOT_MIPI_CALIBRATION_HPP_
 
 
+#include <memory>
 #include <vector>
 #include <cstdint>
 #include <string>
@@ -347,7 +348,7 @@ class mipi_calibration {
     double cal_rotation_;
     std::vector<sensor_msgs::msg::CameraInfo> cam_info_;    
     std::vector<Imu_params> imu_info_;
-    std::vector<sensor_otp_t> awb_otp_data_;
+    std::vector<std::shared_ptr<sensor_otp_t>> awb_otp_data_;
   };
 
 
