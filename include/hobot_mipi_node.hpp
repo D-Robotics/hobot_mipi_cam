@@ -101,6 +101,12 @@ class MipiCamNode : public rclcpp::Node {
   //struct NodePara nodePare_;
   std::shared_ptr<struct NodePara> nodePare_;
   int m_bIsInit;
+  // topic name
+  std::string left_img_topic_ = "/image_left_raw";
+  std::string right_img_topic_ = "/image_right_raw";
+  std::string combine_img_topic_ = "/image_combine_raw";
+  std::string left_cam_info_topic_ = "/image_left_raw/camera_info";
+  std::string right_cam_info_topic_ = "/image_right_raw/camera_info";
 };
 }  // namespace mipi_cam
 #endif  // HOBOT_MIPI_NODE_HPP_

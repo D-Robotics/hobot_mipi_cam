@@ -91,6 +91,11 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<int>("link_type", nodePare_->link_type_); // 0:表示mipi接口，1：表示解串器接口。
   this->declare_parameter<int>("link_port", nodePare_->link_port_);
   this->declare_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
+  this->declare_parameter<std::string>("left_img_topic", left_img_topic_);
+  this->declare_parameter<std::string>("right_img_topic", right_img_topic_);
+  this->declare_parameter<std::string>("combine_img_topic", combine_img_topic_);
+  this->declare_parameter<std::string>("left_cam_info_topic", left_cam_info_topic_);
+  this->declare_parameter<std::string>("right_cam_info_topic", right_cam_info_topic_);
 
   this->get_parameter<std::string>("frame_id", frame_id_);
   this->get_parameter<std::string>("frame_id2", frame_id2_);
@@ -118,6 +123,11 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<int>("link_type", nodePare_->link_type_);
   this->get_parameter<int>("link_port", nodePare_->link_port_);
   this->get_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
+  this->get_parameter<std::string>("left_img_topic", left_img_topic_);
+  this->get_parameter<std::string>("right_img_topic", right_img_topic_);
+  this->get_parameter<std::string>("combine_img_topic", combine_img_topic_);
+  this->get_parameter<std::string>("left_cam_info_topic", left_cam_info_topic_);
+  this->get_parameter<std::string>("right_cam_info_topic", right_cam_info_topic_);
 
   nodePare_->framerate_ = static_cast<int>(framerate);
 
@@ -143,9 +153,15 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     "\n                   gdc_enable: %s" \
     "\n                frame_ts_type: %s" \
     "\n                     frame_id: %s" \
+    "\n                     frame_id2: %s" \
     "\n                    link_type: %d" \
     "\n                    link_port: %d" \
-    "\n               io_method_name: %s",
+    "\n               io_method_name: %s" \
+    "\n               left_img_topic: %s" \
+    "\n               right_img_topic: %s" \
+    "\n               combine_img_topic: %s" \
+    "\n               left_cam_info_topic: %s" \
+    "\n               right_cam_info_topic: %s",
     nodePare_->config_path_.c_str(),
     nodePare_->video_device_name_.c_str(),
     nodePare_->channel_,
@@ -166,9 +182,15 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     (nodePare_->gdc_enable_ ? "true" : "false"),
     nodePare_->frame_ts_type_.c_str(),
     frame_id_.c_str(),
+    frame_id2_.c_str(),
     nodePare_->link_type_,
     nodePare_->link_port_,
-    io_method_name_.c_str()
+    io_method_name_.c_str(),
+    left_img_topic_.c_str(),
+    right_img_topic_.c_str(),
+    combine_img_topic_.c_str(),
+    left_cam_info_topic_.c_str(),
+    right_cam_info_topic_.c_str()
   );
 
   init();
@@ -223,19 +245,19 @@ void MipiCamNode::init() {
     if (nodePare_->device_mode_.compare("dual") == 0) {
       if (nodePare_->dual_combine_ == 1) {
         Pub_info_.resize(3);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
-        init_publisher(Pub_info_[0], "image_left_raw", "left", frame_id_);
-        init_publisher(Pub_info_[1], "image_right_raw", "right", frame_id_);
-        init_publisher(Pub_info_[2], "image_combine_raw", "combine", frame_id_);
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], left_cam_info_topic_, right_cam_info_topic_, nodePare_->camera_calibration_file_path_);
+        init_publisher(Pub_info_[0], left_img_topic_, "left", frame_id_);
+        init_publisher(Pub_info_[1], right_img_topic_, "right", frame_id_);
+        init_publisher(Pub_info_[2], combine_img_topic_, "combine", frame_id_);
       } else if (nodePare_->dual_combine_ == 2) {
         Pub_info_.resize(1);
-        init_DualCalibration(&Pub_info_[0], "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
-        init_publisher(Pub_info_[0], "image_combine_raw", "combine", frame_id_);
+        init_DualCalibration(&Pub_info_[0], left_cam_info_topic_, right_cam_info_topic_, nodePare_->camera_calibration_file_path_);
+        init_publisher(Pub_info_[0], combine_img_topic_, "combine", frame_id_);
       } else {
         Pub_info_.resize(2);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
-        init_publisher(Pub_info_[0], "image_left_raw", "left", frame_id_);
-        init_publisher(Pub_info_[1], "image_right_raw", "right", frame_id_);        
+        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], left_cam_info_topic_, right_cam_info_topic_, nodePare_->camera_calibration_file_path_);
+        init_publisher(Pub_info_[0], left_img_topic_, "left", frame_id_);
+        init_publisher(Pub_info_[1], right_img_topic_, "right", frame_id_);
       }
     } else if ((nodePare_->device_mode_.compare("single") == 0) ||
       (nodePare_->device_mode_.compare("") == 0)) {
