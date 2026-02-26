@@ -59,6 +59,7 @@ typedef struct pipe_contex_s {
   hbn_vnode_handle_t gdc_node_handle_r;
 	hbn_vnode_handle_t vpu_node_handle;
   hbn_vnode_handle_t stream_handle;
+  hbn_vnode_handle_t sub_stream_handle;
 	camera_handle_t cam_fd;
 	vp_sensor_config_t sensor_config;
   vp_csi_config_t csi_config;
@@ -67,6 +68,7 @@ typedef struct pipe_contex_s {
   int gdc_bin_buf_is_valid;
   int gdc_init_valid;
   int gdc_init_valid_r;
+  int sub_stream_channel;
   MIPI_CAP_INFO_ST *cap_info_;
   std::shared_ptr<sensor_otp_t> awb_otp_data;
 }pipe_contex_t;
@@ -148,9 +150,11 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   void dualFrameTask();
   void multiFrameTask();
+  void subMultiFrameTask();
   void singleFrameTask();
 
   void sync_task();
+  void sub_sync_task();
   bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
 
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* width,
@@ -261,6 +265,10 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<std::shared_ptr<BuffQueueManage>> v_buff_que_manger_;
   std::shared_ptr<BuffQueueManage> combine_buff_que_manger_;
   std::vector<std::shared_ptr<FrameQueue>> v_frame_que_;
+
+  std::vector<std::shared_ptr<BuffQueueManage>> v_sub_buff_que_manger_;
+  std::shared_ptr<BuffQueueManage> sub_combine_buff_que_manger_;
+  std::vector<std::shared_ptr<FrameQueue>> v_sub_frame_que_;
 
   std::mutex empty_mtx_;
   std::vector<std::shared_ptr<VideoBuffer>> v_empty_buff_;

@@ -579,10 +579,7 @@ std::shared_ptr<VideoBuffer> HobotMipiCapIml::getFrame(std::string channel) {
 				return buff_ptr;
 			} 
 		} else if (channel == "sub_single") {
-			if (v_buff_que_manger_.size() < 2) {
-				return nullptr;
-			}
-			buff_ptr = v_buff_que_manger_[1]->get_data_buff();
+			buff_ptr = v_sub_buff_que_manger_[0]->get_data_buff();
 			if (buff_ptr) {
 				return buff_ptr;
 			}
@@ -598,6 +595,21 @@ std::shared_ptr<VideoBuffer> HobotMipiCapIml::getFrame(std::string channel) {
 			}
 		} else if (channel == "combine") {
 			buff_ptr = combine_buff_que_manger_->get_data_buff();
+			if (buff_ptr) {
+				return buff_ptr;
+			}
+		} else if (channel == "sub_left") {
+			buff_ptr = v_sub_buff_que_manger_[0]->get_data_buff();
+			if (buff_ptr) {
+				return buff_ptr;
+			}
+		} else if (channel == "sub_right") {
+			buff_ptr = v_sub_buff_que_manger_[1]->get_data_buff();
+			if (buff_ptr) {
+				return buff_ptr;
+			}
+		} else if (channel == "sub_combine") {
+			buff_ptr = sub_combine_buff_que_manger_->get_data_buff();
 			if (buff_ptr) {
 				return buff_ptr;
 			}
@@ -983,7 +995,7 @@ void HobotMipiCapIml::multiFrameTask() {
 	std::iota(indices.begin(), indices.end(), 0); 
 
 	std::for_each(indices.begin(), indices.end(), [&](int i) {
-		hbn_vnode_get_fd(pipe_contex[i].vse_node_handle, 0, &ochn_fd[i]);
+		hbn_vnode_get_fd(pipe_contex[i].stream_handle, 0, &ochn_fd[i]);
 	});
 
 	while (started_) {
@@ -1010,7 +1022,7 @@ void HobotMipiCapIml::multiFrameTask() {
 			  if (FD_ISSET(ochn_fd[i], &readfds)) {
 				std::shared_ptr<VideoBuffer> buff_ptr = v_buff_que_manger_[i]->get_empty_buff();
 				if (buff_ptr) {
-					ret = getVnodeFrame(pipe_contex[i].vse_node_handle, 0, buff_ptr);
+					ret = getVnodeFrame(pipe_contex[i].stream_handle, 0, buff_ptr);
 					if (ret == 0) {
 						if (combine_flag_) {
 							auto buff_tmp = std::make_shared<VideoBuffer>(*buff_ptr);
@@ -1028,6 +1040,78 @@ void HobotMipiCapIml::multiFrameTask() {
 	}
 	return;
   }
+
+  void HobotMipiCapIml::subMultiFrameTask() {
+	if (!started_) {
+	   RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "s600 camera isn't started");
+	  return;
+	}
+	if (pipe_contex.empty()) {
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "s600 pipeline  is zero");
+	  return;
+	}
+
+	int pipe_num = pipe_contex.size();
+	int ret = 0;
+	fd_set readfds;
+	struct timeval timeout;
+	int result;
+	int max_handle;
+	std::vector<int> ochn_fd;
+	ochn_fd.resize(pipe_num);
+	// 1. 准备空间
+	std::vector<int> indices(pipe_num);
+
+	// 2. 填充递增序列：从 0 开始，后续元素依次加 1
+	std::iota(indices.begin(), indices.end(), 0); 
+
+	std::for_each(indices.begin(), indices.end(), [&](int i) {
+		hbn_vnode_get_fd(pipe_contex[i].sub_stream_handle, pipe_contex[i].sub_stream_channel, &ochn_fd[i]);
+	});
+
+	while (started_) {
+	  max_handle = 0;
+	  FD_ZERO(&readfds);
+	  std::for_each(indices.begin(), indices.end(), [&](int i) {
+		FD_SET(ochn_fd[i], &readfds);
+		max_handle = max_handle > ochn_fd[i]?max_handle : ochn_fd[i];
+	  });
+
+	  timeout.tv_sec = 2;
+	  timeout.tv_usec = 0;
+	  result = select(max_handle + 1, &readfds, nullptr, nullptr, &timeout);
+	  if (result == -1) {
+		  std::cerr << "Select error" << std::endl;
+		  break;
+	  } else if (result == 0) {
+		  // 超时
+		  std::cout << "Timeout occurred" << std::endl;
+		  continue;
+	  } else {
+		  for (int i = 0; i < ochn_fd.size(); i++) {
+			  //if (!rclcpp::ok()) break;
+			  if (FD_ISSET(ochn_fd[i], &readfds)) {
+				std::shared_ptr<VideoBuffer> buff_ptr = v_sub_buff_que_manger_[i]->get_empty_buff();
+				if (buff_ptr) {
+					ret = getVnodeFrame(pipe_contex[i].sub_stream_handle, pipe_contex[i].sub_stream_channel, buff_ptr);
+					if (ret == 0) {
+						if (combine_flag_) {
+							auto buff_tmp = std::make_shared<VideoBuffer>(*buff_ptr);
+							v_sub_frame_que_[i]->push(buff_tmp);
+						}
+						buff_ptr->return_data_que();
+					} else {
+						RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", pipe_contex[i].sub_stream_channel,ret);
+						buff_ptr->return_empty_que();
+					}
+				}
+			  }
+		  }
+	  }
+	}
+	return;
+  }
+
 
 
 void HobotMipiCapIml::singleFrameTask() {
@@ -1192,6 +1276,102 @@ void HobotMipiCapIml::sync_task() {
 	}
   }
   
+  void HobotMipiCapIml::sub_sync_task() {
+	TOLERANCE = 500000000 / cap_info_.fps;
+	using clock = std::chrono::steady_clock;
+	auto last_time = clock::now();
+
+	while (rclcpp::ok()) {
+	  std::vector<std::shared_ptr<VideoBuffer>> frames;
+
+	  std::for_each(v_sub_frame_que_.begin(), v_sub_frame_que_.end(), [&](auto &frame_que) {
+		auto frame = frame_que->peek();
+		if (frame) {
+			frames.push_back(frame);
+		}
+	  });
+
+	  if (frames.size() != v_sub_frame_que_.size()) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		continue;
+	  }
+
+	  auto target_ts = frames[0]->timestamp;
+	  std::for_each(frames.begin(), frames.end(), [&](auto &frame) {
+		target_ts = std::max(target_ts, frame->timestamp);
+	  });
+
+	  // drop old frames
+	  std::for_each(v_sub_frame_que_.begin(), v_sub_frame_que_.end(), [&](auto &frame_que) {
+		frame_que->popUntil(target_ts - TOLERANCE);
+	  });
+  
+	  frames.clear();
+  
+	  // re-peek
+	  std::for_each(v_sub_frame_que_.begin(), v_sub_frame_que_.end(), [&](auto &frame_que) {
+		auto frame = frame_que->peek();
+		if (frame) {
+			frames.push_back(frame);
+		}
+	  });
+
+	  if (frames.size() != v_sub_frame_que_.size()) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		continue;
+	  }
+  
+	  if (isSynced(frames, TOLERANCE)) {
+		// sync, pop and save
+		frames.clear();
+		std::for_each(v_sub_frame_que_.begin(), v_sub_frame_que_.end(), [&](auto &frame_que) {
+			auto frame = frame_que->pop();
+			if (frame) {
+				frames.push_back(frame);
+			}
+		});
+		if (frames.size() != v_sub_frame_que_.size()) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			continue;
+		}
+
+		auto buff_ptr = sub_combine_buff_que_manger_->get_empty_buff();
+
+		buff_ptr->timestamp = frames[0]->timestamp;
+		buff_ptr->frame_id = frames[0]->frame_id;
+		buff_ptr->width = frames[0]->width;
+		buff_ptr->height = frames[0]->height * frames.size();
+		buff_ptr->stride = frames[0]->stride;
+		buff_ptr->encode = frames[0]->encode;
+		int buff_offset = 0;
+		int y_size = frames[0]->width * frames[0]->height;
+		int uv_size = y_size / 2;
+		if (buff_ptr->encode == "nv12") {
+			buff_ptr->buff.resize((y_size + uv_size) * frames.size());
+			std::for_each(frames.begin(), frames.end(), [&](auto &frame) {
+				memcpy(buff_ptr->buff.data() + buff_offset, frame->buff.data(), y_size);
+				buff_offset += y_size;
+			  });
+			std::for_each(frames.begin(), frames.end(), [&](auto &frame) {
+				memcpy(buff_ptr->buff.data() + buff_offset, frame->buff.data() + y_size, uv_size);
+				buff_offset += uv_size;
+			  });
+		} else {
+			int buff_size = 0;
+			std::for_each(frames.begin(), frames.end(), [&](auto &frame) {
+				buff_size += frame->buff.size();
+			  });
+			buff_ptr->buff.resize(buff_size);
+			std::for_each(frames.begin(), frames.end(), [&](auto &frame) {
+				memcpy(buff_ptr->buff.data() + buff_offset, frame->buff.data(), frame->buff.size());
+				buff_offset += frame->buff.size();
+			  });
+		}
+		buff_ptr->return_data_que();
+	  }
+	}
+  }
+
 bool HobotMipiCapIml::isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance) {
 	  long long min_ts = (long long)frames[0]->timestamp;
 	  long long max_ts = (long long)frames[0]->timestamp;
@@ -1421,68 +1601,72 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 						| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
 	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 0, &alloc_attr);
 	ERR_CON_EQ(ret, 0);
-	if ((pipe_contex->cap_info_->sub_width <= input_width) 
-		  && (pipe_contex->cap_info_->sub_height <= input_height) 
-		  && (pipe_contex->cap_info_->sub_width <= 1920)
-		  && (pipe_contex->cap_info_->sub_height <= 1080)) {
-		sub_vse_ochn_attr.chn_en = CAM_TRUE;
-		sub_vse_ochn_attr.roi.x = 0;
-		sub_vse_ochn_attr.roi.y = 0;
-		sub_vse_ochn_attr.roi.w = input_width;
-		sub_vse_ochn_attr.roi.h = input_height;
-		sub_vse_ochn_attr.fmt = FRM_FMT_NV12;
-		sub_vse_ochn_attr.bit_width = 8;
-		//sub_vse_ochn_attr.target_w = input_width;
-		//sub_vse_ochn_attr.target_h = input_height;
-		sub_vse_ochn_attr.target_w = pipe_contex->cap_info_->sub_width;
-		sub_vse_ochn_attr.target_h = pipe_contex->cap_info_->sub_height;
-	
-		sub_vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
-		sub_vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
-	
-		ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 1, &sub_vse_ochn_attr);
-		ERR_CON_EQ(ret, 0);
-		sub_alloc_attr.buffers_num = 3;
-		sub_alloc_attr.is_contig = 1;
-		sub_alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN
-							| HB_MEM_USAGE_CPU_WRITE_OFTEN
-							| HB_MEM_USAGE_CACHED
-							| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
-		ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 1, &sub_alloc_attr);
-		ERR_CON_EQ(ret, 0);
-		sub_stream_ = true;
-		pipe_contex->cap_info_->sub_stream_flag_ = true;
-	} else if ((pipe_contex->cap_info_->sub_width >= input_width) 
-		  && (pipe_contex->cap_info_->sub_height >= input_height)) {
-		sub_vse_ochn_attr.chn_en = CAM_TRUE;
-		sub_vse_ochn_attr.roi.x = 0;
-		sub_vse_ochn_attr.roi.y = 0;
-		sub_vse_ochn_attr.roi.w = input_width;
-		sub_vse_ochn_attr.roi.h = input_height;
-		sub_vse_ochn_attr.fmt = FRM_FMT_NV12;
-		sub_vse_ochn_attr.bit_width = 8;
-		//sub_vse_ochn_attr.target_w = input_width;
-		//sub_vse_ochn_attr.target_h = input_height;
-		sub_vse_ochn_attr.target_w = pipe_contex->cap_info_->sub_width;
-		sub_vse_ochn_attr.target_h = pipe_contex->cap_info_->sub_height;
-	
-		sub_vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
-		sub_vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
-	
-		ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 5, &sub_vse_ochn_attr);
-		ERR_CON_EQ(ret, 0);
-		sub_alloc_attr.buffers_num = 3;
-		sub_alloc_attr.is_contig = 1;
-		sub_alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN
-							| HB_MEM_USAGE_CPU_WRITE_OFTEN
-							| HB_MEM_USAGE_CACHED
-							| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
-		ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 5, &sub_alloc_attr);
-		ERR_CON_EQ(ret, 0);
-		sub_stream_ = true;
-		pipe_contex->cap_info_->sub_stream_flag_ = true;			
-
+	if (pipe_contex->cap_info_->sub_stream_enable_ == true) {
+		if ((pipe_contex->cap_info_->sub_width <= input_width) 
+				&& (pipe_contex->cap_info_->sub_height <= input_height) 
+				&& (pipe_contex->cap_info_->sub_width <= 1920)
+				&& (pipe_contex->cap_info_->sub_height <= 1080)) {
+			sub_vse_ochn_attr.chn_en = CAM_TRUE;
+			sub_vse_ochn_attr.roi.x = 0;
+			sub_vse_ochn_attr.roi.y = 0;
+			sub_vse_ochn_attr.roi.w = input_width;
+			sub_vse_ochn_attr.roi.h = input_height;
+			sub_vse_ochn_attr.fmt = FRM_FMT_NV12;
+			sub_vse_ochn_attr.bit_width = 8;
+			//sub_vse_ochn_attr.target_w = input_width;
+			//sub_vse_ochn_attr.target_h = input_height;
+			sub_vse_ochn_attr.target_w = pipe_contex->cap_info_->sub_width;
+			sub_vse_ochn_attr.target_h = pipe_contex->cap_info_->sub_height;
+		
+			sub_vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
+			sub_vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
+		
+			ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 1, &sub_vse_ochn_attr);
+			ERR_CON_EQ(ret, 0);
+			sub_alloc_attr.buffers_num = 3;
+			sub_alloc_attr.is_contig = 1;
+			sub_alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN
+								| HB_MEM_USAGE_CPU_WRITE_OFTEN
+								| HB_MEM_USAGE_CACHED
+								| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
+			ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 1, &sub_alloc_attr);
+			ERR_CON_EQ(ret, 0);
+			sub_stream_ = true;
+			pipe_contex->sub_stream_channel = 1;
+		} else if ((pipe_contex->cap_info_->sub_width >= input_width) 
+				&& (pipe_contex->cap_info_->sub_height >= input_height)) {
+			sub_vse_ochn_attr.chn_en = CAM_TRUE;
+			sub_vse_ochn_attr.roi.x = 0;
+			sub_vse_ochn_attr.roi.y = 0;
+			sub_vse_ochn_attr.roi.w = input_width;
+			sub_vse_ochn_attr.roi.h = input_height;
+			sub_vse_ochn_attr.fmt = FRM_FMT_NV12;
+			sub_vse_ochn_attr.bit_width = 8;
+			//sub_vse_ochn_attr.target_w = input_width;
+			//sub_vse_ochn_attr.target_h = input_height;
+			sub_vse_ochn_attr.target_w = pipe_contex->cap_info_->sub_width;
+			sub_vse_ochn_attr.target_h = pipe_contex->cap_info_->sub_height;
+		
+			sub_vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
+			sub_vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
+		
+			ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 5, &sub_vse_ochn_attr);
+			ERR_CON_EQ(ret, 0);
+			sub_alloc_attr.buffers_num = 3;
+			sub_alloc_attr.is_contig = 1;
+			sub_alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN
+								| HB_MEM_USAGE_CPU_WRITE_OFTEN
+								| HB_MEM_USAGE_CACHED
+								| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
+			ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 5, &sub_alloc_attr);
+			ERR_CON_EQ(ret, 0);
+			sub_stream_ = true;
+			pipe_contex->sub_stream_channel = 5;		
+		} else {
+			pipe_contex->cap_info_->sub_stream_enable_ = false;
+		}
 	}
+
 	return 0;
 }
 
@@ -1763,7 +1947,8 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 								0);
 			ERR_CON_EQ(ret, 0);
 			pipe_contex->stream_handle = pipe_contex->vse_node_handle;
-		}		
+		}	
+		pipe_contex->sub_stream_handle = pipe_contex->vse_node_handle;	
 	} else {
 		if (pipe_contex->gdc_init_valid == 1) {
 			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc rotation and cal.\n");
@@ -1804,6 +1989,7 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 			ERR_CON_EQ(ret, 0);
 			pipe_contex->stream_handle = pipe_contex->vse_node_handle;
 		}
+		pipe_contex->sub_stream_handle = pipe_contex->vse_node_handle;
 	}
 
 

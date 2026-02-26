@@ -60,7 +60,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->link_port_ = 0; 
   nodePare_->cal_alpha_ = 0.0; 
   nodePare_->stream_mode_ = 0; 
-  nodePare_->sub_stream_flag_ = false; 
+  nodePare_->sub_stream_enable_ = false; 
   frame_id_ = "default_cam";
   io_method_name_ = "ros"; //shared_mem, ros;
   double framerate = 30.0;
@@ -93,6 +93,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<std::string>("imu_type", imu_type_);
   this->declare_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
   this->declare_parameter<int>("stream_mode", nodePare_->stream_mode_);
+  this->declare_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
 
   this->get_parameter<std::string>("frame_id", frame_id_);
   this->get_parameter<std::string>("io_method", io_method_name_); 
@@ -121,6 +122,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<std::string>("imu_type", imu_type_);
   this->get_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
   this->get_parameter<int>("stream_mode", nodePare_->stream_mode_);
+  this->get_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
 
   nodePare_->framerate_ = static_cast<int>(framerate);
 
@@ -251,7 +253,7 @@ void MipiCamNode::init() {
       }
     } else if ((nodePare_->device_mode_.compare("single") == 0) ||
       (nodePare_->device_mode_.compare("") == 0)) {
-        if (nodePare_->sub_stream_flag_) {
+        if (nodePare_->sub_stream_enable_) {
           Pub_info_.resize(2);
           init_Calibration(&Pub_info_[0], "image_raw/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher(Pub_info_[0], "image_raw", "single", frame_id_);
@@ -301,12 +303,12 @@ void MipiCamNode::init() {
       }
     } else if ((nodePare_->device_mode_.compare("single") == 0) ||
       (nodePare_->device_mode_.compare("") == 0)) {
-        if (nodePare_->sub_stream_flag_) {
+        if (nodePare_->sub_stream_enable_) {
           Pub_hbmem_info_.resize(2);
           init_Calibration(&Pub_hbmem_info_[0], "hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_img", "single");
-          //init_Calibration(&Pub_hbmem_info_[1], "sub_hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
-          //init_publisher_hbmem(Pub_hbmem_info_[1], "sub_hbmem_img", "sub_single");
+          init_Calibration(&Pub_hbmem_info_[1], "sub_hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
+          init_publisher_hbmem(Pub_hbmem_info_[1], "sub_hbmem_img", "sub_single");
         } else {
           Pub_hbmem_info_.resize(1);
           init_Calibration(&Pub_hbmem_info_[0], "hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
