@@ -124,6 +124,10 @@ def generate_launch_description():
             default_value='0',
             description='mipi camera output dual stream is no calibration and calibration image'),
         DeclareLaunchArgument(
+            'mipi_sub_stream_enable',
+            default_value='False',
+            description='mipi sub stream enable'),
+        DeclareLaunchArgument(
             'log_level',
             default_value='warn',
             description='log level'),
@@ -165,6 +169,7 @@ def generate_launch_description():
                 {"frame_id": LaunchConfiguration('frame_id')},
                 {"cal_alpha": LaunchConfiguration('mipi_cal_alpha')},
                 {"stream_mode": LaunchConfiguration('mipi_stream_mode')},
+                {"sub_stream_enable": LaunchConfiguration('mipi_sub_stream_enable')},
             ],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         )

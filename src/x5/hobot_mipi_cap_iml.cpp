@@ -423,7 +423,7 @@ int HobotMipiCapIml::start() {
 		dual_frame_task_ = std::make_shared<std::thread>(
 					std::bind(&HobotMipiCapIml::dualFrameTask, this));
   }
-#else
+#elif 0
   if (pipe_contex.size() == 1) {
 	auto que_manger = std::make_shared<BuffQueueManage>();
 	que_manger->creat_buff(5);
@@ -449,6 +449,43 @@ int HobotMipiCapIml::start() {
 		}
 		sync_task_ = std::make_shared<std::thread>(
 				std::bind(&HobotMipiCapIml::sync_task, this));
+	  }
+  }
+#else
+if (!pipe_contex.empty()) {
+	  for(auto contex : pipe_contex) {
+		auto que_manger = std::make_shared<BuffQueueManage>();
+		que_manger->creat_buff(5);
+		v_buff_que_manger_.push_back(que_manger);
+	  }
+	  combine_buff_que_manger_ = std::make_shared<BuffQueueManage>();
+	  combine_buff_que_manger_->creat_buff(5);
+	  multi_frame_task_ = std::make_shared<std::thread>(
+		std::bind(&HobotMipiCapIml::multiFrameTask, this));
+	  if (combine_flag_) {
+		for(auto contex : pipe_contex) {
+			v_frame_que_.push_back(std::make_shared<FrameQueue>());
+		}
+		sync_task_ = std::make_shared<std::thread>(
+				std::bind(&HobotMipiCapIml::sync_task, this));
+	  }
+	  if (cap_info_.sub_stream_enable_ == true) {
+		for(auto contex : pipe_contex) {
+			auto que_manger = std::make_shared<BuffQueueManage>();
+			que_manger->creat_buff(5);
+			v_sub_buff_que_manger_.push_back(que_manger);
+		  }
+		  sub_combine_buff_que_manger_ = std::make_shared<BuffQueueManage>();
+		  sub_combine_buff_que_manger_->creat_buff(5);
+		  sub_multi_frame_task_ = std::make_shared<std::thread>(
+			std::bind(&HobotMipiCapIml::subMultiFrameTask, this));
+		  if (combine_flag_) {
+			for(auto contex : pipe_contex) {
+				v_sub_frame_que_.push_back(std::make_shared<FrameQueue>());
+			}
+			sub_sync_task_ = std::make_shared<std::thread>(
+					std::bind(&HobotMipiCapIml::sub_sync_task, this));
+		  }
 	  }
   }
 #endif

@@ -217,7 +217,10 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::map<int, std::vector<std::string>> host_sensor_m_;
   //std::vector<hbn_cfg_t> hbn_cfg_;
   std::shared_ptr<std::thread> dual_frame_task_ = nullptr;
+  std::shared_ptr<std::thread> multi_frame_task_ = nullptr;
   std::shared_ptr<std::thread> sync_task_ = nullptr;
+  std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
+  std::shared_ptr<std::thread> sub_sync_task_ = nullptr;
 
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
