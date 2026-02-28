@@ -445,12 +445,12 @@ bool MipiCamIml::getImageMem(
     memcpy((unsigned char *)&data[0], video_ptr->buff.data(),  width * height);
     memcpy(encoding.data(), "mono8", strlen("mono8"));
   } else {
-    data_size = video_ptr->data_size;
+    data_size = video_ptr->buff.size();
     if (data_size > 6220800) {
       video_ptr->return_empty_que();
       return false;
     }
-    memcpy((unsigned char *)&data[0], video_ptr->buff.data(),  video_ptr->data_size);
+    memcpy((unsigned char *)&data[0], video_ptr->buff.data(),  video_ptr->buff.size());
     memcpy(encoding.data(), "nv12", strlen("nv12"));
   }
 
