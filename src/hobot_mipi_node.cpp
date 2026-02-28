@@ -59,7 +59,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->link_type_ = 0; 
   nodePare_->link_port_ = 0; 
   nodePare_->cal_alpha_ = 0.0; 
-  nodePare_->stream_mode_ = 0; //0: slave stream can gdc; 1: slave stream can't gdc
+  nodePare_->stream_mode_ = 0; //0: slave stream can gdc; 1: slave stream can't gdc.
   nodePare_->sub_stream_enable_ = false; 
   frame_id_ = "default_cam";
   io_method_name_ = "ros"; //shared_mem, ros;
@@ -382,7 +382,7 @@ void MipiCamNode::init() {
       (nodePare_->device_mode_.compare("") == 0)) {
         auto pub_info1 = std::make_shared<Publisher_hbmem_info>();
         init_Calibration(pub_info1.get(), "hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
-        init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_img", "single");
+        init_publisher_hbmem(pub_info1, "hbmem_img", "single");
         Pub_hbmem_info_.push_back(pub_info1);
         if (nodePare_->sub_stream_enable_) {
           pub_info1 = std::make_shared<Publisher_hbmem_info>();
@@ -556,6 +556,8 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
     }
 
     pub_info->image_pub_->publish(std::move(img));
+  } else {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 }
 
@@ -605,6 +607,8 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "borrow_loaned_message failed");
     }
+  } else {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 }
 

@@ -168,11 +168,18 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[1].host_num, &pipe_contex[1].sensor_config, &pipe_contex[1].csi_config);
 	ERR_CON_EQ(ret, 0);
 	gdc_bin_buf_.clear();
+
 	vp_sensor_config_t *sensor_cof = &pipe_contex[1].sensor_config;
 
 	if ((cap_info_.stream_mode_ == 1) && (cap_info_.rotation_ != 0)) {
 		vp_sensor_config_t *sensor_conf = &pipe_contex[1].sensor_config;
-		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+		int out_width = sensor_cof->isp_ichn_attr->width;
+		int out_height = sensor_cof->isp_ichn_attr->height;
+		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+			out_width = sensor_cof->isp_ichn_attr->height;
+			out_height = sensor_cof->isp_ichn_attr->width;
+		}		
+		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_ichn_attr->width, sensor_conf->isp_ichn_attr->height, out_width, out_height, cap_info_.rotation_);
 		if (gdc_bin) {
 			gdc_bin_buf_.push_back(gdc_bin);
 			pipe_contex[0].gdc_bin_r = gdc_bin;
@@ -201,8 +208,14 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 				cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
 				cap_info_.cal_alpha_, !gdc_bin_buf_.empty());
 		} else {
-			gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width,
-				cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
+			int out_width = sensor_cof->isp_ichn_attr->width;
+			int out_height = sensor_cof->isp_ichn_attr->height;
+			if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+				out_width = sensor_cof->isp_ichn_attr->height;
+				out_height = sensor_cof->isp_ichn_attr->width;
+			}
+			gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, out_width,
+				out_height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
 				cap_info_.cal_alpha_);
 		}
 		if (gdc_bin.size() == 2) {
@@ -327,7 +340,13 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 				gdc_bin = gen_gdc_bin(cap_info_.width, cap_info_.height, cap_info_.width, cap_info_.height,
 					&cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_, !gdc_bin_buf_.empty());
 			} else {
-				gdc_bin = gen_gdc_bin(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, cap_info_.width, cap_info_.height,
+				int out_width = sensor_cof->isp_ichn_attr->width;
+				int out_height = sensor_cof->isp_ichn_attr->height;
+				if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+					out_width = sensor_cof->isp_ichn_attr->height;
+					out_height = sensor_cof->isp_ichn_attr->width;
+				}
+				gdc_bin = gen_gdc_bin(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, out_width, out_height,
 					&cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_);
 			}
 			//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
@@ -1233,7 +1252,7 @@ void HobotMipiCapIml::sync_task() {
 	  });
 
 	  if (frames.size() != v_frame_que_.size()) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		continue;
 	  }
 
@@ -1258,7 +1277,7 @@ void HobotMipiCapIml::sync_task() {
 	  });
 
 	  if (frames.size() != v_frame_que_.size()) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		continue;
 	  }
   
@@ -1272,7 +1291,7 @@ void HobotMipiCapIml::sync_task() {
 			}
 		});
 		if (frames.size() != v_frame_que_.size()) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			continue;
 		}
 
@@ -1310,6 +1329,7 @@ void HobotMipiCapIml::sync_task() {
 		}
 		buff_ptr->return_data_que();
 	  }
+	  std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
   }
   
@@ -1329,7 +1349,7 @@ void HobotMipiCapIml::sync_task() {
 	  });
 
 	  if (frames.size() != v_sub_frame_que_.size()) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		continue;
 	  }
 
@@ -1354,7 +1374,7 @@ void HobotMipiCapIml::sync_task() {
 	  });
 
 	  if (frames.size() != v_sub_frame_que_.size()) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		continue;
 	  }
   
@@ -1368,7 +1388,7 @@ void HobotMipiCapIml::sync_task() {
 			}
 		});
 		if (frames.size() != v_sub_frame_que_.size()) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			continue;
 		}
 
@@ -1406,6 +1426,7 @@ void HobotMipiCapIml::sync_task() {
 		}
 		buff_ptr->return_data_que();
 	  }
+	  std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
   }
 
@@ -1780,20 +1801,31 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 
 	int input_width;
 	int input_height;
+	int output_width;
+	int output_height;
 
 	if (pipe_contex->gdc_init_valid_r == 1) {
 		vse_ochn_attr_t vse_ochn_attr;
 		ret = hbn_vnode_get_ochn_attr(pipe_contex->vse_node_handle, chn_id, &vse_ochn_attr);
 		ERR_CON_EQ(ret, 0);
-		input_width = vse_ochn_attr.target_w;
-		input_height = vse_ochn_attr.target_h;
+		output_width = input_width = vse_ochn_attr.target_w;
+		output_height = input_height = vse_ochn_attr.target_h;
+
 	} else {
 		isp_ichn_attr_t isp_ichn_attr;
 		ret = hbn_vnode_get_ichn_attr(pipe_contex->isp_node_handle, chn_id, &isp_ichn_attr);
 		ERR_CON_EQ(ret, 0);
 		input_width = isp_ichn_attr.width;
 		input_height = isp_ichn_attr.height;
+		if ((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0)) {
+			output_width = input_height;
+			output_height = input_width;
+		} else {
+			output_width = input_width;
+			output_height = input_height;
+		}
 	}
+
 
 	pipe_contex->gdc_bin_buf_is_valid = 1;
 
@@ -1823,9 +1855,9 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 	//gdc_ochn_attr.output_width = input_width;
 	//gdc_ochn_attr.output_height = input_height;
 	//gdc_ochn_attr.output_stride = input_width;
-	gdc_ochn_attr.output_width = pipe_contex->cap_info_->width;
-	gdc_ochn_attr.output_height = pipe_contex->cap_info_->height;
-	gdc_ochn_attr.output_stride = pipe_contex->cap_info_->width;
+	gdc_ochn_attr.output_width = output_width;
+	gdc_ochn_attr.output_height = output_height;
+	gdc_ochn_attr.output_stride = output_width;
 	ret = hbn_vnode_set_ochn_attr(pipe_contex->gdc_node_handle, chn_id, &gdc_ochn_attr);
 	ERR_CON_EQ(ret, 0);
 	hbn_buf_alloc_attr_t alloc_attr = {0};
@@ -1894,7 +1926,6 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 		ret = creat_vse_node(pipe_contex);
 		ERR_CON_EQ(ret, 0);
 	}
-
 
 	// 创建HBN flow
 	ret = hbn_vflow_create(&pipe_contex->vflow_fd);
@@ -2460,8 +2491,8 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
     cv::Mat Rl, Rr, Pl, Pr, Q;
     cv::Mat Kl, Kr, Dl, Dr, R_rl, t_rl;
     cv::Mat undistmap1l, undistmap2l, undistmap1r, undistmap2r;
-	gdc_width_scale = in_gdc_width / static_cast<float>(out_width);
-	gdc_height_scale = in_gdc_height / static_cast<float>(out_height);
+	gdc_width_scale = in_gdc_width / static_cast<float>(cam_info[0].width);
+	gdc_height_scale = in_gdc_height / static_cast<float>(cam_info[0].height);
 
 	Dl = cv::Mat(1, cam_info[0].d.size(), CV_64F, cam_info[0].d.data()).clone();
 	Kl = cv::Mat(3, 3, CV_64F, cam_info[0].k.data()).clone();
