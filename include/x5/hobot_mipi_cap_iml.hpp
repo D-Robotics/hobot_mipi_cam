@@ -69,6 +69,7 @@ typedef struct pipe_contex_s {
   int gdc_init_valid;
   int gdc_init_valid_r;
   int sub_stream_channel;
+  bool gdc_resize_enable;
   MIPI_CAP_INFO_ST *cap_info_;
   std::shared_ptr<sensor_otp_t> awb_otp_data;
 }pipe_contex_t;

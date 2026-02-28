@@ -214,6 +214,13 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 				out_width = sensor_cof->isp_ichn_attr->height;
 				out_height = sensor_cof->isp_ichn_attr->width;
 			}
+			if (((cap_info_.width > cap_info_.height) && (out_width < out_height)) ||
+			((cap_info_.width < cap_info_.height) && (out_width > out_height))) {
+				out_width = cap_info_.width;
+				out_height = cap_info_.height;
+				pipe_contex[0].gdc_resize_enable = true;
+				pipe_contex[1].gdc_resize_enable = true;
+			}
 			gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, out_width,
 				out_height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
 				cap_info_.cal_alpha_);
@@ -345,6 +352,12 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 				if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
 					out_width = sensor_cof->isp_ichn_attr->height;
 					out_height = sensor_cof->isp_ichn_attr->width;
+				}
+				if (((cap_info_.width > cap_info_.height) && (out_width < out_height)) ||
+				((cap_info_.width < cap_info_.height) && (out_width > out_height))) {
+					out_width = cap_info_.width;
+					out_height = cap_info_.height;
+					pipe_contex[0].gdc_resize_enable = true;
 				}
 				gdc_bin = gen_gdc_bin(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, out_width, out_height,
 					&cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_);
@@ -1817,13 +1830,18 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 		ERR_CON_EQ(ret, 0);
 		input_width = isp_ichn_attr.width;
 		input_height = isp_ichn_attr.height;
-		if ((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0)) {
-			output_width = input_height;
-			output_height = input_width;
+		if (pipe_contex->gdc_resize_enable) {
+			output_width = pipe_contex->cap_info_->width;
+			output_height = pipe_contex->cap_info_->height;
 		} else {
-			output_width = input_width;
-			output_height = input_height;
-		}
+			if ((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0)) {
+				output_width = input_height;
+				output_height = input_width;
+			} else {
+				output_width = input_width;
+				output_height = input_height;
+			}
+		}		
 	}
 
 
