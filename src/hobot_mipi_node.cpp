@@ -509,7 +509,6 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base*  Pub_info, Publisher
                 "get camera calibration parameters failed");
     return;
   }
-
   Pub_info->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
     info_topic, PUB_BUF_NUM);
   Pub_info2->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
@@ -522,7 +521,6 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
   if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing() && (pub_info->image_pub_->get_subscription_count() > 0)) {
     auto img = std::make_unique<sensor_msgs::msg::Image>(rosidl_runtime_cpp::MessageInitialization::SKIP);
     img->header.frame_id = pub_info->frame_id;
-    
     if (!mipiCam_ptr_->getImage(img->header.stamp,
                           img->encoding,
                           img->height,
@@ -547,12 +545,17 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
 #endif
     save_jpg(img->header.stamp,img->encoding,img->width,img->height,(void *)&img->data[0]);
     save_yuv(img->header.stamp, (void *)&img->data[0], img->data.size());
-
-    if (pub_info && pub_info->info_pub_ && pub_info->camera_calibration_info_) {
+    if (pub_info->info_pub_ && pub_info->camera_calibration_info_) {
       sensor_msgs::msg::CameraInfo camera_calibration_info = *pub_info->camera_calibration_info_;
       camera_calibration_info.header.stamp = img->header.stamp;
       camera_calibration_info.header.frame_id = pub_info->frame_id;
       pub_info->info_pub_->publish(camera_calibration_info);
+    }
+    if (pub_info->info_pub2_ && pub_info->camera_calibration_info2_) {
+      sensor_msgs::msg::CameraInfo camera_calibration_info = *pub_info->camera_calibration_info2_;
+      camera_calibration_info.header.stamp = img->header.stamp;
+      camera_calibration_info.header.frame_id = pub_info->frame_id;
+      pub_info->info_pub2_->publish(camera_calibration_info);
     }
 
     pub_info->image_pub_->publish(std::move(img));
