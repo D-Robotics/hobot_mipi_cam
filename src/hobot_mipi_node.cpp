@@ -241,6 +241,7 @@ void MipiCamNode::init() {
         auto pub_info2 = std::make_shared<Publisher_info>();
         auto pub_info3 = std::make_shared<Publisher_info>();
         init_DualCalibration(pub_info1.get(), pub_info2.get(), "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+        init_DualCalibration(pub_info3.get(), "image_combine_raw/left/camera_info", "image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
         init_publisher(pub_info1, "image_left_raw", "left", frame_id_);
         init_publisher(pub_info2, "image_right_raw", "right", frame_id_);
         init_publisher(pub_info3, "image_combine_raw", "combine", frame_id_);
@@ -252,6 +253,7 @@ void MipiCamNode::init() {
           pub_info2 = std::make_shared<Publisher_info>();
           pub_info3 = std::make_shared<Publisher_info>();
           init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration(pub_info3.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher(pub_info1, "sub_image_left_raw", "sub_left", frame_id_);
           init_publisher(pub_info2, "sub_image_right_raw", "sub_right", frame_id_);
           init_publisher(pub_info3, "sub_image_combine_raw", "sub_combine", frame_id_);
@@ -262,12 +264,12 @@ void MipiCamNode::init() {
       } else if (nodePare_->dual_combine_ == 2) {
         //Pub_info_.resize(1);
         auto pub_info1 = std::make_shared<Publisher_info>();
-        init_DualCalibration(pub_info1.get(), "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+        init_DualCalibration(pub_info1.get(), "image_combine_raw/left/camera_info", "image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
         init_publisher(pub_info1, "image_combine_raw", "combine", frame_id_);
         Pub_info_.push_back(pub_info1);
         if (nodePare_->sub_stream_enable_) {
           pub_info1 = std::make_shared<Publisher_info>();
-          init_DualCalibration(pub_info1.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration(pub_info1.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher(pub_info1, "sub_image_combine_raw", "sub_combine", frame_id_);
           Pub_info_.push_back(pub_info1);
         }
@@ -328,7 +330,8 @@ void MipiCamNode::init() {
         auto pub_info1 = std::make_shared<Publisher_hbmem_info>();
         auto pub_info2 = std::make_shared<Publisher_hbmem_info>();
         auto pub_info3 = std::make_shared<Publisher_hbmem_info>();
-        init_DualCalibration(pub_info1.get(), pub_info2.get(), "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+        init_DualCalibration(pub_info1.get(), pub_info2.get(), "hbmem_left_img/camera_info", "hbmem_right_img/camera_info", nodePare_->camera_calibration_file_path_);
+        init_DualCalibration(pub_info3.get(), "hbmem_combine_img/left/camera_info", "hbmem_combine_img/right/camera_info", nodePare_->camera_calibration_file_path_);
         init_publisher_hbmem(pub_info1, "hbmem_left_img", "left");
         init_publisher_hbmem(pub_info2, "hbmem_right_img", "right");
         init_publisher_hbmem(pub_info3, "hbmem_combine_img", "combine");
@@ -339,7 +342,8 @@ void MipiCamNode::init() {
           pub_info1 = std::make_shared<Publisher_hbmem_info>();
           pub_info2 = std::make_shared<Publisher_hbmem_info>();
           pub_info3 = std::make_shared<Publisher_hbmem_info>();
-          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_hbmem_left_img/camera_info", "sub_hbmem_right_img/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration(pub_info3.get(), "sub_hbmem_combine_img/left/camera_info", "sub_hbmem_combine_img/right/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher_hbmem(pub_info1, "sub_hbmem_left_img", "sub_left");
           init_publisher_hbmem(pub_info2, "sub_hbmem_right_img", "sub_right");
           init_publisher_hbmem(pub_info3, "sub_hbmem_combine_img", "sub_combine");
@@ -350,12 +354,12 @@ void MipiCamNode::init() {
       } else if (nodePare_->dual_combine_ == 2) {
         //Pub_hbmem_info_.resize(1);
         auto pub_info1 = std::make_shared<Publisher_hbmem_info>();
-        init_DualCalibration(pub_info1.get(), "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+        init_DualCalibration(pub_info1.get(), "hbmem_combine_img/left/camera_info", "hbmem_combine_img/right/camera_info", nodePare_->camera_calibration_file_path_);
         init_publisher_hbmem(pub_info1, "hbmem_combine_img", "combine");
         Pub_hbmem_info_.push_back(pub_info1);
         if (nodePare_->sub_stream_enable_) {
           pub_info1 = std::make_shared<Publisher_hbmem_info>();
-          init_DualCalibration(pub_info1.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration(pub_info1.get(), "sub_hbmem_combine_img/left/camera_info", "sub_hbmem_combine_img/right/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher_hbmem(pub_info1, "sub_hbmem_combine_img", "sub_combine");
           Pub_hbmem_info_.push_back(pub_info1);
         }
@@ -363,7 +367,7 @@ void MipiCamNode::init() {
         //Pub_hbmem_info_.resize(2);
         auto pub_info1 = std::make_shared<Publisher_hbmem_info>();
         auto pub_info2 = std::make_shared<Publisher_hbmem_info>();
-        init_DualCalibration(pub_info1.get(), pub_info2.get(), "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+        init_DualCalibration(pub_info1.get(), pub_info2.get(), "hbmem_left_img/camera_info", "hbmem_right_img/camera_info", nodePare_->camera_calibration_file_path_);
         init_publisher_hbmem(pub_info1, "hbmem_left_img", "left");
         init_publisher_hbmem(pub_info2, "hbmem_right_img", "right");
         Pub_hbmem_info_.push_back(pub_info1);
@@ -371,7 +375,7 @@ void MipiCamNode::init() {
         if (nodePare_->sub_stream_enable_) {
           pub_info1 = std::make_shared<Publisher_hbmem_info>();
           pub_info2 = std::make_shared<Publisher_hbmem_info>();
-          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_hbmem_left_img/camera_info", "sub_hbmem_right_img/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher_hbmem(pub_info1, "sub_hbmem_left_img", "sub_left");
           init_publisher_hbmem(pub_info2, "sub_hbmem_right_img", "sub_right");
           Pub_hbmem_info_.push_back(pub_info1);
