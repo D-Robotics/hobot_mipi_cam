@@ -753,12 +753,36 @@ bool mipi_calibration::getCamCalibration_union(int i2c_bus, uint16_t i2c_addr) {
 		  std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cal_param.cam_info_[0].k.begin());
 		  
 		  int d_num = 8;
-		  if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
-			  d_num = head_buf_ptr->d_num;
-		  }
-		  cal_param.cam_info_[0].d.resize(d_num);
-		  for (int i = 0; i < d_num; i++) {
-			  cal_param.cam_info_[0].d[i] = m_d_info_l.d[i];
+		  if (head_buf_ptr->cal_tpye == 0x00 && m_d_info_l.d[2] == 0.0 && m_d_info_r.d[2] == 0.0
+			&& m_d_info_l.d[3] == 0.0 && m_d_info_r.d[3] == 0.0 && m_d_info_l.d[6] == 0.0 && m_d_info_r.d[6] == 0.0
+			&& m_d_info_l.d[7] == 0.0 && m_d_info_r.d[7] == 0.0) {
+				// if cal_tpye is 0x00 and d[2] d[3] d[6] d[7] are all 0, then change to fisheye calibration
+				RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "change to fisheye calibration");
+				cal_param.cam_info_[0].distortion_model = cal_param.cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
+				head_buf_ptr->cal_tpye = 0x01;
+				head_buf_ptr->d_num = 4;
+				cal_param.cam_info_[0].d.resize(4);
+				cal_param.cam_info_[0].d[0] = m_d_info_l.d[0];
+				cal_param.cam_info_[0].d[1] = m_d_info_l.d[1];
+				cal_param.cam_info_[0].d[2] = m_d_info_l.d[4];
+				cal_param.cam_info_[0].d[3] = m_d_info_l.d[5];
+				cal_param.cam_info_[1].d.resize(4);
+				cal_param.cam_info_[1].d[0] = m_d_info_r.d[0];
+				cal_param.cam_info_[1].d[1] = m_d_info_r.d[1];
+				cal_param.cam_info_[1].d[2] = m_d_info_r.d[4];
+				cal_param.cam_info_[1].d[3] = m_d_info_r.d[5];
+		  } else {
+			if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
+				d_num = head_buf_ptr->d_num;
+			}
+			cal_param.cam_info_[0].d.resize(d_num);
+			for (int i = 0; i < d_num; i++) {
+				cal_param.cam_info_[0].d[i] = m_d_info_l.d[i];
+			}
+			cal_param.cam_info_[1].d.resize(d_num);
+			for (int i = 0; i < d_num; i++) {
+				cal_param.cam_info_[1].d[i] = m_d_info_r.d[i];
+			}
 		  }
 		  // cam_info_[0].d[0] = m_d_info_l.k1;
 		  // cam_info_[0].d[1] = m_d_info_l.k2;
@@ -795,11 +819,6 @@ bool mipi_calibration::getCamCalibration_union(int i2c_bus, uint16_t i2c_addr) {
 		  // cam_info_[1].d[5] = m_d_info_r.k4;
 		  // cam_info_[1].d[6] = m_d_info_r.k5;
 		  // cam_info_[1].d[7] = m_d_info_r.k6;
-  
-		  cal_param.cam_info_[1].d.resize(d_num);
-		  for (int i = 0; i < d_num; i++) {
-			  cal_param.cam_info_[1].d[i] = m_d_info_r.d[i];
-		  }
   
 		  cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
 		  R.at<double>(0,0) = r_t_info.r11;
