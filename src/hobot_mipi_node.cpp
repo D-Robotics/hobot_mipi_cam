@@ -326,7 +326,6 @@ void MipiCamNode::init() {
     if (nodePare_->device_mode_.compare("dual") == 0) {
 
       if (nodePare_->dual_combine_ == 1) {
-        //Pub_hbmem_info_.resize(3);
         auto pub_info1 = std::make_shared<Publisher_hbmem_info>();
         auto pub_info2 = std::make_shared<Publisher_hbmem_info>();
         auto pub_info3 = std::make_shared<Publisher_hbmem_info>();
@@ -352,7 +351,6 @@ void MipiCamNode::init() {
           Pub_hbmem_info_.push_back(pub_info3);
         }
       } else if (nodePare_->dual_combine_ == 2) {
-        //Pub_hbmem_info_.resize(1);
         auto pub_info1 = std::make_shared<Publisher_hbmem_info>();
         init_DualCalibration(pub_info1.get(), "hbmem_combine_img/left/camera_info", "hbmem_combine_img/right/camera_info", nodePare_->camera_calibration_file_path_);
         init_publisher_hbmem(pub_info1, "hbmem_combine_img", "combine");
@@ -364,7 +362,6 @@ void MipiCamNode::init() {
           Pub_hbmem_info_.push_back(pub_info1);
         }
       } else {
-        //Pub_hbmem_info_.resize(2);
         auto pub_info1 = std::make_shared<Publisher_hbmem_info>();
         auto pub_info2 = std::make_shared<Publisher_hbmem_info>();
         init_DualCalibration(pub_info1.get(), pub_info2.get(), "hbmem_left_img/camera_info", "hbmem_right_img/camera_info", nodePare_->camera_calibration_file_path_);
@@ -415,13 +412,6 @@ void MipiCamNode::init() {
 
   if (io_method_name_.compare("ros") == 0) {
     for (auto info : Pub_info_) {
-      //timer_.push_back(this->create_wall_timer(
-      //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-      //  std::bind(&MipiCamNode::update, this, info)));
-      //timer_tmp_ = this->create_wall_timer(
-      //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-      //  std::bind(&MipiCamNode::update, this, info));
-      // std::bind(&MipiCamNode::update, this, info);
       timer_.emplace_back(
         std::make_shared<std::thread>([this, info]() { while(rclcpp::ok()) {this->update(info);}})
       );
@@ -429,9 +419,6 @@ void MipiCamNode::init() {
 
   } else if (io_method_name_.compare("shared_mem") == 0) {
     for (auto info : Pub_hbmem_info_) {
-      //timer_.push_back(this->create_wall_timer(
-      //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-      //  std::bind(&MipiCamNode::hbmemUpdate, this, info)));
       timer_.emplace_back(
         std::make_shared<std::thread>([this, info]() { while(rclcpp::ok()) {this->hbmemUpdate(info);}})
       );  
@@ -539,14 +526,6 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
       }
       return;
     }
-#if 0
-    if ("realtime" == nodePare_->frame_ts_type_) {
-      struct timespec ts;
-      clock_gettime(CLOCK_REALTIME, &ts);
-      img->header.stamp.sec = ts.tv_sec;
-      img->header.stamp.nanosec = ts.tv_nsec;
-    }
-#endif
     save_jpg(img->header.stamp,img->encoding,img->width,img->height,(void *)&img->data[0]);
     save_yuv(img->header.stamp, (void *)&img->data[0], img->data.size());
     if (pub_info->info_pub_ && pub_info->camera_calibration_info_) {
@@ -588,14 +567,6 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
         }
         return;
       }
-#if 0
-      if ("realtime" == nodePare_->frame_ts_type_) {
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        msg.time_stamp.sec = ts.tv_sec;
-        msg.time_stamp.nanosec = ts.tv_nsec;
-      }
-#endif
       std::string encode(msg.encoding.begin(), msg.encoding.end());
       save_jpg(msg.time_stamp,encode,msg.width,msg.height,(void *)&msg.data);
       save_yuv(msg.time_stamp, (void *)&msg.data, msg.data_size);
