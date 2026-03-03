@@ -247,7 +247,7 @@ void MipiCamNode::init() {
         Pub_info_.resize(3);
         init_DualCalibration(&Pub_info_[0], &Pub_info_[1], left_cam_info_topic_, right_cam_info_topic_, nodePare_->camera_calibration_file_path_);
         init_publisher(Pub_info_[0], left_img_topic_, "left", frame_id_);
-        init_publisher(Pub_info_[1], right_img_topic_, "right", frame_id_);
+        init_publisher(Pub_info_[1], right_img_topic_, "right", frame_id2_);
         init_publisher(Pub_info_[2], combine_img_topic_, "combine", frame_id_);
       } else if (nodePare_->dual_combine_ == 2) {
         Pub_info_.resize(1);
@@ -257,7 +257,7 @@ void MipiCamNode::init() {
         Pub_info_.resize(2);
         init_DualCalibration(&Pub_info_[0], &Pub_info_[1], left_cam_info_topic_, right_cam_info_topic_, nodePare_->camera_calibration_file_path_);
         init_publisher(Pub_info_[0], left_img_topic_, "left", frame_id_);
-        init_publisher(Pub_info_[1], right_img_topic_, "right", frame_id_);
+        init_publisher(Pub_info_[1], right_img_topic_, "right", frame_id2_);
       }
     } else if ((nodePare_->device_mode_.compare("single") == 0) ||
       (nodePare_->device_mode_.compare("") == 0)) {
@@ -470,7 +470,7 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
       sensor_msgs::msg::CameraInfo camera_calibration_info = *pub_info->camera_calibration_info_;
       camera_calibration_info.header.stamp = img->header.stamp;
       camera_calibration_info.header.frame_id = pub_info->frame_id;
-      if (std::string(pub_info->info_pub_->get_topic_name()) == "/image_right_raw/camera_info") {
+      if (std::string(pub_info->info_pub_->get_topic_name()) == right_cam_info_topic_) {
         camera_calibration_info.header.frame_id = pub_info->frame_id2;
       }
       pub_info->info_pub_->publish(camera_calibration_info);
