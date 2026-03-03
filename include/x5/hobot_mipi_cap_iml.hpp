@@ -74,23 +74,6 @@ typedef struct pipe_contex_s {
   std::shared_ptr<sensor_otp_t_> awb_otp_data;
 }pipe_contex_t;
 
-typedef struct video_buffer_s {
-  uint64_t timestamp;
-  uint32_t frame_id;
-  int width;
-  int height;
-  int stride;
-  uint32_t buff_size;
-  uint32_t data_size;
-  void* buff;
-  ~video_buffer_s() {
-    if (buff != NULL) {
-      free(buff);
-      buff = NULL;
-    }
-  }
-} VideoBuffer_ST;
-
 class HobotMipiCapIml : public HobotMipiCap {
  public:
   HobotMipiCapIml() {}
@@ -118,11 +101,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int stop();
 
   // 如果有 vps ，就 输出vps 的分层数据 channel--"single":单sensor，"left": 双目的左sensor，"right":双目的右sensor，"combine"：左右sensor拼合的图像。
-  int getFrame(std::string channel, int* nVOutW, int* nVOutH,
-        void* buf, unsigned int bufsize, unsigned int*, uint64_t&, bool gray = false);
-
   std::shared_ptr<VideoBuffer> getFrame(std::string channel);
-
 
   // 获取cap的info信息；
   // 输入输出参数：MIPI_CAP_INFO_ST的结构信息。
@@ -149,19 +128,12 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   int selectSensor(std::string &sensor, int &host, int &i2c_bus);
 
-  void dualFrameTask();
   void multiFrameTask();
   void subMultiFrameTask();
   void singleFrameTask();
-
   void sync_task();
   void sub_sync_task();
   bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
-
-  int getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* width,
-		int* height, int* stride, void* frame_buf, unsigned int bufsize, unsigned int* len,
-        uint64_t *timestamp, uint32_t* frame_id, bool gray = false);
-
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
 
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
@@ -202,8 +174,6 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool m_inited_ = false;
   bool started_ = false;
   bool combine_flag_ = false;
-  //x3_vin_info_t vin_info_;
-  //x3_vps_infos_t vps_infos_;  // vps的配置，支持多个vps group
   int vin_enable_ = true;
   int vps_enable_ = true;
   MIPI_CAP_INFO_ST cap_info_;
@@ -216,8 +186,6 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<int> mipi_stoped_;
   std::map<int, BOARD_CONFIG_ST> board_config_m_;
   std::map<int, std::vector<std::string>> host_sensor_m_;
-  //std::vector<hbn_cfg_t> hbn_cfg_;
-  std::shared_ptr<std::thread> dual_frame_task_ = nullptr;
   std::shared_ptr<std::thread> multi_frame_task_ = nullptr;
   std::shared_ptr<std::thread> sync_task_ = nullptr;
   std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
@@ -244,8 +212,6 @@ class HobotMipiCapIml : public HobotMipiCap {
     uint32_t wnd_num;
   } gdc_cfg_t;
 
-
-
   std::vector<std::shared_ptr<gdc_cfg_t>> v_gdc_cfg_;
 
   camera_config_t g_camera_config[PIPES_TOTAL];
@@ -258,26 +224,12 @@ class HobotMipiCapIml : public HobotMipiCap {
   hbn_vnode_handle_t vse_node_handle[PIPES_TOTAL] = {0};
 
   std::vector<pipe_contex_t> pipe_contex;
-
-  std::queue<std::shared_ptr<VideoBuffer_ST>> q_buff_empty_;
-  std::queue<std::shared_ptr<VideoBuffer_ST>> q_left_buff_;
-  std::queue<std::shared_ptr<VideoBuffer_ST>> q_right_buff_;
-  std::vector<std::queue<std::shared_ptr<VideoBuffer_ST>>> q_v_buff_;
-  std::queue<std::shared_ptr<VideoBuffer_ST>> q_combine_buff_;
-  std::queue<std::shared_ptr<VideoBuffer_ST>> q_combine_buff_empty_;
-
   std::vector<std::shared_ptr<BuffQueueManage>> v_buff_que_manger_;
   std::shared_ptr<BuffQueueManage> combine_buff_que_manger_;
   std::vector<std::shared_ptr<FrameQueue>> v_frame_que_;
-
   std::vector<std::shared_ptr<BuffQueueManage>> v_sub_buff_que_manger_;
   std::shared_ptr<BuffQueueManage> sub_combine_buff_que_manger_;
   std::vector<std::shared_ptr<FrameQueue>> v_sub_frame_que_;
-
-  std::mutex empty_mtx_;
-  std::vector<std::shared_ptr<VideoBuffer>> v_empty_buff_;
-
-  bool sub_stream_ = false;
 };
 
 }  // namespace mipi_cam

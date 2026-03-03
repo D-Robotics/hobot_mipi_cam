@@ -85,12 +85,7 @@ int HobotMipiCapIml::initEnv() {
 
 
   listMipiHost(mipi_hosts, mipi_started_, mipi_stoped_);
-#if 0
-  if (mipi_started_.size() > 0) { //暂时不能同时启动多个mipi_cam进程
-    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "The device has already been started\n");
-    return -1;
-  }
-#endif
+
   if (mipi_stoped_.size() == 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "There are no available host.\n");
     return -1;
@@ -187,7 +182,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		}
 	}
 	mipi_calibration& calibration_instance = mipi_calibration::GetInstance();
-  if (cam_info_.size() != 2) {
+    if (cam_info_.size() != 2) {
 		auto cal_params = mipi_calibration::GetInstance().getCalibrationParams();
 		if (cal_params.size() >= 1) {
 			cam_info_ = cal_params[0].cam_info_;
@@ -275,10 +270,6 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	if ((cap_info_.dual_combine_ == 1) || (cap_info_.dual_combine_ == 2)) {
 		combine_flag_ = true;
 	}
-    //n2d_pipe_contex.cap_info_ = &cap_info_;
-	//ret = create_and_run_n2d_vflow(&n2d_pipe_contex);
-	//ERR_CON_EQ(ret, 0);
-
   } else {
 	bool deteced_flag = false;
 	int sensor_count = vp_get_sensors_list_number();
@@ -419,8 +410,6 @@ int HobotMipiCapIml::start() {
   int i = 0, ret = 0;
   // 使能 vps
   for(auto contex : pipe_contex){
-    //ret = hbn_camera_start(contex.cam_fd);
-    //ERR_CON_EQ(ret, 0);
     ret = hbn_vflow_start(contex.vflow_fd);
     ERR_CON_EQ(ret, 0);
   }
@@ -431,60 +420,7 @@ int HobotMipiCapIml::start() {
 	}
   }
   started_ = true;
-#if 0
-  if ((cap_info_.device_mode_.compare("dual") == 0) && 
-   	 ((cap_info_.dual_combine_ == 1) || (cap_info_.dual_combine_ == 2))){
-	
-		{
-			std::unique_lock<std::mutex> lk(queue_mtx_);
-			for (int j = 0; j < 7; j++) {
-				auto buffer_ptr = std::make_shared<VideoBuffer_ST>();
-				buffer_ptr->buff_size = cap_info_.width * cap_info_.height * 1.5;
-				buffer_ptr->buff = malloc(buffer_ptr->buff_size);
-				q_buff_empty_.push(buffer_ptr);
-			}
-			for (int j = 0; j < 4; j++) {
-				auto buffer_ptr = std::make_shared<VideoBuffer_ST>();
-				buffer_ptr->buff_size = cap_info_.width * cap_info_.height * 2 * 1.5;
-				buffer_ptr->buff = malloc(buffer_ptr->buff_size);
-				q_combine_buff_empty_.push(buffer_ptr);
-			}
-			q_v_buff_.resize(2);
-		}
-
-		dual_frame_task_ = std::make_shared<std::thread>(
-					std::bind(&HobotMipiCapIml::dualFrameTask, this));
-  }
-#elif 0
-  if (pipe_contex.size() == 1) {
-	auto que_manger = std::make_shared<BuffQueueManage>();
-	que_manger->creat_buff(5);
-	v_buff_que_manger_.push_back(que_manger);
-	que_manger = std::make_shared<BuffQueueManage>();
-	que_manger->creat_buff(5);
-	v_buff_que_manger_.push_back(que_manger);
-	dual_frame_task_ = std::make_shared<std::thread>(
-		std::bind(&HobotMipiCapIml::singleFrameTask, this));
-  } else {
-	  for(auto contex : pipe_contex) {
-		auto que_manger = std::make_shared<BuffQueueManage>();
-		que_manger->creat_buff(5);
-		v_buff_que_manger_.push_back(que_manger);
-	  }
-	  combine_buff_que_manger_ = std::make_shared<BuffQueueManage>();
-	  combine_buff_que_manger_->creat_buff(5);
-	  dual_frame_task_ = std::make_shared<std::thread>(
-		std::bind(&HobotMipiCapIml::multiFrameTask, this));
-	  if (combine_flag_) {
-		for(auto contex : pipe_contex) {
-			v_frame_que_.push_back(std::make_shared<FrameQueue>());
-		}
-		sync_task_ = std::make_shared<std::thread>(
-				std::bind(&HobotMipiCapIml::sync_task, this));
-	  }
-  }
-#else
-if (!pipe_contex.empty()) {
+  if (!pipe_contex.empty()) {
 	  for(auto contex : pipe_contex) {
 		auto que_manger = std::make_shared<BuffQueueManage>();
 		que_manger->creat_buff(5);
@@ -520,7 +456,6 @@ if (!pipe_contex.empty()) {
 		  }
 	  }
   }
-#endif
   return 0;
 }
 
@@ -538,97 +473,6 @@ int HobotMipiCapIml::stop() {
   }
   RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "x5_mipi_cam_stop end.\n");
   return 0;
-}
-
-int HobotMipiCapIml::getFrame(std::string channel, int* nVOutW, int* nVOutH,
-        void* frame_buf, unsigned int bufsize, unsigned int* len,
-        uint64_t &timestamp, bool gray) {
-  int ret = -1;
-  if (!started_) {
-     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-      "x5 camera isn't started");
-    return -1;
-  }
-
-  int loop = (1000 / cap_info_.fps + 30) / 10;
-  if (dual_frame_task_) {
-	do {
-		if (!rclcpp::ok()) break;
-		{
-			std::shared_ptr<VideoBuffer_ST> buff_ptr = nullptr;      
-			std::unique_lock<std::mutex> lk(queue_mtx_);
-			if (channel == "combine") {
-				if (!q_combine_buff_.empty()) {
-					buff_ptr = q_combine_buff_.front();    
-					q_combine_buff_.pop();
-				}
-			} else if (channel == "right") {
-        if (!q_v_buff_[1].empty()) {
-					buff_ptr = q_v_buff_[1].front();      
-					q_v_buff_[1].pop();
-				}
-			} else {
-				if (!q_v_buff_[0].empty()) {
-					buff_ptr = q_v_buff_[0].front();       
-					q_v_buff_[0].pop();
-				}
-			}
-			if (buff_ptr) {
-				if (buff_ptr->data_size > bufsize) {
-					q_buff_empty_.push(buff_ptr);
-					return -1;
-				}
-				timestamp = buff_ptr->timestamp;
-				*nVOutW = buff_ptr->width;
-				*nVOutH = buff_ptr->height;
-				*len = buff_ptr->data_size;
-				if (gray == true) {
-					*len = buff_ptr->width * buff_ptr->height;
-					memcpy(frame_buf, buff_ptr->buff, *len);
-				} else {
-					memcpy(frame_buf, buff_ptr->buff, buff_ptr->data_size);
-				}
-				if (channel == "combine") {
-					q_combine_buff_empty_.push(buff_ptr);
-				} else {
-					q_buff_empty_.push(buff_ptr);
-				}
-        
-				return 0;
-			} 
-		}
-		usleep(10 * 1000);
-	} while ((loop-- > 0) && started_);
-
-  } else {
-	int stride = 0;
-	int nChnID = 0;
-	uint32_t frameId = 0;
-	int stream_channel = 0;
-	if ((channel == "right") && (pipe_contex.size() == 2)) {
-		nChnID = 1;
-	} else if ((channel == "left") || (channel == "single")) {
-		nChnID = 0;
-	} else if (channel == "sub_single") {
-		if (sub_stream_ == false) {
-			return -1;
-		}
-		nChnID = 0;
-		stream_channel = 1;
-	} else {
-		RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-		"x5 camera isn't support channel : %s", channel);
-		return -1;
-	}
-	
-	ret = getVnodeFrame(pipe_contex[nChnID].stream_handle, stream_channel, nVOutW, nVOutH, &stride,
-						frame_buf, bufsize, len, &timestamp, &frameId, gray);
-	if (ret != 0) {
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "hbn_vnode_getframe VSE channel 0 failed nChnID = %d,ret = %d\n", nChnID,ret);
-		return -1;
-	}
-  }
-  return ret;
 }
 
 std::shared_ptr<VideoBuffer> HobotMipiCapIml::getFrame(std::string channel) {
@@ -687,96 +531,6 @@ std::shared_ptr<VideoBuffer> HobotMipiCapIml::getFrame(std::string channel) {
 	} while ((loop-- > 0) && started_);
 	return buff_ptr;
 }
-
-
-int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* width,
-		int* height, int* stride, void* frame_buf, unsigned int bufsize, unsigned int* len,
-        uint64_t *timestamp, uint32_t* frame_id, bool gray) {
-	
-	if ((width == nullptr) || (height == nullptr) || (stride == nullptr) || (frame_id == nullptr) || 
-	    (frame_buf == nullptr) || (len == nullptr) || (timestamp == nullptr)) {
-
-		return -1;
-	}
-	hbn_vnode_image_t out_img;
-	int ret = hbn_vnode_getframe(handle, channel, 1000, &out_img);
-
-	if (ret != 0) {
-		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe VSE channel  = %d,ret = %d failed\n", channel,ret);
-		return -1;
-	}
-	hb_mem_invalidate_buf_with_vaddr((uint64_t)out_img.buffer.virt_addr[0],out_img.buffer.size[0]);
-
-	hb_mem_invalidate_buf_with_vaddr((uint64_t)out_img.buffer.virt_addr[1],out_img.buffer.size[1]);
-
-	//*timestamp = out_img.info.trig_tv.tv_sec * 1e9 + out_img.info.trig_tv.tv_usec * 1e3;
-	//*timestamp = out_img.info.tv.tv_sec * 1e9 + out_img.info.tv.tv_usec * 1e3;
-	struct timespec ts;
-  clock_gettime(CLOCK_REALTIME, &ts);
- 
-  int32_t exposure_time = (out_img.info.tv.tv_sec - out_img.info.trig_tv.tv_sec) * 1e9 + 
-                          (out_img.info.tv.tv_usec - out_img.info.trig_tv.tv_usec) * 1e3;  
-
-  if (out_img.info.trig_tv.tv_sec != 0 && 
-      out_img.info.trig_tv.tv_usec != 0) {
-      out_img.info.sys_timestamps -= exposure_time;
-  }
-
-  //  timestamps means kernel timestamp when the frame is obtained
-  //  sys_timestamps means kernel system timestamp when the frame is obtained
-  //  tv means hardware timestamp when the frame is obtained
-  //  trig_tv means hardware timestamp when the frame is triggered by the external trigger
-  struct timespec upts;
-  clock_gettime(CLOCK_MONOTONIC, &upts);
-  double timestamps = out_img.info.timestamps * 1e-9;
-  double sys_timestamps = out_img.info.sys_timestamps * 1e-9;
-  double hw_timestamp = out_img.info.tv.tv_sec + (double)out_img.info.tv.tv_usec * 1e-6;
-  double tri_timestamp = out_img.info.trig_tv.tv_sec + (double)out_img.info.trig_tv.tv_usec * 1e-6;
-  double current_ts =  ts.tv_sec + (double)ts.tv_nsec * 1e-9;
-  double current_uptime_ts =  upts.tv_sec + (double)upts.tv_nsec * 1e-9;
-  
-  *frame_id = out_img.info.frame_id;
-  if ("realtime" == cap_info_.frame_ts_type_) {
-	*timestamp = out_img.info.sys_timestamps;
-  } else {
-	*timestamp = out_img.info.timestamps;
-  }                       
-                          
-  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
-            "capture a frame, handle: %llu, id: %d, timestamps: %f, current uptime: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
-            "current timestamp: %f, laps ms: %fms, exposure_time: %fms.", 
-			                        handle, *frame_id, timestamps, current_uptime_ts, sys_timestamps, hw_timestamp, tri_timestamp,
-                              current_ts, (current_ts - sys_timestamps) * 1e3, (double)exposure_time * 1e-6);
-
-	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", image time sec:" << out_img.info.tv.tv_sec
-	//          << ", trig time sec:" << out_img.info.trig_tv.tv_sec 
-	//		  << ", image timestamps(/1e9) sec:" << out_img.info.timestamps / 1e9 <<  std::endl;
-
-	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", timestamp time sec:" << (int)(*timestamp / 1e9) <<  std::endl;
-	
-	*stride = out_img.buffer.stride;
-	*width = out_img.buffer.width;
-	*height = out_img.buffer.height;
-	if (gray == true) {
-		*len = out_img.buffer.size[0];
-	} else {
-		*len = out_img.buffer.size[0] + out_img.buffer.size[1];
-	}
-	if (bufsize < *len) {
-		RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-			"buf size(%d) < frame size(%d)", bufsize, *len);
-		hbn_vnode_releaseframe(handle, channel, &out_img);
-		*len = 0;
-		return -1;
-	}
-	memcpy(frame_buf, out_img.buffer.virt_addr[0], out_img.buffer.size[0]);
-	if (gray == false) {
-		memcpy(frame_buf + out_img.buffer.size[0], out_img.buffer.virt_addr[1], out_img.buffer.size[1]);
-	}
-	hbn_vnode_releaseframe(handle, channel, &out_img);
-	return 0;
-}
-
 
 int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr) {
 
@@ -853,192 +607,6 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::
 	return 0;
 }
 
-void HobotMipiCapIml::dualFrameTask() {
-  if (!started_) {
-     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-      "x5 camera isn't started");
-    return;
-  }
-  if (pipe_contex.size() != 2) {
-	return;
-  }
-
-  std::shared_ptr<VideoBuffer_ST> combine_buff_ptr = nullptr;
-  std::vector<std::shared_ptr<VideoBuffer_ST>> buff_ptr;
-  buff_ptr.resize(2);
-
-  int ret = 0;
-  fd_set readfds;
-  struct timeval timeout;
-  int result;
-  int max_handle;
-  int left_fd;
-  int right_fd;
-  std::vector<int> ochn_fd;
-  ochn_fd.resize(2);
-  std::vector<int> loss_cnt = {0,0};
-	
-  int diff_time = 500000000 / cap_info_.fps;
-
-  hbn_vnode_get_fd(pipe_contex[0].stream_handle, 0, &ochn_fd[0]);
-  hbn_vnode_get_fd(pipe_contex[1].stream_handle, 0, &ochn_fd[1]);
-
-  while (started_) {
-
-		max_handle = 0;
-		FD_ZERO(&readfds);
-		FD_SET(ochn_fd[0], &readfds);
-		FD_SET(ochn_fd[1], &readfds);
-
-		timeout.tv_sec = 2;
-		timeout.tv_usec = 0;
-		loss_cnt[0]++;
-		loss_cnt[1]++;
-
-		max_handle = max_handle > ochn_fd[0]?max_handle : ochn_fd[0];
-		max_handle = max_handle > ochn_fd[1]?max_handle : ochn_fd[1];
-
-    result = select(max_handle + 1, &readfds, nullptr, nullptr, &timeout);
-    if (result == -1) {
-			std::cerr << "Select error" << std::endl;
-			break;
-    } else if (result == 0) {
-			// 超时
-			std::cout << "Timeout occurred" << std::endl;
-			std::unique_lock<std::mutex> lk(queue_mtx_);
-			for (int i = 0; i < buff_ptr.size(); i++) {
-				if (buff_ptr[i]) {
-					q_v_buff_[i].push(buff_ptr[i]);
-					buff_ptr[i] = nullptr;
-				}
-			}
-			continue;
-    } else {
-		for (int i = 0; i < ochn_fd.size(); i++) {
-			if (!rclcpp::ok()) break;
-			if (FD_ISSET(ochn_fd[i], &readfds)) {
-				if (buff_ptr[i] == nullptr) {
-					{
-						std::unique_lock<std::mutex> lk(queue_mtx_);
-						if (q_v_buff_[i].size() >= 3) {
-							buff_ptr[i] = q_v_buff_[i].front();
-							q_v_buff_[i].pop();
-						} else if (q_buff_empty_.size() > 0) {
-							buff_ptr[i] = q_buff_empty_.front();
-							q_buff_empty_.pop();
-						}
-					}
-
-					if (buff_ptr[i]) {
-						loss_cnt[i] = 0;
-						ret = getVnodeFrame(pipe_contex[i].stream_handle, 0, &buff_ptr[i]->width, &buff_ptr[i]->height, &buff_ptr[i]->stride,
-								buff_ptr[i]->buff, buff_ptr[i]->buff_size, &buff_ptr[i]->data_size, &buff_ptr[i]->timestamp, &buff_ptr[i]->frame_id);
-						if (ret != 0) {
-							RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", i,ret);
-							std::unique_lock<std::mutex> lk(queue_mtx_);
-							q_buff_empty_.push(buff_ptr[i]);
-							buff_ptr[i] = nullptr;
-						}
-					}
-				}
-			}
-		}
-
-		if (buff_ptr[0] && buff_ptr[1]  && (buff_ptr[0]->width == buff_ptr[1]->width) &&
-	   			(buff_ptr[0]->height == buff_ptr[1]->height)) {
-
-			if (std::abs((int)(buff_ptr[0]->timestamp - buff_ptr[1]->timestamp)) < diff_time) {
-				{
-					std::unique_lock<std::mutex> lk(queue_mtx_);
-					if (q_combine_buff_.size() >= 3) {
-						combine_buff_ptr = q_combine_buff_.front();
-						q_combine_buff_.pop();
-					} else if (q_combine_buff_empty_.size() > 0) {
-						combine_buff_ptr = q_combine_buff_empty_.front();
-						q_combine_buff_empty_.pop();
-					}
-				}
-				if (combine_buff_ptr) {
-					if (combine_buff_ptr->buff_size >= buff_ptr[0]->data_size * 2) {
-#if 0
-						combine_buff_ptr->timestamp = buff_ptr[0]->timestamp;
-						combine_buff_ptr->width = buff_ptr[0]->width * 2;
-						combine_buff_ptr->height = buff_ptr[0]->height;
-						combine_buff_ptr->stride = buff_ptr[0]->stride * 2;
-						combine_buff_ptr->data_size = buff_ptr[0]->data_size * 2;
-						for (int i = 0; i < buff_ptr[0]->height; i++) {
-							memcpy(combine_buff_ptr->buff + i * combine_buff_ptr->width, 
-									buff_ptr[0]->buff + i * buff_ptr[0]->width, buff_ptr[0]->width);
-							memcpy(combine_buff_ptr->buff + i * combine_buff_ptr->width + buff_ptr[0]->width, 
-									buff_ptr[1]->buff + i * buff_ptr[1]->width, buff_ptr[1]->width);
-						}
-						char* combine_uv_ptr = (char *)(combine_buff_ptr->buff +  combine_buff_ptr->width * combine_buff_ptr->height);
-						char* left_uv_ptr = (char *)(buff_ptr[0]->buff +  buff_ptr[0]->width * buff_ptr[0]->height);
-						char* right_uv_ptr = (char *)(buff_ptr[1]->buff +  buff_ptr[1]->width * buff_ptr[1]->height);
-						int uv_height = buff_ptr[0]->height / 2;
-
-						for (int i = 0; i < uv_height; i++) {
-							memcpy(combine_uv_ptr + i * combine_buff_ptr->width, 
-									left_uv_ptr + i * buff_ptr[0]->width, buff_ptr[0]->width);
-							memcpy(combine_uv_ptr + i * combine_buff_ptr->width + buff_ptr[0]->width, 
-									right_uv_ptr + i * buff_ptr[1]->width, buff_ptr[1]->width);
-						}
-#else
-						combine_buff_ptr->timestamp = buff_ptr[0]->timestamp;
-						combine_buff_ptr->width = buff_ptr[0]->width;
-						combine_buff_ptr->height = buff_ptr[0]->height * 2;
-						combine_buff_ptr->stride = buff_ptr[0]->stride;
-						combine_buff_ptr->data_size = buff_ptr[0]->data_size * 2;
-						int y_size = buff_ptr[0]->width * buff_ptr[0]->height;
-						int uv_size = y_size / 2;
-						//copy y
-						memcpy(combine_buff_ptr->buff, buff_ptr[0]->buff, y_size);
-						memcpy(combine_buff_ptr->buff + y_size, buff_ptr[1]->buff, y_size);
-                        
-						//copy uv
-						memcpy(combine_buff_ptr->buff + y_size * 2, buff_ptr[0]->buff + y_size, uv_size);
-						memcpy(combine_buff_ptr->buff + y_size * 2 + uv_size, buff_ptr[1]->buff + y_size, uv_size);
-
-#endif
-						std::unique_lock<std::mutex> lk(queue_mtx_);                                          
-						q_combine_buff_.push(combine_buff_ptr);
-
-					} else {
-						std::unique_lock<std::mutex> lk(queue_mtx_);
-						q_combine_buff_empty_.push(combine_buff_ptr);
-					}
-					combine_buff_ptr = nullptr;
-				}
-				std::unique_lock<std::mutex> lk(queue_mtx_);
-				q_v_buff_[0].push(buff_ptr[0]);
-				buff_ptr[0] = nullptr;
-				q_v_buff_[1].push(buff_ptr[1]);
-				buff_ptr[1] = nullptr;
-			} else {
-				std::unique_lock<std::mutex> lk(queue_mtx_);
-				if (buff_ptr[0]->timestamp < buff_ptr[1]->timestamp) {
-					q_v_buff_[0].push(buff_ptr[0]);
-					buff_ptr[0] = nullptr;
-				} else {
-					q_v_buff_[1].push(buff_ptr[1]);
-					buff_ptr[1] = nullptr;
-				}
-			} 
-		}
-		std::unique_lock<std::mutex> lk(queue_mtx_);
-		for (int i = 0; i < buff_ptr.size(); i++) {
-			if ((buff_ptr[i]) && (loss_cnt[i] > 0)) {
-				q_v_buff_[i].push(buff_ptr[i]);
-				buff_ptr[i] = nullptr;
-				loss_cnt[i] = 0;
-			}
-		}
-	}
-  }
-  return;
-}
-
-
 void HobotMipiCapIml::multiFrameTask() {
 	if (!started_) {
 	   RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "s600 camera isn't started");
@@ -1108,9 +676,9 @@ void HobotMipiCapIml::multiFrameTask() {
 	  }
 	}
 	return;
-  }
+}
 
-  void HobotMipiCapIml::subMultiFrameTask() {
+void HobotMipiCapIml::subMultiFrameTask() {
 	if (!started_) {
 	   RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "s600 camera isn't started");
 	  return;
@@ -1171,73 +739,6 @@ void HobotMipiCapIml::multiFrameTask() {
 						buff_ptr->return_data_que();
 					} else {
 						RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", pipe_contex[i].sub_stream_channel,ret);
-						buff_ptr->return_empty_que();
-					}
-				}
-			  }
-		  }
-	  }
-	}
-	return;
-  }
-
-
-
-void HobotMipiCapIml::singleFrameTask() {
-	if (!started_) {
-	   RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "s600 camera isn't started");
-	  return;
-	}
-	if (pipe_contex.size() != 1) {
-		RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "s600 pipeline  is zero");
-	  return;
-	}
-
-	int ret = 0;
-	fd_set readfds;
-	struct timeval timeout;
-	int result;
-	int max_handle;
-	std::vector<int> ochn_fd;
-	ochn_fd.resize(2);
-	hbn_vnode_get_fd(pipe_contex[0].vse_node_handle, 0, &ochn_fd[0]);
-	hbn_vnode_get_fd(pipe_contex[0].vse_node_handle, 1, &ochn_fd[1]);
-
-	// 1. 准备空间
-	std::vector<int> indices(2);
-
-	// 2. 填充递增序列：从 0 开始，后续元素依次加 1
-	std::iota(indices.begin(), indices.end(), 0); 
-
-	while (started_) {
-	  max_handle = 0;
-	  FD_ZERO(&readfds);
-	  std::for_each(indices.begin(), indices.end(), [&](int i) {
-		FD_SET(ochn_fd[i], &readfds);
-		max_handle = max_handle > ochn_fd[i]?max_handle : ochn_fd[i];
-	  });
-
-	  timeout.tv_sec = 2;
-	  timeout.tv_usec = 0;
-	  result = select(max_handle + 1, &readfds, nullptr, nullptr, &timeout);
-	  if (result == -1) {
-		  std::cerr << "Select error" << std::endl;
-		  break;
-	  } else if (result == 0) {
-		  // 超时
-		  std::cout << "Timeout occurred" << std::endl;
-		  continue;
-	  } else {
-		  for (int i = 0; i < ochn_fd.size(); i++) {
-			  //if (!rclcpp::ok()) break;
-			  if (FD_ISSET(ochn_fd[i], &readfds)) {
-				std::shared_ptr<VideoBuffer> buff_ptr = v_buff_que_manger_[i]->get_empty_buff();
-				if (buff_ptr) {
-					ret = getVnodeFrame(pipe_contex[0].vse_node_handle, i, buff_ptr);
-					if (ret == 0) {
-						buff_ptr->return_data_que();
-					} else {
-						RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", i,ret);
 						buff_ptr->return_empty_que();
 					}
 				}
@@ -1344,9 +845,9 @@ void HobotMipiCapIml::sync_task() {
 	  }
 	  std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
-  }
+}
   
-  void HobotMipiCapIml::sub_sync_task() {
+void HobotMipiCapIml::sub_sync_task() {
 	TOLERANCE = 500000000 / cap_info_.fps;
 	using clock = std::chrono::steady_clock;
 	auto last_time = clock::now();
@@ -1441,7 +942,7 @@ void HobotMipiCapIml::sync_task() {
 	  }
 	  std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
-  }
+}
 
 bool HobotMipiCapIml::isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance) {
 	  long long min_ts = (long long)frames[0]->timestamp;
@@ -1702,7 +1203,6 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 								| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
 			ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 1, &sub_alloc_attr);
 			ERR_CON_EQ(ret, 0);
-			sub_stream_ = true;
 			pipe_contex->sub_stream_channel = 1;
 		} else if ((pipe_contex->cap_info_->sub_width >= input_width) 
 				&& (pipe_contex->cap_info_->sub_height >= input_height)) {
@@ -1731,7 +1231,6 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 								| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
 			ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 5, &sub_alloc_attr);
 			ERR_CON_EQ(ret, 0);
-			sub_stream_ = true;
 			pipe_contex->sub_stream_channel = 5;		
 		} else {
 			pipe_contex->cap_info_->sub_stream_enable_ = false;
