@@ -277,6 +277,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int getFrame(std::string channel, int* nVOutW, int* nVOutH,
         void* buf, unsigned int bufsize, unsigned int*, uint64_t&, bool gray = false);
 
+  std::shared_ptr<VideoBuffer> getFrame(std::string channel);
 
   // 获取cap的info信息；
   // 输入输出参数：MIPI_CAP_INFO_ST的结构信息。
@@ -311,6 +312,11 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool getDualCamCalibrationFromEeprom_230ai();
 
   void dualFrameTask();
+  void multiFrameTask();
+
+  void sync_task();
+  void sub_sync_task();
+  bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
 
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* width,
 		int* height, int* stride, void* frame_buf, unsigned int bufsize, unsigned int* len,
@@ -320,6 +326,9 @@ class HobotMipiCapIml : public HobotMipiCap {
 		int* height, int* stride, void* frame_buf, unsigned int bufsize, unsigned int* len,
         uint64_t *timestamp, uint32_t* frame_id, bool gray = false);
 
+  int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
+  int getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
+      
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
   int create_pym_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int pym_mode);
   int create_isp_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int mode, int is_online);
@@ -343,6 +352,7 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   bool m_inited_ = false;
   bool started_ = false;
+  bool combine_flag_ = false;
   //x3_vin_info_t vin_info_;
   //x3_vps_infos_t vps_infos_;  // vps的配置，支持多个vps group
   int vin_enable_ = true;
@@ -360,6 +370,11 @@ char cal_tpye_ = 0; //0x00:针孔标定；0x01：鱼眼标定。
     std::map<int, BOARD_CONFIG_ST> board_config_m_;
   std::map<int, std::vector<std::string>> host_sensor_m_;
   std::shared_ptr<std::thread> dual_frame_task_ = nullptr;
+  std::shared_ptr<std::thread> multi_frame_task_ = nullptr;
+  std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
+
+  std::shared_ptr<std::thread> sync_task_ = nullptr;
+  std::shared_ptr<std::thread> sub_sync_task_ = nullptr;
 
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
@@ -391,6 +406,14 @@ char cal_tpye_ = 0; //0x00:针孔标定；0x01：鱼眼标定。
   std::vector<std::queue<std::shared_ptr<VideoBuffer_ST>>> q_v_buff_;
   std::queue<std::shared_ptr<VideoBuffer_ST>> q_combine_buff_;
   std::queue<std::shared_ptr<VideoBuffer_ST>> q_combine_buff_empty_;
+
+  std::vector<std::shared_ptr<BuffQueueManage>> v_buff_que_manger_;
+  std::shared_ptr<BuffQueueManage> combine_buff_que_manger_;
+  std::vector<std::shared_ptr<FrameQueue>> v_frame_que_;
+  std::vector<std::shared_ptr<BuffQueueManage>> v_sub_buff_que_manger_;
+  std::shared_ptr<BuffQueueManage> sub_combine_buff_que_manger_;
+  std::vector<std::shared_ptr<FrameQueue>> v_sub_frame_que_;
+
 };
 
 }  // namespace mipi_cam
