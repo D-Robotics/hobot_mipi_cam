@@ -101,23 +101,6 @@ typedef struct pipe_contex_s {
   pipeline_usage_scene_type_t sensor_type_;
 }pipe_contex_t;
 
-typedef struct video_buffer_s {
-  uint64_t timestamp;
-  uint32_t frame_id;
-  int width;
-  int height;
-  int stride;
-  uint32_t buff_size;
-  uint32_t data_size;
-  void* buff;
-  ~video_buffer_s() {
-    if (buff != NULL) {
-      free(buff);
-      buff = NULL;
-    }
-  }
-} VideoBuffer_ST;
-
 typedef struct eeprom_id {
   int i2c_bus;           // sensor挂在哪条总线上
   int i2c_dev_addr;      // sensor i2c设备地址

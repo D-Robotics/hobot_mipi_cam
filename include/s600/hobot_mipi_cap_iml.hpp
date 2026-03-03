@@ -101,23 +101,6 @@ typedef struct pipe_contex_s {
   pipeline_usage_scene_type_t sensor_type_;
 }pipe_contex_t;
 
-typedef struct video_buffer_s {
-  uint64_t timestamp;
-  uint32_t frame_id;
-  int width;
-  int height;
-  int stride;
-  uint32_t buff_size;
-  uint32_t data_size;
-  void* buff;
-  ~video_buffer_s() {
-    if (buff != NULL) {
-      free(buff);
-      buff = NULL;
-    }
-  }
-} VideoBuffer_ST;
-
 typedef struct eeprom_id {
   int i2c_bus;           // sensor挂在哪条总线上
   int i2c_dev_addr;      // sensor i2c设备地址
@@ -273,10 +256,6 @@ class HobotMipiCapIml : public HobotMipiCap {
   // 返回值：0，停止成功；-1，停止失败。
   int stop();
 
-  // 如果有 vps ，就 输出vps 的分层数据 channel--"single":单sensor，"left": 双目的左sensor，"right":双目的右sensor，"combine"：左右sensor拼合的图像。
-  int getFrame(std::string channel, int* nVOutW, int* nVOutH,
-        void* buf, unsigned int bufsize, unsigned int*, uint64_t&, bool gray = false);
-
   std::shared_ptr<VideoBuffer> getFrame(std::string channel);
 
   // 获取cap的info信息；
@@ -310,25 +289,12 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool getDualCamCalibrationFromEeprom();
   bool getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr);
   bool getDualCamCalibrationFromEeprom_230ai();
-
-  void dualFrameTask();
   void multiFrameTask();
-
   void sync_task();
   void sub_sync_task();
   bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
-
-  int getVnodeFrame(hbn_vnode_handle_t handle, int channel, int* width,
-		int* height, int* stride, void* frame_buf, unsigned int bufsize, unsigned int* len,
-        uint64_t *timestamp, uint32_t* frame_id, bool gray = false);
-
-  int getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, int* width,
-		int* height, int* stride, void* frame_buf, unsigned int bufsize, unsigned int* len,
-        uint64_t *timestamp, uint32_t* frame_id, bool gray = false);
-
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
   int getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
-
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
   int create_pym_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int pym_mode);
   int create_isp_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int mode, int is_online);
@@ -361,7 +327,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int entry_index_ = 0;
   int sensor_bus_ = 2;
   int pipeline_id_ = 0;
-char cal_tpye_ = 0; //0x00:针孔标定；0x01：鱼眼标定。
+  char cal_tpye_ = 0; //0x00:针孔标定；0x01：鱼眼标定。
   std::vector<int> mipi_started_;
   std::vector<int> mipi_stoped_;
   int pym_channel_ = 0;
@@ -369,7 +335,6 @@ char cal_tpye_ = 0; //0x00:针孔标定；0x01：鱼眼标定。
   int isp_online_ynr = 1;
     std::map<int, BOARD_CONFIG_ST> board_config_m_;
   std::map<int, std::vector<std::string>> host_sensor_m_;
-  std::shared_ptr<std::thread> dual_frame_task_ = nullptr;
   std::shared_ptr<std::thread> multi_frame_task_ = nullptr;
   std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
 
@@ -401,13 +366,6 @@ char cal_tpye_ = 0; //0x00:针孔标定；0x01：鱼眼标定。
   hbn_vnode_handle_t pym_node_handle[PIPES_TOTAL] = {0};
 
   std::vector<pipe_contex_t> pipe_contex;
-
-  std::queue<std::shared_ptr<VideoBuffer_ST>> q_buff_empty_;
-  std::queue<std::shared_ptr<VideoBuffer_ST>> q_left_buff_;
-  std::queue<std::shared_ptr<VideoBuffer_ST>> q_right_buff_;
-  std::vector<std::queue<std::shared_ptr<VideoBuffer_ST>>> q_v_buff_;
-  std::queue<std::shared_ptr<VideoBuffer_ST>> q_combine_buff_;
-  std::queue<std::shared_ptr<VideoBuffer_ST>> q_combine_buff_empty_;
 
   std::vector<std::shared_ptr<BuffQueueManage>> v_buff_que_manger_;
   std::shared_ptr<BuffQueueManage> combine_buff_que_manger_;
