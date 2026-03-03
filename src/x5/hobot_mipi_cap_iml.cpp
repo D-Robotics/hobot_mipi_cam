@@ -2107,7 +2107,7 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
     pdata.awb_golden_ct_num = 3;       // AWB黄金色温配置数量
 
     // 配置3100K色温参数
-    pdata.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K; 
+    pdata.awb_data[0].color_temperature = ::COLOR_TEMPERATURE_3100K; 
     pdata.awb_data[0].r =   0;        //pipe_contex->awb_otp_data.awb_data[0].r;
     pdata.awb_data[0].gr =  0;           //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[0].gb =  0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
@@ -2115,7 +2115,7 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
     pdata.awb_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_data[0].rg_ratio;
     pdata.awb_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_data[0].bg_ratio;
 
-    pdata.awb_golden_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
+    pdata.awb_golden_data[0].color_temperature = ::COLOR_TEMPERATURE_3100K;
     pdata.awb_golden_data[0].r = 0;
     pdata.awb_golden_data[0].gr = 0;
     pdata.awb_golden_data[0].gb = 0;
@@ -2124,7 +2124,7 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
     pdata.awb_golden_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[0].bg_ratio;
 
     // 配置4000K色温参数
-    pdata.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+    pdata.awb_data[1].color_temperature = ::COLOR_TEMPERATURE_4000K;
     pdata.awb_data[1].r =    0;             //pipe_contex->awb_otp_data.awb_data[0].r;
     pdata.awb_data[1].gr =     0;         //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[1].gb =   0;                //pipe_contex->awb_otp_data.awb_data[0].gb;
@@ -2132,7 +2132,7 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
     pdata.awb_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_data[1].rg_ratio;
     pdata.awb_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_data[1].bg_ratio;
 
-    pdata.awb_golden_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
+    pdata.awb_golden_data[1].color_temperature = ::COLOR_TEMPERATURE_4000K;
     pdata.awb_golden_data[1].r = 0;
     pdata.awb_golden_data[1].gr = 0;
     pdata.awb_golden_data[1].gb = 0;
@@ -2141,7 +2141,7 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
     pdata.awb_golden_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[1].bg_ratio;
 
     // 配置5800K色温参数
-    pdata.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+    pdata.awb_data[2].color_temperature = ::COLOR_TEMPERATURE_5800K;
     pdata.awb_data[2].r =      0;            //pipe_contex->awb_otp_data.awb_data[0].r;
     pdata.awb_data[2].gr =   0;                   //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[2].gb =   0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
@@ -2149,7 +2149,7 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
     pdata.awb_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_data[2].rg_ratio;
     pdata.awb_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_data[2].bg_ratio;
 
-    pdata.awb_golden_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
+    pdata.awb_golden_data[2].color_temperature = ::COLOR_TEMPERATURE_5800K;
     pdata.awb_golden_data[2].r = 0;
     pdata.awb_golden_data[2].gr = 0;
     pdata.awb_golden_data[2].gb = 0;

@@ -492,7 +492,7 @@ bool mipi_calibration::getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) 
 		// ----------------------------------awb -----------------------------------
 		//左目
 		cal_param.awb_otp_data_.resize(2);
-		cal_param.awb_otp_data_[0] = std::make_shared<sensor_otp_t>(); // 分配内存
+		cal_param.awb_otp_data_[0] = std::make_shared<sensor_otp_t_>(); // 分配内存
 		auto& left_awb_otp_data_ = cal_param.awb_otp_data_[0];
 		left_awb_otp_data_->otp_awb_enable = 1;
 		left_awb_otp_data_->awb_ct_num = 3;
@@ -532,7 +532,7 @@ bool mipi_calibration::getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) 
 		left_awb_otp_data_->awb_data[0].b = awb_config.bls_b;
 
 		//右目
-		cal_param.awb_otp_data_[1] = std::make_shared<sensor_otp_t>();
+		cal_param.awb_otp_data_[1] = std::make_shared<sensor_otp_t_>();
 		auto& right_awb_otp_data_ = cal_param.awb_otp_data_[1];
 		right_awb_otp_data_->otp_awb_enable = 1;
 		right_awb_otp_data_->awb_ct_num = 3;
