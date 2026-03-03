@@ -71,7 +71,7 @@ typedef struct pipe_contex_s {
   int sub_stream_channel;
   bool gdc_resize_enable;
   MIPI_CAP_INFO_ST *cap_info_;
-  std::shared_ptr<sensor_otp_t_> awb_otp_data;
+  std::shared_ptr<Opt_Awb_Config> awb_otp_data;
 }pipe_contex_t;
 
 class HobotMipiCapIml : public HobotMipiCap {
@@ -195,7 +195,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
   std::vector<Imu_params> imu_info_;
-  std::vector<std::shared_ptr<sensor_otp_t_>> awb_otp_data_;
+  std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;
 
   std::mutex queue_mtx_;
 

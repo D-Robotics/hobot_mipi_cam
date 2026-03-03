@@ -1606,55 +1606,55 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
     pdata.awb_golden_ct_num = 3;       // AWB黄金色温配置数量
 
     // 配置3100K色温参数
-    pdata.awb_data[0].color_temperature = ::COLOR_TEMPERATURE_3100K; 
+    pdata.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K; 
     pdata.awb_data[0].r =   0;        //pipe_contex->awb_otp_data.awb_data[0].r;
     pdata.awb_data[0].gr =  0;           //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[0].gb =  0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
     pdata.awb_data[0].b =  0;                    //pipe_contex->awb_otp_data.awb_data[0].b;
-    pdata.awb_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_data[0].rg_ratio;
-    pdata.awb_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_data[0].bg_ratio;
+    pdata.awb_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.rg_ratio_3100K;
+    pdata.awb_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.bg_ratio_3100K;
 
-    pdata.awb_golden_data[0].color_temperature = ::COLOR_TEMPERATURE_3100K;
+    pdata.awb_golden_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
     pdata.awb_golden_data[0].r = 0;
     pdata.awb_golden_data[0].gr = 0;
     pdata.awb_golden_data[0].gb = 0;
     pdata.awb_golden_data[0].b = 0;
-    pdata.awb_golden_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[0].rg_ratio;
-    pdata.awb_golden_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[0].bg_ratio;
+    pdata.awb_golden_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.rg_ratio_3100K;
+    pdata.awb_golden_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.bg_ratio_3100K;
 
     // 配置4000K色温参数
-    pdata.awb_data[1].color_temperature = ::COLOR_TEMPERATURE_4000K;
+    pdata.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
     pdata.awb_data[1].r =    0;             //pipe_contex->awb_otp_data.awb_data[0].r;
     pdata.awb_data[1].gr =     0;         //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[1].gb =   0;                //pipe_contex->awb_otp_data.awb_data[0].gb;
     pdata.awb_data[1].b =   0;               //pipe_contex->awb_otp_data.awb_data[0].b;
-    pdata.awb_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_data[1].rg_ratio;
-    pdata.awb_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_data[1].bg_ratio;
+    pdata.awb_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.rg_ratio_4000K;
+    pdata.awb_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.bg_ratio_4000K;
 
-    pdata.awb_golden_data[1].color_temperature = ::COLOR_TEMPERATURE_4000K;
+    pdata.awb_golden_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
     pdata.awb_golden_data[1].r = 0;
     pdata.awb_golden_data[1].gr = 0;
     pdata.awb_golden_data[1].gb = 0;
     pdata.awb_golden_data[1].b = 0;
-    pdata.awb_golden_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[1].rg_ratio;
-    pdata.awb_golden_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[1].bg_ratio;
+    pdata.awb_golden_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.rg_ratio_4000K;
+    pdata.awb_golden_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.bg_ratio_4000K;
 
     // 配置5800K色温参数
-    pdata.awb_data[2].color_temperature = ::COLOR_TEMPERATURE_5800K;
+    pdata.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
     pdata.awb_data[2].r =      0;            //pipe_contex->awb_otp_data.awb_data[0].r;
     pdata.awb_data[2].gr =   0;                   //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[2].gb =   0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
     pdata.awb_data[2].b =    0;                  //pipe_contex->awb_otp_data.awb_data[0].b;
-    pdata.awb_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_data[2].rg_ratio;
-    pdata.awb_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_data[2].bg_ratio;
+    pdata.awb_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.rg_ratio_5800K;
+    pdata.awb_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.bg_ratio_5800K;
 
-    pdata.awb_golden_data[2].color_temperature = ::COLOR_TEMPERATURE_5800K;
+    pdata.awb_golden_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
     pdata.awb_golden_data[2].r = 0;
     pdata.awb_golden_data[2].gr = 0;
     pdata.awb_golden_data[2].gb = 0;
     pdata.awb_golden_data[2].b = 0;
-    pdata.awb_golden_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[2].rg_ratio;
-    pdata.awb_golden_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[2].bg_ratio;
+    pdata.awb_golden_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.rg_ratio_5800K;
+    pdata.awb_golden_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.bg_ratio_5800K;
 
     // 打印日志+调用HBN接口启用AWB OTP
 	//printf("awb otp enable\n");
@@ -1667,22 +1667,22 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[2].rg_ratio: %ld",  pdata.awb_golden_data[2].rg_ratio);
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[2].bg_ratio: %ld",  pdata.awb_golden_data[2].bg_ratio);
 
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].rg_ratio: %ld", pipe_contex->awb_otp_data->awb_data[0].rg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[0].bg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].rg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].bg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].rg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].bg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].rg_ratio: %ld", pipe_contex->awb_otp_data->awb_data[0].rg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[0].bg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].rg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].bg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].rg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].bg_ratio);
 
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pipe_contex->awb_otp_data->awb_data[0].r);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pipe_contex->awb_otp_data->awb_data[0].gr);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pipe_contex->awb_otp_data->awb_data[0].gb);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pipe_contex->awb_otp_data->awb_data[0].b);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pipe_contex->awb_otp_data->awb_data[0].r);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pipe_contex->awb_otp_data->awb_data[0].gr);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pipe_contex->awb_otp_data->awb_data[0].gb);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pipe_contex->awb_otp_data->awb_data[0].b);
 
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pdata.awb_data[0].r);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pdata.awb_data[0].gr);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pdata.awb_data[0].gb);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pdata.awb_data[0].b);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pdata.awb_data[0].r);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pdata.awb_data[0].gr);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pdata.awb_data[0].gb);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pdata.awb_data[0].b);
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ================== all awb otp data ==================");
 
     int32_t ret = hbn_camera_enable_otp(pipe_contex->cam_fd, &pdata);                    ////cam_fd由hbn_camera_create创建
