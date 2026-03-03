@@ -10,7 +10,7 @@
 
 #include "hobot_mipi_comm.hpp"
 #include "hobot_mipi_cap.hpp"
-#include "hb_camera_data_info.h"
+
 
 namespace mipi_cam {
 
@@ -331,6 +331,62 @@ typedef struct dual_cam_awb_st_golden {
 #pragma pack()
 // ---------------------------------------------  awb ------------------------------------------------------------------------
 
+/* sensor otp config */
+#define SENSOR_OTP_LSC_CT_NUM 1
+#define SENSOR_OTP_AWB_CT_NUM 3
+#define SENSOR_OTP_LSC_EEPROM_SIZE 17
+#define SENSOR_OTP_LSC_V_GRID_NUM 33
+#define SENSOR_OTP_LSC_H_GRID_NUM 33
+#define SENSOR_OTP_PDAF_FOCAL_SIZE 48
+
+typedef enum color_temperature_e {
+	COLOR_TEMPERATURE_3100K = 0,
+	COLOR_TEMPERATURE_4000K = 1,
+	COLOR_TEMPERATURE_5800K = 2,
+	COLOR_TEMPERATURE_MAX = 3
+} color_temperature_t;
+
+typedef struct sensor_otp_lsc_s {
+	uint16_t r[SENSOR_OTP_LSC_EEPROM_SIZE][SENSOR_OTP_LSC_EEPROM_SIZE];
+	uint16_t gr[SENSOR_OTP_LSC_EEPROM_SIZE][SENSOR_OTP_LSC_EEPROM_SIZE];
+	uint16_t gb[SENSOR_OTP_LSC_EEPROM_SIZE][SENSOR_OTP_LSC_EEPROM_SIZE];
+	uint16_t b[SENSOR_OTP_LSC_EEPROM_SIZE][SENSOR_OTP_LSC_EEPROM_SIZE];
+	uint16_t golden_r[SENSOR_OTP_LSC_V_GRID_NUM][SENSOR_OTP_LSC_H_GRID_NUM];
+	uint16_t golden_gr[SENSOR_OTP_LSC_V_GRID_NUM][SENSOR_OTP_LSC_H_GRID_NUM];
+	uint16_t golden_gb[SENSOR_OTP_LSC_V_GRID_NUM][SENSOR_OTP_LSC_H_GRID_NUM];
+	uint16_t golden_b[SENSOR_OTP_LSC_V_GRID_NUM][SENSOR_OTP_LSC_H_GRID_NUM];
+} sensor_otp_lsc_t;
+
+typedef struct sensor_otp_awb_s {
+	color_temperature_t color_temperature;
+	uint16_t r;
+	uint16_t gr;
+	uint16_t gb;
+	uint16_t b;
+	uint16_t rg_ratio;
+	uint16_t bg_ratio;
+} sensor_otp_awb_t;
+
+typedef struct sensor_otp_af_s {
+	uint8_t focus_enable;
+	uint16_t cd_min_focal;
+	uint16_t cd_max_focal;
+	int32_t pd_focal[SENSOR_OTP_PDAF_FOCAL_SIZE];
+} sensor_otp_af_t;
+
+typedef struct sensor_otp_s {
+	uint8_t otp_lsc_enable;
+	uint8_t otp_awb_enable;
+	uint8_t otp_af_enable;
+	uint8_t lsc_ct_num;
+	uint8_t awb_ct_num;
+	uint8_t awb_golden_ct_num;
+	sensor_otp_lsc_t lsc_data[SENSOR_OTP_LSC_CT_NUM];
+	sensor_otp_awb_t awb_data[SENSOR_OTP_AWB_CT_NUM];
+	sensor_otp_awb_t awb_golden_data[SENSOR_OTP_AWB_CT_NUM];
+	sensor_otp_af_t af_data;
+} sensor_otp_t_;
+
 //单例类
 class mipi_calibration {
 
@@ -348,7 +404,7 @@ class mipi_calibration {
     double cal_rotation_;
     std::vector<sensor_msgs::msg::CameraInfo> cam_info_;    
     std::vector<Imu_params> imu_info_;
-    std::vector<std::shared_ptr<sensor_otp_t>> awb_otp_data_;
+    std::vector<std::shared_ptr<sensor_otp_t_>> awb_otp_data_;
   };
 
 

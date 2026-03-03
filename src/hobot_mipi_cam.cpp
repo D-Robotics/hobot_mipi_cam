@@ -108,26 +108,12 @@ class MipiCamIml : public MipiCam {
     uint32_t & height, uint32_t & width,
     uint32_t & step, std::vector<uint8_t> & data, std::string channel);
 
-  // grabs a new image from the camera
-  bool getCombineImage(
-    builtin_interfaces::msg::Time & stamp,
-    std::string & encoding,
-    uint32_t & height, uint32_t & width,
-    uint32_t & step, std::vector<uint8_t> & data);
-
   // grabs a new hbmem's image hbmem from the camera
   bool getImageMem(
     builtin_interfaces::msg::Time & stamp,
     std::array<uint8_t, 12> & encoding,
     uint32_t & height, uint32_t & width, uint32_t & step,
     std::array<uint8_t, 6220800> & data, uint32_t & data_size, std::string channel);
-
-    // grabs a new hbmem's image hbmem from the camera
-  bool getCombineImageMem(
-    builtin_interfaces::msg::Time & stamp,
-    std::array<uint8_t, 12> & encoding,
-    uint32_t & height, uint32_t & width, uint32_t & step,
-    std::array<uint8_t, 6220800> & data, uint32_t & data_size);
 
   // gen camera calibration
   bool getCamCalibration(sensor_msgs::msg::CameraInfo& cam_info,
@@ -222,7 +208,7 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   cap_info_.link_port_ = nodePare_->link_port_;
   cap_info_.cal_alpha_ = nodePare_->cal_alpha_;
   cap_info_.stream_mode_ = nodePare_->stream_mode_;
-  cap_info_.sub_stream_flag_ = nodePare_->sub_stream_flag_;
+  cap_info_.sub_stream_enable_ = nodePare_->sub_stream_enable_;
 
   if (mipiCap_ptr_->initEnv() < 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
@@ -253,7 +239,7 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   nodePare_->image_width_ = cap_info_.width;
   nodePare_->image_height_ = cap_info_.height;
   nodePare_->video_device_name_ = cap_info_.sensor_type;
-  nodePare_->sub_stream_flag_ = cap_info_.sub_stream_flag_;
+  nodePare_->sub_stream_enable_ = cap_info_.sub_stream_enable_;
 
   RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
     "[%s]->cap %s init success.\r\n", __func__, cap_info_.sensor_type.c_str());
@@ -328,121 +314,70 @@ bool MipiCamIml::getImage(builtin_interfaces::msg::Time &stamp,
                         uint32_t &width,
                         uint32_t &step,
                         std::vector<uint8_t> &data, std::string channel) {
-  if (!is_capturing_) {
-    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-      "[%s][%-%d] Camera isn't captureing", __FILE__, __func__, __LINE__);
-    return false;
-  }
-  if ((nodePare_->image_width_ == 0) || (nodePare_->image_height_ == 0)) {
-    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-      "Invalid publish width:%d height: %d! Please check the image_width "
-      "and image_height parameters!",
-      nodePare_->image_width_,
-      nodePare_->image_height_);
-    return false;
-  }
-  struct timespec time_start = {0, 0};
-  int64_t msStart = 0, msEnd = 0;
-  {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    msStart = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
-  }
-  uint64_t timestamp;
-  int data_size;
-  if (channel == "combine") {
-    data_size = nodePare_->image_width_ * nodePare_->image_height_ * 1.5 * 2;
-  } else {
-    data_size = nodePare_->image_width_ * nodePare_->image_height_ * 1.5;
-  }
-  if ((nodePare_->out_format_name_ == "bgr8") && image_nv12_) {
-    std::lock_guard<std::mutex> lck(image_nv12_mtx_);
-    if (mipiCap_ptr_->getFrame(channel,
-          reinterpret_cast<int *>(&width),
-          reinterpret_cast<int *>(&height),
-          reinterpret_cast<void *>(image_nv12_->image),
-          image_nv12_->image_size,
-          reinterpret_cast<unsigned int *>(&data_size),
-          timestamp)) {
+    if (!is_capturing_) {
+      RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
+        "[%s][%-%d] Camera isn't captureing", __FILE__, __func__, __LINE__);
       return false;
     }
-    data_size = width * height * 3;
-    data.resize(data_size);  // step * height);
-
-    uint64_t msStart_bgr = 0, msEnd_bgr = 0;
+    struct timespec time_start = {0, 0};
+    int64_t msStart = 0, msEnd = 0;
     {
       struct timespec ts;
       clock_gettime(CLOCK_MONOTONIC, &ts);
-      msStart_bgr = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+      msStart = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
     }
-    NV12_TO_BGR24((unsigned char *)image_nv12_->image,
+    auto video_ptr = mipiCap_ptr_->getFrame(channel);
+    if (video_ptr == nullptr) {
+      return false;
+    }
+    width = video_ptr->width;
+    height = video_ptr->height;
+    step = video_ptr->stride;
+    stamp.sec = video_ptr->timestamp / 1e9;
+    stamp.nanosec = video_ptr->timestamp - stamp.sec * 1e9;
+    if (nodePare_->out_format_name_ == "bgr8") {
+      data.resize(width * height * 3);
+      NV12_TO_BGR24((unsigned char *)video_ptr->buff.data(),
                   (unsigned char *)&data[0], width, height);
-    encoding = "bgr8";
-    step = width * 3;
+      encoding = "bgr8";
+      step = width * 3;
+    } else if (nodePare_->out_format_name_ == "gray") {
+      data.resize(width * height);
+      memcpy((unsigned char *)&data[0], video_ptr->buff.data(),  width * height);
+      encoding = "mono8";
+    } else {
+      data.resize(video_ptr->buff.size());
+      memcpy((unsigned char *)&data[0], video_ptr->buff.data(),  video_ptr->buff.size());
+      encoding = "nv12";
+    }
+    video_ptr->return_empty_que();
+
+    uint64_t timestamp_sys;
+    {
+      struct timeval tv;
+      gettimeofday(&tv, NULL);
+      timestamp_sys = (tv.tv_sec * 1000 + tv.tv_usec/1000);
+    }
+  
+    RCLCPP_INFO(rclcpp::get_logger("mipi_cam"), "publish laps ms= %lu", (timestamp_sys - video_ptr->timestamp/1000000));
+
     {
       struct timespec ts;
       clock_gettime(CLOCK_MONOTONIC, &ts);
-      msEnd_bgr = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+      msEnd = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
     }
-    RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-            "NV12_TO_BGR24 laps ms= %d", (msEnd_bgr - msStart_bgr));
-  } else if (nodePare_->out_format_name_ == "gray") {
-    data_size = nodePare_->image_width_ * nodePare_->image_height_;
-    data.resize(data_size);  // step * height);
-    if (mipiCap_ptr_->getFrame(channel,
-          reinterpret_cast<int *>(&width),
-          reinterpret_cast<int *>(&height),
-          reinterpret_cast<void *>(&data[0]),
-          data_size,
-          reinterpret_cast<unsigned int *>(&data_size),
-          timestamp, true))
-      return false;
-    encoding = "mono8";
-    step = width;
-  } else {
-    data.resize(data_size);  // step * height);
-    if (mipiCap_ptr_->getFrame(channel,
-          reinterpret_cast<int *>(&width),
-          reinterpret_cast<int *>(&height),
-          reinterpret_cast<void *>(&data[0]),
-          data_size,
-          reinterpret_cast<unsigned int *>(&data_size),
-          timestamp))
-      return false;
-    encoding = "nv12";
-    step = width;
-  }
-  stamp.sec = timestamp / 1e9;
-  stamp.nanosec = timestamp - stamp.sec * 1e9;
-
-  uint64_t timestamp_sys;
-  {
-    struct timeval tv;
-	  gettimeofday(&tv, NULL);
-    timestamp_sys = (tv.tv_sec * 1000 + tv.tv_usec/1000);
-  }
-
-  RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-            "publish laps ms= %lu", (timestamp_sys - timestamp/1000000));
-
-  {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    msEnd = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
-  }
-
-  RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cam"),
-             "getImage channel=" << channel.data()
-             << ", enc=" << encoding.data()
-             << ", width=" << width
-             << ", height=" << height
-             << ", step=" << step
-             << ", sz=" << data_size
-             << std::fixed
-             << ", ts=" << stamp.sec + stamp.nanosec * 1e-9
-             << ", laps ms=" << msEnd - msStart);
-
-  return true;
+  
+    RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cam"),
+               "getImage channel=" << channel.data()
+               << ", enc=" << encoding.data()
+               << ", width=" << width
+               << ", height=" << height
+               << ", step=" << step
+               << std::fixed
+               << ", ts=" << stamp.sec + stamp.nanosec * 1e-9
+               << ", laps ms=" << msEnd - msStart);
+  
+    return true;
 }
 
 
@@ -459,14 +394,6 @@ bool MipiCamIml::getImageMem(
       "[%s][%-%d] Camera isn't captureing", __FILE__, __func__, __LINE__);
     return false;
   }
-  if ((nodePare_->image_width_ == 0) || (nodePare_->image_height_ == 0)) {
-    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-      "Invalid publish width:%d height: %d! Please check the image_width "
-      "and image_height parameters!",
-      nodePare_->image_width_,
-      nodePare_->image_height_);
-    return false;
-  }
   // get the image
   struct timespec time_start = {0, 0};
   uint64_t msStart = 0, msEnd = 0;
@@ -475,74 +402,54 @@ bool MipiCamIml::getImageMem(
     clock_gettime(CLOCK_MONOTONIC, &ts);
     msStart = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
   }
-  uint64_t timestamp;
-  data_size = nodePare_->image_width_ * nodePare_->image_height_ * 1.5;
-  if ((nodePare_->out_format_name_ == "bgr8") && image_nv12_) {
-    if (mipiCap_ptr_->getFrame(channel,
-          reinterpret_cast<int *>(&width),
-          reinterpret_cast<int *>(&height),
-          reinterpret_cast<void *>(image_nv12_->image),
-          image_nv12_->image_size,
-          reinterpret_cast<unsigned int *>(&data_size),
-          timestamp))
-      return false;
+
+  auto video_ptr = mipiCap_ptr_->getFrame(channel);
+  if (video_ptr == nullptr) {
+    return false;
+  }
+  width = video_ptr->width;
+  height = video_ptr->height;
+  step = video_ptr->stride;
+  stamp.sec = video_ptr->timestamp / 1e9;
+  stamp.nanosec = video_ptr->timestamp - stamp.sec * 1e9;
+
+  if (nodePare_->out_format_name_ == "bgr8") {
     data_size = width * height * 3;
     if (data_size > 6220800) {
-      RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "rgb image data size %d > HbmMsg1080P size(6220800)", data_size);
+      video_ptr->return_empty_que();
       return false;
     }
-
-    uint64_t msStart_bgr = 0, msEnd_bgr = 0;
-    {
-      struct timespec ts;
-      clock_gettime(CLOCK_MONOTONIC, &ts);
-      msStart_bgr = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
-    }
-
-    NV12_TO_BGR24((unsigned char *)image_nv12_->image,
-                  (unsigned char *)data.data(), width, height);
+    NV12_TO_BGR24((unsigned char *)video_ptr->buff.data(),
+                (unsigned char *)&data[0], width, height);
     memcpy(encoding.data(), "bgr8", strlen("bgr8"));
-    {
-      struct timespec ts;
-      clock_gettime(CLOCK_MONOTONIC, &ts);
-      msEnd_bgr = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
-    }
-    RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-            "NV12_TO_BGR24 laps ms= %d", (msEnd_bgr - msStart_bgr));
   } else if (nodePare_->out_format_name_ == "gray") {
-    if (mipiCap_ptr_->getFrame(channel,
-          reinterpret_cast<int *>(&width),
-          reinterpret_cast<int *>(&height),
-          reinterpret_cast<void *>(data.data()),
-          6220800,
-          reinterpret_cast<unsigned int *>(&data_size),
-          timestamp, true))
-    return false;
-     memcpy(encoding.data(), "mono8", strlen("mono8"));
+    data_size = width * height;
+    if (data_size > 6220800) {
+      video_ptr->return_empty_que();
+      return false;
+    }
+    memcpy((unsigned char *)&data[0], video_ptr->buff.data(),  width * height);
+    memcpy(encoding.data(), "mono8", strlen("mono8"));
   } else {
-    if (mipiCap_ptr_->getFrame(channel,
-          reinterpret_cast<int *>(&width),
-          reinterpret_cast<int *>(&height),
-          reinterpret_cast<void *>(data.data()),
-          6220800,
-          reinterpret_cast<unsigned int *>(&data_size),
-          timestamp))
-    return false;
-     memcpy(encoding.data(), "nv12", strlen("nv12"));
+    data_size = video_ptr->buff.size();
+    if (data_size > 6220800) {
+      video_ptr->return_empty_que();
+      return false;
+    }
+    memcpy((unsigned char *)&data[0], video_ptr->buff.data(),  video_ptr->buff.size());
+    memcpy(encoding.data(), "nv12", strlen("nv12"));
   }
-  stamp.sec = timestamp / 1e9;
-  stamp.nanosec = timestamp - stamp.sec * 1e9;
-  step = width;
+
+  video_ptr->return_empty_que();
 
   uint64_t timestamp_sys;
   {
     struct timeval tv;
-	  gettimeofday(&tv, NULL);
+    gettimeofday(&tv, NULL);
     timestamp_sys = (tv.tv_sec * 1000 + tv.tv_usec/1000);
   }
 
-  RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-            "publish laps ms= %d", (timestamp_sys - timestamp/1000000));
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cam"), "publish laps ms= %lu", (timestamp_sys - video_ptr->timestamp/1000000));
 
   {
     struct timespec ts;
@@ -551,14 +458,15 @@ bool MipiCamIml::getImageMem(
   }
 
   RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cam"),
-             "getImageMem channel=" << channel.data()
-             << ", enc=" << encoding.data()
-             << ", width=" << width
-             << ", height=" << height
-             << ", step=" << step
-             << ", sz=" << data_size
-             << ", ts=" << stamp.sec << "." << stamp.nanosec
+              "getImageMem channel=" << channel.data()
+              << ", enc=" << encoding.data()
+              << ", width=" << width
+              << ", height=" << height
+              << ", step=" << step
+              << ", sz=" << data_size
+              << ", ts=" << stamp.sec << "." << stamp.nanosec
               << ", laps ms=" << msEnd - msStart);
+
   return true;
 }
 

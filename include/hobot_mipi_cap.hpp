@@ -48,9 +48,9 @@ class HobotMipiCap {
   // 返回值：0，停止成功；-1，停止失败。
   virtual int stop() = 0;
 
-  // 如果有 vps ，就 输出vps 的分层数据 channel--"single":单sensor，"left": 双目的左sensor，"right":双目的右sensor，"combine"：左右sensor拼合的图像。
-  virtual int getFrame(std::string channel, int* nVOutW, int* nVOutH,
-      void* buf, unsigned int bufsize, unsigned int*, uint64_t&, bool gray = false) = 0;
+  // 如果有 vps ，就 输出vps 的分层数据 channel--"single":单sensor，"sub_single":单sensor的子码流， "left": 双目的左sensor，"right":双目的右sensor，"combine"：左右sensor拼合的图像。
+  // "sub_left": 双目的左sensor的子码流，"sub_right":双目的右sensor的子码流，"sub_combine"：左右sensor的子码流拼合的图像。
+  virtual std::shared_ptr<VideoBuffer> getFrame(std::string channel) = 0;
 
 
   // 获取cap的info信息；

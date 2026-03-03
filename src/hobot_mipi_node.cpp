@@ -59,8 +59,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->link_type_ = 0; 
   nodePare_->link_port_ = 0; 
   nodePare_->cal_alpha_ = 0.0; 
-  nodePare_->stream_mode_ = 0; 
-  nodePare_->sub_stream_flag_ = false; 
+  nodePare_->stream_mode_ = 0; //0: slave stream can gdc; 1: slave stream can't gdc.
+  nodePare_->sub_stream_enable_ = false; 
   frame_id_ = "default_cam";
   io_method_name_ = "ros"; //shared_mem, ros;
   double framerate = 30.0;
@@ -93,6 +93,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<std::string>("imu_type", imu_type_);
   this->declare_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
   this->declare_parameter<int>("stream_mode", nodePare_->stream_mode_);
+  this->declare_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
 
   this->get_parameter<std::string>("frame_id", frame_id_);
   this->get_parameter<std::string>("io_method", io_method_name_); 
@@ -121,6 +122,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<std::string>("imu_type", imu_type_);
   this->get_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
   this->get_parameter<int>("stream_mode", nodePare_->stream_mode_);
+  this->get_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
 
   nodePare_->framerate_ = static_cast<int>(framerate);
 
@@ -193,15 +195,15 @@ MipiCamNode::~MipiCamNode() {
     //mipiCam_ptr_ = nullptr;
     RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "shutting down end");
   }
-  for (auto &pub : Pub_info_) {
-    pub.image_pub_.reset();
-    pub.info_pub_.reset();
-    pub.info_pub2_.reset();
+  for (auto pub : Pub_info_) {
+    pub->image_pub_.reset();
+    pub->info_pub_.reset();
+    pub->info_pub2_.reset();
   }
-  for (auto &pub : Pub_hbmem_info_) {
-    pub.publisher_hbmem_.reset();
-    pub.info_pub_.reset();
-    pub.info_pub2_.reset();
+  for (auto pub : Pub_hbmem_info_) {
+    pub->publisher_hbmem_.reset();
+    pub->info_pub_.reset();
+    pub->info_pub2_.reset();
   }
 
   is_imu_running_ = false;
@@ -234,34 +236,74 @@ void MipiCamNode::init() {
   if (io_method_name_.compare("ros") == 0) {
     if (nodePare_->device_mode_.compare("dual") == 0) {
       if (nodePare_->dual_combine_ == 1) {
-        Pub_info_.resize(3);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
-        init_publisher(Pub_info_[0], "image_left_raw", "left", frame_id_);
-        init_publisher(Pub_info_[1], "image_right_raw", "right", frame_id_);
-        init_publisher(Pub_info_[2], "image_combine_raw", "combine", frame_id_);
+        //Pub_info_.resize(3);
+        auto pub_info1 = std::make_shared<Publisher_info>();
+        auto pub_info2 = std::make_shared<Publisher_info>();
+        auto pub_info3 = std::make_shared<Publisher_info>();
+        init_DualCalibration(pub_info1.get(), pub_info2.get(), "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+        init_DualCalibration(pub_info3.get(), "image_combine_raw/left/camera_info", "image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
+        init_publisher(pub_info1, "image_left_raw", "left", frame_id_);
+        init_publisher(pub_info2, "image_right_raw", "right", frame_id_);
+        init_publisher(pub_info3, "image_combine_raw", "combine", frame_id_);
+        Pub_info_.push_back(pub_info1);
+        Pub_info_.push_back(pub_info2);
+        Pub_info_.push_back(pub_info3);
+        if (nodePare_->sub_stream_enable_) {
+          pub_info1 = std::make_shared<Publisher_info>();
+          pub_info2 = std::make_shared<Publisher_info>();
+          pub_info3 = std::make_shared<Publisher_info>();
+          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration(pub_info3.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
+          init_publisher(pub_info1, "sub_image_left_raw", "sub_left", frame_id_);
+          init_publisher(pub_info2, "sub_image_right_raw", "sub_right", frame_id_);
+          init_publisher(pub_info3, "sub_image_combine_raw", "sub_combine", frame_id_);
+          Pub_info_.push_back(pub_info1);
+          Pub_info_.push_back(pub_info2);
+          Pub_info_.push_back(pub_info3);
+        }
       } else if (nodePare_->dual_combine_ == 2) {
-        Pub_info_.resize(1);
-        init_DualCalibration(&Pub_info_[0], "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
-        init_publisher(Pub_info_[0], "image_combine_raw", "combine", frame_id_);
+        //Pub_info_.resize(1);
+        auto pub_info1 = std::make_shared<Publisher_info>();
+        init_DualCalibration(pub_info1.get(), "image_combine_raw/left/camera_info", "image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
+        init_publisher(pub_info1, "image_combine_raw", "combine", frame_id_);
+        Pub_info_.push_back(pub_info1);
+        if (nodePare_->sub_stream_enable_) {
+          pub_info1 = std::make_shared<Publisher_info>();
+          init_DualCalibration(pub_info1.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
+          init_publisher(pub_info1, "sub_image_combine_raw", "sub_combine", frame_id_);
+          Pub_info_.push_back(pub_info1);
+        }
       } else {
-        Pub_info_.resize(2);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
-        init_publisher(Pub_info_[0], "image_left_raw", "left", frame_id_);
-        init_publisher(Pub_info_[1], "image_right_raw", "right", frame_id_);        
+        //Pub_info_.resize(2);
+        auto pub_info1 = std::make_shared<Publisher_info>();
+        auto pub_info2 = std::make_shared<Publisher_info>();
+        init_DualCalibration(pub_info1.get(), pub_info2.get(), "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+        init_publisher(pub_info1, "image_left_raw", "left", frame_id_);
+        init_publisher(pub_info2, "image_right_raw", "right", frame_id_);      
+        Pub_info_.push_back(pub_info1);
+        Pub_info_.push_back(pub_info2); 
+        if (nodePare_->sub_stream_enable_) {
+          auto pub_info1 = std::make_shared<Publisher_info>();
+          auto pub_info2 = std::make_shared<Publisher_info>();
+          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_publisher(pub_info1, "sub_image_left_raw", "sub_left", frame_id_);
+          init_publisher(pub_info2, "sub_image_right_raw", "sub_right", frame_id_);      
+          Pub_info_.push_back(pub_info1);
+          Pub_info_.push_back(pub_info2); 
+        }
       }
     } else if ((nodePare_->device_mode_.compare("single") == 0) ||
       (nodePare_->device_mode_.compare("") == 0)) {
-        if (nodePare_->sub_stream_flag_) {
-          Pub_info_.resize(2);
-          init_Calibration(&Pub_info_[0], "image_raw/camera_info", nodePare_->camera_calibration_file_path_);
-          init_publisher(Pub_info_[0], "image_raw", "single", frame_id_);
-          init_Calibration(&Pub_info_[1], "sub_image_raw/camera_info", nodePare_->camera_calibration_file_path_);
-          init_publisher(Pub_info_[1], "sub_image_raw", "sub_single", frame_id_);
-        } else {
-          Pub_info_.resize(1);
-          init_Calibration(&Pub_info_[0], "image_raw/camera_info", nodePare_->camera_calibration_file_path_);
-          init_publisher(Pub_info_[0], "image_raw", "single", frame_id_);
-        }
+        auto pub_info1 = std::make_shared<Publisher_info>();
+        init_Calibration(pub_info1.get(), "image_raw/camera_info", nodePare_->camera_calibration_file_path_);
+        init_publisher(pub_info1, "image_raw", "single", frame_id_);
+        Pub_info_.push_back(pub_info1);
+        if (nodePare_->sub_stream_enable_) {
+          pub_info1 = std::make_shared<Publisher_info>();
+          init_Calibration(pub_info1.get(), "sub_image_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_publisher(pub_info1, "sub_image_raw", "sub_single", frame_id_);
+          Pub_info_.push_back(pub_info1);
+        } 
     } else {
       return;
     }
@@ -284,33 +326,70 @@ void MipiCamNode::init() {
     if (nodePare_->device_mode_.compare("dual") == 0) {
 
       if (nodePare_->dual_combine_ == 1) {
-        Pub_hbmem_info_.resize(3);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
-        init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_left_img", "left");
-        init_publisher_hbmem(Pub_hbmem_info_[1], "hbmem_right_img", "right");
-        init_publisher_hbmem(Pub_hbmem_info_[2], "hbmem_combine_img", "combine");
+        auto pub_info1 = std::make_shared<Publisher_hbmem_info>();
+        auto pub_info2 = std::make_shared<Publisher_hbmem_info>();
+        auto pub_info3 = std::make_shared<Publisher_hbmem_info>();
+        init_DualCalibration(pub_info1.get(), pub_info2.get(), "hbmem_left_img/camera_info", "hbmem_right_img/camera_info", nodePare_->camera_calibration_file_path_);
+        init_DualCalibration(pub_info3.get(), "hbmem_combine_img/left/camera_info", "hbmem_combine_img/right/camera_info", nodePare_->camera_calibration_file_path_);
+        init_publisher_hbmem(pub_info1, "hbmem_left_img", "left");
+        init_publisher_hbmem(pub_info2, "hbmem_right_img", "right");
+        init_publisher_hbmem(pub_info3, "hbmem_combine_img", "combine");
+        Pub_hbmem_info_.push_back(pub_info1);
+        Pub_hbmem_info_.push_back(pub_info2);
+        Pub_hbmem_info_.push_back(pub_info3);
+        if (nodePare_->sub_stream_enable_) {
+          pub_info1 = std::make_shared<Publisher_hbmem_info>();
+          pub_info2 = std::make_shared<Publisher_hbmem_info>();
+          pub_info3 = std::make_shared<Publisher_hbmem_info>();
+          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_hbmem_left_img/camera_info", "sub_hbmem_right_img/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration(pub_info3.get(), "sub_hbmem_combine_img/left/camera_info", "sub_hbmem_combine_img/right/camera_info", nodePare_->camera_calibration_file_path_);
+          init_publisher_hbmem(pub_info1, "sub_hbmem_left_img", "sub_left");
+          init_publisher_hbmem(pub_info2, "sub_hbmem_right_img", "sub_right");
+          init_publisher_hbmem(pub_info3, "sub_hbmem_combine_img", "sub_combine");
+          Pub_hbmem_info_.push_back(pub_info1);
+          Pub_hbmem_info_.push_back(pub_info2);
+          Pub_hbmem_info_.push_back(pub_info3);
+        }
       } else if (nodePare_->dual_combine_ == 2) {
-        Pub_hbmem_info_.resize(1);
-        init_DualCalibration(&Pub_hbmem_info_[0], "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
-        init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_combine_img", "combine");
+        auto pub_info1 = std::make_shared<Publisher_hbmem_info>();
+        init_DualCalibration(pub_info1.get(), "hbmem_combine_img/left/camera_info", "hbmem_combine_img/right/camera_info", nodePare_->camera_calibration_file_path_);
+        init_publisher_hbmem(pub_info1, "hbmem_combine_img", "combine");
+        Pub_hbmem_info_.push_back(pub_info1);
+        if (nodePare_->sub_stream_enable_) {
+          pub_info1 = std::make_shared<Publisher_hbmem_info>();
+          init_DualCalibration(pub_info1.get(), "sub_hbmem_combine_img/left/camera_info", "sub_hbmem_combine_img/right/camera_info", nodePare_->camera_calibration_file_path_);
+          init_publisher_hbmem(pub_info1, "sub_hbmem_combine_img", "sub_combine");
+          Pub_hbmem_info_.push_back(pub_info1);
+        }
       } else {
-        Pub_hbmem_info_.resize(2);
-        init_DualCalibration(&Pub_info_[0], &Pub_info_[1], "image_left_raw/camera_info", "image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
-        init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_left_img", "left");
-        init_publisher_hbmem(Pub_hbmem_info_[1], "hbmem_right_img", "right");
+        auto pub_info1 = std::make_shared<Publisher_hbmem_info>();
+        auto pub_info2 = std::make_shared<Publisher_hbmem_info>();
+        init_DualCalibration(pub_info1.get(), pub_info2.get(), "hbmem_left_img/camera_info", "hbmem_right_img/camera_info", nodePare_->camera_calibration_file_path_);
+        init_publisher_hbmem(pub_info1, "hbmem_left_img", "left");
+        init_publisher_hbmem(pub_info2, "hbmem_right_img", "right");
+        Pub_hbmem_info_.push_back(pub_info1);
+        Pub_hbmem_info_.push_back(pub_info2);
+        if (nodePare_->sub_stream_enable_) {
+          pub_info1 = std::make_shared<Publisher_hbmem_info>();
+          pub_info2 = std::make_shared<Publisher_hbmem_info>();
+          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_hbmem_left_img/camera_info", "sub_hbmem_right_img/camera_info", nodePare_->camera_calibration_file_path_);
+          init_publisher_hbmem(pub_info1, "sub_hbmem_left_img", "sub_left");
+          init_publisher_hbmem(pub_info2, "sub_hbmem_right_img", "sub_right");
+          Pub_hbmem_info_.push_back(pub_info1);
+          Pub_hbmem_info_.push_back(pub_info2);
+        }
       }
     } else if ((nodePare_->device_mode_.compare("single") == 0) ||
       (nodePare_->device_mode_.compare("") == 0)) {
-        if (nodePare_->sub_stream_flag_) {
-          Pub_hbmem_info_.resize(2);
-          init_Calibration(&Pub_hbmem_info_[0], "hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
-          init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_img", "single");
-          init_Calibration(&Pub_hbmem_info_[1], "sub_hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
-          init_publisher_hbmem(Pub_hbmem_info_[1], "sub_hbmem_img", "sub_single");
-        } else {
-          Pub_hbmem_info_.resize(1);
-          init_Calibration(&Pub_hbmem_info_[0], "hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
-          init_publisher_hbmem(Pub_hbmem_info_[0], "hbmem_img", "single");
+        auto pub_info1 = std::make_shared<Publisher_hbmem_info>();
+        init_Calibration(pub_info1.get(), "hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
+        init_publisher_hbmem(pub_info1, "hbmem_img", "single");
+        Pub_hbmem_info_.push_back(pub_info1);
+        if (nodePare_->sub_stream_enable_) {
+          pub_info1 = std::make_shared<Publisher_hbmem_info>();
+          init_Calibration(pub_info1.get(), "sub_hbmem_img/camera_info", nodePare_->camera_calibration_file_path_);
+          init_publisher_hbmem(pub_info1, "sub_hbmem_img", "sub_single");
+          Pub_hbmem_info_.push_back(pub_info1);
         }
     } else {
       return;
@@ -332,26 +411,16 @@ void MipiCamNode::init() {
   const int period_ms = 1000.0 / nodePare_->framerate_;
 
   if (io_method_name_.compare("ros") == 0) {
-    for (Publisher_info_st& info : Pub_info_) {
-      //timer_.push_back(this->create_wall_timer(
-      //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-      //  std::bind(&MipiCamNode::update, this, info)));
-      //timer_tmp_ = this->create_wall_timer(
-      //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-      //  std::bind(&MipiCamNode::update, this, info));
-      // std::bind(&MipiCamNode::update, this, info);
+    for (auto info : Pub_info_) {
       timer_.emplace_back(
-        std::make_shared<std::thread>([this, &info]() { while(rclcpp::ok()) {this->update(&info);}})
+        std::make_shared<std::thread>([this, info]() { while(rclcpp::ok()) {this->update(info);}})
       );
     }
 
   } else if (io_method_name_.compare("shared_mem") == 0) {
-    for (Publisher_hbmem_info_st& info : Pub_hbmem_info_) {
-      //timer_.push_back(this->create_wall_timer(
-      //  std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
-      //  std::bind(&MipiCamNode::hbmemUpdate, this, info)));
+    for (auto info : Pub_hbmem_info_) {
       timer_.emplace_back(
-        std::make_shared<std::thread>([this, &info]() { while(rclcpp::ok()) {this->hbmemUpdate(&info);}})
+        std::make_shared<std::thread>([this, info]() { while(rclcpp::ok()) {this->hbmemUpdate(info);}})
       );  
     }
   }
@@ -369,22 +438,22 @@ void MipiCamNode::init() {
 
 }
 
-void MipiCamNode::init_publisher(Publisher_info_st&  Pub_info, std::string topic, std::string topic_type,
+void MipiCamNode::init_publisher(std::shared_ptr<Publisher_info> Pub_info, std::string topic, std::string topic_type,
                     std::string frame_id){
-  Pub_info.image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(topic, PUB_BUF_NUM);
-  Pub_info.frame_id = frame_id;
-  Pub_info.topic_type = topic_type;
-  Pub_info.time_start_ = std::chrono::system_clock::now();
+  Pub_info->image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(topic, PUB_BUF_NUM);
+  Pub_info->frame_id = frame_id;
+  Pub_info->topic_type = topic_type;
+  Pub_info->time_start_ = std::chrono::system_clock::now();
 }
 
-void MipiCamNode::init_publisher_hbmem(Publisher_hbmem_info_st&  Pub_info, std::string topic, std::string topic_type){
-  Pub_info.publisher_hbmem_ = this->create_publisher<hbm_img_msgs::msg::HbmMsg1080P>(topic, rclcpp::SensorDataQoS());
-  Pub_info.topic_type = topic_type;
-  Pub_info.time_start_ = std::chrono::system_clock::now();
+void MipiCamNode::init_publisher_hbmem(std::shared_ptr<Publisher_hbmem_info>  Pub_info, std::string topic, std::string topic_type){
+  Pub_info->publisher_hbmem_ = this->create_publisher<hbm_img_msgs::msg::HbmMsg1080P>(topic, rclcpp::SensorDataQoS());
+  Pub_info->topic_type = topic_type;
+  Pub_info->time_start_ = std::chrono::system_clock::now();
 }
 
 
-void MipiCamNode::init_Calibration(Publisher_info_base_st*  Pub_info,
+void MipiCamNode::init_Calibration(Publisher_info_base*  Pub_info,
                     std::string info_topic, std::string info_file){
   Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
   if (!mipiCam_ptr_ || !mipiCam_ptr_->getCamCalibration(*Pub_info->camera_calibration_info_, info_file)) {
@@ -398,7 +467,7 @@ void MipiCamNode::init_Calibration(Publisher_info_base_st*  Pub_info,
   return;
 }
 
-void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info,
+void MipiCamNode::init_DualCalibration(Publisher_info_base*  Pub_info,
                     std::string info_topic, std::string info_topic2, std::string info_file){
   Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
   Pub_info->camera_calibration_info2_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
@@ -419,7 +488,7 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info,
 }
 
 
-void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info, Publisher_info_base_st*  Pub_info2,
+void MipiCamNode::init_DualCalibration(Publisher_info_base*  Pub_info, Publisher_info_base*  Pub_info2,
                     std::string info_topic, std::string info_topic2, std::string info_file){
   Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
   Pub_info2->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
@@ -431,7 +500,6 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info, Publis
                 "get camera calibration parameters failed");
     return;
   }
-
   Pub_info->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
     info_topic, PUB_BUF_NUM);
   Pub_info2->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
@@ -440,11 +508,10 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base_st*  Pub_info, Publis
 }
 
 
-void MipiCamNode::update(Publisher_info_st* pub_info) {
-  if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing()) {
+void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
+  if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing() && (pub_info->image_pub_->get_subscription_count() > 0)) {
     auto img = std::make_unique<sensor_msgs::msg::Image>(rosidl_runtime_cpp::MessageInitialization::SKIP);
     img->header.frame_id = pub_info->frame_id;
-    
     if (!mipiCam_ptr_->getImage(img->header.stamp,
                           img->encoding,
                           img->height,
@@ -459,30 +526,29 @@ void MipiCamNode::update(Publisher_info_st* pub_info) {
       }
       return;
     }
-#if 0
-    if ("realtime" == nodePare_->frame_ts_type_) {
-      struct timespec ts;
-      clock_gettime(CLOCK_REALTIME, &ts);
-      img->header.stamp.sec = ts.tv_sec;
-      img->header.stamp.nanosec = ts.tv_nsec;
-    }
-#endif
     save_jpg(img->header.stamp,img->encoding,img->width,img->height,(void *)&img->data[0]);
     save_yuv(img->header.stamp, (void *)&img->data[0], img->data.size());
-
-    if (pub_info && pub_info->info_pub_ && pub_info->camera_calibration_info_) {
+    if (pub_info->info_pub_ && pub_info->camera_calibration_info_) {
       sensor_msgs::msg::CameraInfo camera_calibration_info = *pub_info->camera_calibration_info_;
       camera_calibration_info.header.stamp = img->header.stamp;
       camera_calibration_info.header.frame_id = pub_info->frame_id;
       pub_info->info_pub_->publish(camera_calibration_info);
     }
+    if (pub_info->info_pub2_ && pub_info->camera_calibration_info2_) {
+      sensor_msgs::msg::CameraInfo camera_calibration_info = *pub_info->camera_calibration_info2_;
+      camera_calibration_info.header.stamp = img->header.stamp;
+      camera_calibration_info.header.frame_id = pub_info->frame_id;
+      pub_info->info_pub2_->publish(camera_calibration_info);
+    }
 
     pub_info->image_pub_->publish(std::move(img));
+  } else {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 }
 
-void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
-  if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing()) {
+void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
+  if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing() && (pub_info->publisher_hbmem_->get_subscription_count() > 0)) {
     auto loanedMsg = pub_info->publisher_hbmem_->borrow_loaned_message();
     if (loanedMsg.is_valid()) {
       auto& msg = loanedMsg.get();
@@ -501,19 +567,10 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
         }
         return;
       }
-#if 0
-      if ("realtime" == nodePare_->frame_ts_type_) {
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        msg.time_stamp.sec = ts.tv_sec;
-        msg.time_stamp.nanosec = ts.tv_nsec;
-      }
-#endif
       std::string encode(msg.encoding.begin(), msg.encoding.end());
       save_jpg(msg.time_stamp,encode,msg.width,msg.height,(void *)&msg.data);
       save_yuv(msg.time_stamp, (void *)&msg.data, msg.data_size);
       msg.index = pub_info->mSendIdx++;
-      pub_info->publisher_hbmem_->publish(std::move(loanedMsg));
       if (pub_info->info_pub_) {
         pub_info->camera_calibration_info_->header.stamp = msg.time_stamp;
         pub_info->info_pub_->publish(*pub_info->camera_calibration_info_);
@@ -522,10 +579,14 @@ void MipiCamNode::hbmemUpdate(Publisher_hbmem_info_st* pub_info) {
         pub_info->camera_calibration_info2_->header.stamp = msg.time_stamp;
         pub_info->info_pub2_->publish(*pub_info->camera_calibration_info2_);
       }
+      pub_info->publisher_hbmem_->publish(std::move(loanedMsg));
+
     } else {
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "borrow_loaned_message failed");
     }
+  } else {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 }
 
