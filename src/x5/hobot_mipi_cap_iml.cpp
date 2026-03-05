@@ -2073,8 +2073,9 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	// TODO: Set alpha from config
 	// cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0.391 ,cv::Size(out_gdc_width, out_gdc_height));
 	if (cam_info[0].distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
-		double balance = alpha;
-		cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), 0.0, 0.45);
+		double fov_scale = find_best_fov_scale(Kl, Dl, Kr, Dr, R_rl, t_rl, cv::Size(in_gdc_width, in_gdc_height), cv::Size(out_gdc_width, out_gdc_height));
+		RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "best fov scale: " << fov_scale);
+		cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), 0.0, fov_scale);
 		cv::fisheye::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
 		cv::fisheye::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1r, undistmap2r);
 	} else {
@@ -2648,6 +2649,48 @@ double HobotMipiCapIml::computeStereoAlphaFromFOV(
                     : calculatePinholeFOV(K_r_final, out_gdc_width, out_gdc_height).first;
 
     return alpha;										
+}
+
+double HobotMipiCapIml::find_best_fov_scale(const cv::Mat& Kl, const cv::Mat& Dl,
+                                            const cv::Mat& Kr, const cv::Mat& Dr,
+                                            const cv::Mat& R_rl, const cv::Mat& t_rl,
+                                            cv::Size in_size,
+                                            cv::Size out_size) {
+  double best_scale = 1.0;
+  for (double fov = 1.0; fov >= 0.3; fov -= 0.02) {
+	cv::Mat Rl, Rr, Pl, Pr, Q;
+	cv::fisheye::stereoRectify(
+		Kl, Dl, Kr, Dr,
+		in_size,
+		R_rl, t_rl,
+		Rl, Rr, Pl, Pr, Q,
+		cv::CALIB_ZERO_DISPARITY,
+		out_size,
+		0.0,
+		fov);
+    cv::Mat mapx, mapy;
+    cv::fisheye::initUndistortRectifyMap(Kl, Dl, Rl, Pl, out_size, CV_32FC1, mapx, mapy);
+    int invalid = 0;
+    int total = out_size.area();
+    for (int y = 0; y < mapx.rows; y++) {
+        const float* ptrx = mapx.ptr<float>(y);
+        const float* ptry = mapy.ptr<float>(y);
+        for (int x = 0; x < mapx.cols; x++) {
+            float sx = ptrx[x];
+            float sy = ptry[x];
+			if (sx < 0 || sx >= in_size.width || sy < 0 || sy >= in_size.height) {
+                    invalid++;
+                }
+            }
+        }
+
+        if (invalid == 0) {
+            best_scale = fov;
+            break;
+        }
+    }
+
+    return best_scale;
 }
 
 std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int in_width, int in_height,int out_width, int out_height,
