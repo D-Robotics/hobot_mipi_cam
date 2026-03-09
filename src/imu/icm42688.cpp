@@ -27,6 +27,7 @@
 #include <iostream>
 #include "icm42688.hpp"
 #include "inv_icm42600.h"
+#include <cmath>
 
 
 namespace imu_sensor
@@ -232,9 +233,9 @@ int icm42688::read(ImuData_T *data) {
 
     // 转换为实际物理值
     if (accel_read) {
-        data->ax = accel_x_raw * accel_scale;
-        data->ay = accel_y_raw * accel_scale;
-        data->az = accel_z_raw * accel_scale;
+        data->ax = accel_x_raw * accel_scale * gravity;
+        data->ay = accel_y_raw * accel_scale * gravity;
+        data->az = accel_z_raw * accel_scale * gravity;
     } else {
         data->ax = 0.0f;
         data->ay = 0.0f;
@@ -242,9 +243,9 @@ int icm42688::read(ImuData_T *data) {
     }
 
     if (gyro_read) {
-        data->gx = gyro_x_raw * gyro_scale;
-        data->gy = gyro_y_raw * gyro_scale;
-        data->gz = gyro_z_raw * gyro_scale;
+        data->gx = gyro_x_raw * gyro_scale * M_PI / 180.0;
+        data->gy = gyro_y_raw * gyro_scale * M_PI / 180.0;
+        data->gz = gyro_z_raw * gyro_scale * M_PI / 180.0;
     } else {
         data->gx = 0.0f;
         data->gy = 0.0f;
@@ -285,12 +286,12 @@ int icm42688::read(ImuData_T *data) {
         //printf("[accel_data] x:%8.3f    y:%8.3f    z:%8.3f    unit:g\n", dtpkt.accel_data_processed.x, dtpkt.accel_data_processed.y, dtpkt.accel_data_processed.z);
        // printf("[gyro_data]  x:%8.3f    y:%8.3f    z:%8.3f    unit:dps\n", dtpkt.gyro_data_processed.x, dtpkt.gyro_data_processed.y, dtpkt.gyro_data_processed.z);
        // printf("[timestamp_data]%ld\n", dtpkt.accel_data_processed.timestamp);
-        data->ax = dtpkt.accel_data_processed.x;
-        data->ay = dtpkt.accel_data_processed.y;
-        data->az = dtpkt.accel_data_processed.z;
-        data->gx = dtpkt.gyro_data_processed.x;
-        data->gy = dtpkt.gyro_data_processed.y;
-        data->gz = dtpkt.gyro_data_processed.z;
+        data->ax = dtpkt.accel_data_processed.x * gravity;
+        data->ay = dtpkt.accel_data_processed.y * gravity;
+        data->az = dtpkt.accel_data_processed.z * gravity;
+        data->gx = dtpkt.gyro_data_processed.x * M_PI / 180.0;
+        data->gy = dtpkt.gyro_data_processed.y * M_PI / 180.0;
+        data->gz = dtpkt.gyro_data_processed.z * M_PI / 180.0;
         data->timestamp = dtpkt.accel_data_processed.timestamp * 1000;
 
         // ICM42688没有磁力计

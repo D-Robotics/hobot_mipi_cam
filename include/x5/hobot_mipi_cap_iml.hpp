@@ -167,6 +167,11 @@ class HobotMipiCapIml : public HobotMipiCap {
                                                        int out_gdc_width, int out_gdc_height,
                                                        const std::string& distortion_model,
                                                        double& actual_hfov_l, double& actual_hfov_r);
+  double find_best_fov_scale(const cv::Mat& Kl, const cv::Mat& Dl,
+                             const cv::Mat& Kr, const cv::Mat& Dr,
+                             const cv::Mat& R_rl, const cv::Mat& t_rl,
+                             cv::Size in_size,
+                             cv::Size out_size);
   // -----------------------------------------------------------------------------------------------------
   
   int config_awb_otp(pipe_contex_t *pipe_contex); 

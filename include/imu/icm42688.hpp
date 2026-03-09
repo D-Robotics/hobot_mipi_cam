@@ -40,6 +40,7 @@ class icm42688 : public imu_base {
     int initialized;                 // 初始化标志
     float accel_scale;               // 加速度计量程
     float gyro_scale;                // 陀螺仪量程
+    float gravity = 9.81;                   // 重力加速度
     //char accel_dev_path[MAX_PATH_LEN]; // 加速度计设备路径
     //char gyro_dev_path[MAX_PATH_LEN];  // 陀螺仪设备路径
     std::string accel_dev_path; // 加速度计设备路径
