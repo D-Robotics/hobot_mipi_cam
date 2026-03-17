@@ -71,7 +71,7 @@ typedef struct pipe_contex_s {
   int sub_stream_channel;
   bool gdc_resize_enable;
   MIPI_CAP_INFO_ST *cap_info_;
-  std::shared_ptr<sensor_otp_t_> awb_otp_data;
+  std::shared_ptr<Opt_Awb_Config> awb_otp_data;
 }pipe_contex_t;
 
 class HobotMipiCapIml : public HobotMipiCap {
@@ -155,7 +155,6 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   //计算针孔模型下校正后内参对应的FOV（角度） K_rect 校正后的相机内参矩阵，校正后的图像高度和宽度
   std::pair<double, double> calculatePinholeFOV(const cv::Mat& K_rect, int width, int height);
-  std::pair<double, double> calculateFisheyeFOV(const cv::Mat& K_rect, int width, int height);
   //基于目标FOV和有效FOV范围，计算初始alpha，目标水平FOV，双目交集的最小FOV和最大FOV，返回初始alpha
   double computeInitAlpha(double target_hfov, double fov_min, double fov_max);
 
@@ -165,13 +164,23 @@ class HobotMipiCapIml : public HobotMipiCap {
                                                        const cv::Mat& R_rl, const cv::Mat& t_rl,
                                                        int in_gdc_width, int in_gdc_height,
                                                        int out_gdc_width, int out_gdc_height,
-                                                       const std::string& distortion_model,
                                                        double& actual_hfov_l, double& actual_hfov_r);
   double find_best_fov_scale(const cv::Mat& Kl, const cv::Mat& Dl,
                              const cv::Mat& Kr, const cv::Mat& Dr,
                              const cv::Mat& R_rl, const cv::Mat& t_rl,
                              cv::Size in_size,
                              cv::Size out_size);
+                             
+  bool computeFisheyeStereoParamsFromFOV(
+      double target_hfov,
+      const cv::Mat &Kl, const cv::Mat &Dl,
+      const cv::Mat &Kr, const cv::Mat &Dr,
+      const cv::Mat &R_rl, const cv::Mat &t_rl,
+      cv::Size in_size, cv::Size out_size,
+      double &out_balance, double &out_fov_scale,
+      double &actual_hfov_l, double &actual_hfov_r,
+      double tol = 3.0,
+      int max_iter = 10);
   // -----------------------------------------------------------------------------------------------------
   
   int config_awb_otp(pipe_contex_t *pipe_contex); 
@@ -200,7 +209,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
   std::vector<Imu_params> imu_info_;
-  std::vector<std::shared_ptr<sensor_otp_t_>> awb_otp_data_;
+  std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;
 
   std::mutex queue_mtx_;
 
