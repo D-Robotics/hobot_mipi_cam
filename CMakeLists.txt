@@ -36,8 +36,8 @@ add_compile_options(-w)
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fsee -fomit-frame-pointer -fno-signed-zeros -fno-math-errno -funroll-loops")
-set(CMAKE_BUILD_TYPE "Release")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O -fsee -fomit-frame-pointer -fno-signed-zeros -fno-math-errno -funroll-loops")
+set(CMAKE_BUILD_TYPE "Debug")
 
 ## pkg-config libraries
 find_package(ament_cmake REQUIRED)
@@ -122,9 +122,9 @@ elseif(PLATFORM_S600)
     src/s600/sensor/imx219_linear_1920x1080_raw10_30fps_2lane.c
     src/s600/sensor/sc132gs_linear_1088x1280_raw10_30fps_1lane.c
     src/s600/sensor/sc230ai_linear_1920x1080_raw10_30fps_1lane.c
-    src/s100/sensor/ar0820c_linear_1920x1080_yuv_30fps_1lane.c
-    src/s100/sensor/ovx3c_linear_1920x1080_raw12_30fps_1lane.c
     src/s600/sensor/gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane.c
+    src/s600/sensor/ar0820c_linear_1920x1080_yuv_30fps_1lane.c
+    src/s600/sensor/ovx3c_linear_1920x1080_raw12_30fps_1lane.c
     src/s600/sensor/vp_sensors.c
   )
   include_directories(include 
@@ -146,6 +146,7 @@ include_directories(include
   ${CMAKE_SYSROOT}/usr/include
   ${CMAKE_SYSROOT}/usr/hobot/include
   deps/jsoncpp/include/
+  include/imu/
 )
 
 link_directories(
@@ -180,7 +181,11 @@ add_library(${PROJECT_NAME}_plugin SHARED
   src/hobot_mipi_cam.cpp
   src/${PREFIX_PATH}/hobot_mipi_cap_iml.cpp
   src/${PREFIX_PATH}/hobot_mipi_factory.cpp
+  src/hobot_mipi_calibration.cpp
   ${SRC_PLATFORM_FILE}
+  src/imu/icm42688.cpp
+  src/imu/imu_manager.cpp
+  src/imu/inv_icm42600.c
 )
 target_link_libraries(${PROJECT_NAME}_plugin
   ${BASE_LIBRARIES} ${X3_HAPI_LIB} yaml-cpp

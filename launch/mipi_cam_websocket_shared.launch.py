@@ -28,69 +28,50 @@ def generate_launch_description():
     camera_type = os.getenv('CAM_TYPE')
     print("camera_type is ", camera_type)
 
-    mipi_lpwm_enable_arg = DeclareLaunchArgument(
-        'mipi_lpwm_enable',
-        default_value='False',
-        description='mipi lpwm enable')
-    
     mipi_camera_calibration_file_path_arg = DeclareLaunchArgument(
-        'mipi_camera_calibration_file_path',
+            'mipi_camera_calibration_file_path',
+            default_value='default',
+            description='mipi camera calibration file path')
+    mipi_camera_gdc_file_path_arg = DeclareLaunchArgument(
+        'mipi_gdc_bin_file',
         default_value='default',
-        description='mipi lpwm enable')
-    
-    mipi_image_width_arg = DeclareLaunchArgument(
-        'mipi_image_width',
-        default_value='1280',
-        description='mipi width')
-
-    mipi_image_height_arg = DeclareLaunchArgument(
-        'mipi_image_height',
-        default_value='640',
-        description='mipi height')
-
+        description='mipi camera gdc file path')
     mipi_rotation_arg = DeclareLaunchArgument(
         'mipi_rotation',
         default_value='0.0',
         description='mipi camera out image rotation')
-
     mipi_cal_rotation_arg = DeclareLaunchArgument(
         'mipi_cal_rotation',
         default_value='0.0',
         description='mipi camera calibration rotation')
-
-    mipi_gdc_enable_arg = DeclareLaunchArgument(
-        'mipi_gdc_enable',
-        default_value='True',
-        description='mipi gdc enable')
-    mipi_image_framerate_arg = DeclareLaunchArgument(
-        'mipi_image_framerate',
-        default_value='10.0',
-        description='mipi camera out image framerate')
-    mipi_frame_ts_type_arg = DeclareLaunchArgument(
-        'mipi_frame_ts_type',
-        default_value='sensor',
-        description='mipi camera out image framerate')
+    mipi_image_width_arg = DeclareLaunchArgument(
+            'mipi_image_width',
+            default_value='960',
+            description='mipi camera out image width')
+    mipi_image_height_arg = DeclareLaunchArgument(
+            'mipi_image_height',
+            default_value='544',
+            description='mipi camera out image height')
+    mipi_channel_arg = DeclareLaunchArgument(
+            'mipi_channel',
+            default_value='0',
+            description='mipi camera out image height')
     mipi_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
                 get_package_share_directory('mipi_cam'),
-                'launch/mipi_cam_dual_channel.launch.py')),
+                'launch/mipi_cam.launch.py')),
         launch_arguments={
             'mipi_image_width': LaunchConfiguration('mipi_image_width'),
             'mipi_image_height': LaunchConfiguration('mipi_image_height'),
-            'mipi_image_framerate': LaunchConfiguration('mipi_image_framerate'),
-            'mipi_io_method': 'ros',
-            'device_mode': 'dual',
-            'dual_combine': '2',
-            'mipi_channel': '2',
-            'mipi_channel2': '0',
-            'mipi_lpwm_enable': LaunchConfiguration('mipi_lpwm_enable'),
-            'mipi_camera_calibration_file_path':  LaunchConfiguration('mipi_camera_calibration_file_path'),
-            'mipi_gdc_bin_file': './sc230ai_gdc.bin',
+            'mipi_image_framerate': '30.0',
+            'mipi_io_method': 'shared_mem',
+            'mipi_channel': LaunchConfiguration('mipi_channel'),
+            'mipi_camera_calibration_file_path': LaunchConfiguration('mipi_camera_calibration_file_path'),
+            'mipi_gdc_bin_file': LaunchConfiguration('mipi_gdc_bin_file'),
             'mipi_rotation': LaunchConfiguration('mipi_rotation'),
             'mipi_cal_rotation': LaunchConfiguration('mipi_cal_rotation'),
-            'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
-            'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type')
+            'mipi_frame_ts_type': 'sensor'
         }.items()
     )
 
@@ -101,11 +82,11 @@ def generate_launch_description():
                 get_package_share_directory('hobot_codec'),
                 'launch/hobot_codec_encode.launch.py')),
         launch_arguments={
-            'codec_in_mode': 'ros',
+            'codec_in_mode': 'shared_mem',
             'codec_out_mode': 'ros',
             'codec_jpg_quality': '85.0',
-            'codec_sub_topic': '/image_combine_raw',
-            'codec_pub_topic': '/image_combine_jpeg'
+            'codec_sub_topic': '/hbmem_img',
+            'codec_pub_topic': '/image_jpeg'
         }.items()
     )
     # web
@@ -115,7 +96,7 @@ def generate_launch_description():
                 get_package_share_directory('websocket'),
                 'launch/websocket.launch.py')),
         launch_arguments={
-            'websocket_image_topic': '/image_combine_jpeg',
+            'websocket_image_topic': '/image_jpeg',
             'websocket_only_show_image': 'True'
         }.items()
     )
@@ -128,15 +109,13 @@ def generate_launch_description():
 
     return LaunchDescription([
         # 启动零拷贝环境配置node
-        mipi_lpwm_enable_arg,
         mipi_camera_calibration_file_path_arg,
+        mipi_camera_gdc_file_path_arg,
         mipi_image_width_arg,
         mipi_image_height_arg,
         mipi_rotation_arg,
         mipi_cal_rotation_arg,
-        mipi_gdc_enable_arg,
-        mipi_image_framerate_arg,
-        mipi_frame_ts_type_arg,
+        mipi_channel_arg,
         shared_mem_node,
         # image publish
         mipi_node,

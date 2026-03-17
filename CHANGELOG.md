@@ -1,4 +1,17 @@
 # Changelog for package mipi_cam
+tros_2.5.0 (2026-03-09)
+------------------
+1. 重构从获取码流到消息发布的videobuff管理,已经拼接线程。
+2. 修改拼接图片的标定信息的topic，"image_combine_raw/left/camera_info"和"image_combine_raw/right/camera_info"。
+3. 重构X5的eeprom的读处理。
+4. X5增加子目录的发布。
+5. 增加联合132gs的imu数据发布。
+
+tros_2.4.1 (2026-01-29)
+------------------
+1. 更新到RDK S100 v4.0.5的sdk。
+2. RDK X5 增加了子码流，和固定channel和sensor的启动模式，避免自动检测导致gpio重上电。
+3. 
 tros_2.3.15 (2025-10-27)
 ------------------
 1. 更新到RDK X5 v3.4.0的sdk。

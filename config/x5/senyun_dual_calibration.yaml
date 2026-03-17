@@ -1,0 +1,40 @@
+%YAML:1.0
+---
+image_width: 2064
+image_height: 1552
+distortion_model: fisheye
+left_camera_matrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [754.67571973, 0.0, 1034.62351005, 0.0, 754.56276033, 775.02682194, 0, 0, 1]
+left_distortion_coefficients: !!opencv-matrix
+   rows: 1
+   cols: 4
+   dt: d
+   data: [0.03289987, -0.01618234, 0.00130624, -0.00006058]
+
+right_camera_matrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [754.36590520, 0.0, 1034.07420052, 0.0, 754.30727932, 779.88623460, 0, 0, 1]
+right_distortion_coefficients: !!opencv-matrix
+   rows: 1
+   cols: 4
+   dt: d
+   data: [0.03562318, -0.01909627, 0.00279338, -0.00030619]
+
+R: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [0.99999988,  0.00030142, -0.00039408,
+          -0.00030097,  0.99999932,  0.00113017,
+          0.00039442, -0.00113006,  0.99999928]
+T: !!opencv-matrix
+   rows: 3
+   cols: 1
+   dt: d
+   data: [-0.05896031914, 0.00072586755, -0.00084079374]
+

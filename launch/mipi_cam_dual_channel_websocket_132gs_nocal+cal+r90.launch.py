@@ -45,12 +45,22 @@ def generate_launch_description():
 
     mipi_image_height_arg = DeclareLaunchArgument(
         'mipi_image_height',
-        default_value='640',
+        default_value='1088',
         description='mipi height')
+
+    mipi_sub_image_width_arg = DeclareLaunchArgument(
+        'mipi_sub_image_width',
+        default_value='1280',
+        description='mipi camera out image width')
+
+    mipi_sub_image_height_arg = DeclareLaunchArgument(
+        'mipi_sub_image_height',
+        default_value='1088',
+        description='mipi camera out image height')
 
     mipi_rotation_arg = DeclareLaunchArgument(
         'mipi_rotation',
-        default_value='0.0',
+        default_value='90.0',
         description='mipi camera out image rotation')
 
     mipi_cal_rotation_arg = DeclareLaunchArgument(
@@ -78,6 +88,8 @@ def generate_launch_description():
         launch_arguments={
             'mipi_image_width': LaunchConfiguration('mipi_image_width'),
             'mipi_image_height': LaunchConfiguration('mipi_image_height'),
+            'mipi_sub_image_width': LaunchConfiguration('mipi_sub_image_width'),
+            'mipi_sub_image_height': LaunchConfiguration('mipi_sub_image_height'),
             'mipi_image_framerate': LaunchConfiguration('mipi_image_framerate'),
             'mipi_io_method': 'ros',
             'device_mode': 'dual',
@@ -90,6 +102,9 @@ def generate_launch_description():
             'mipi_rotation': LaunchConfiguration('mipi_rotation'),
             'mipi_cal_rotation': LaunchConfiguration('mipi_cal_rotation'),
             'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
+            'mipi_stream_mode': '1',
+            'mipi_sub_stream_enable': 'True',
+            'mipi_lpwm_enable': 'True',
             'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type')
         }.items()
     )
@@ -101,11 +116,28 @@ def generate_launch_description():
                 get_package_share_directory('hobot_codec'),
                 'launch/hobot_codec_encode.launch.py')),
         launch_arguments={
+            'codec_name': 'jpeg_codec_node',
             'codec_in_mode': 'ros',
             'codec_out_mode': 'ros',
+            'codec_in_format': 'nv12',
             'codec_jpg_quality': '85.0',
             'codec_sub_topic': '/image_combine_raw',
             'codec_pub_topic': '/image_combine_jpeg'
+        }.items()
+    )
+    sub_jpeg_codec_node = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('hobot_codec'),
+                'launch/hobot_codec_encode.launch.py')),
+        launch_arguments={
+            'codec_name': 'sub_jpeg_codec_node',
+            'codec_in_mode': 'ros',
+            'codec_out_mode': 'ros',
+            'codec_in_format': 'nv12',
+            'codec_jpg_quality': '85.0',
+            'codec_sub_topic': '/sub_image_combine_raw',
+            'codec_pub_topic': '/sub_image_combine_jpeg'
         }.items()
     )
     # web
@@ -116,6 +148,18 @@ def generate_launch_description():
                 'launch/websocket.launch.py')),
         launch_arguments={
             'websocket_image_topic': '/image_combine_jpeg',
+            'websocket_channel': '0',
+            'websocket_only_show_image': 'True'
+        }.items()
+    )
+    sub_web_node = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('websocket'),
+                'launch/websocket.launch.py')),
+        launch_arguments={
+            'websocket_image_topic': '/sub_image_combine_jpeg',
+            'websocket_channel': '1',
             'websocket_only_show_image': 'True'
         }.items()
     )
@@ -132,6 +176,8 @@ def generate_launch_description():
         mipi_camera_calibration_file_path_arg,
         mipi_image_width_arg,
         mipi_image_height_arg,
+        mipi_sub_image_width_arg,
+        mipi_sub_image_height_arg,
         mipi_rotation_arg,
         mipi_cal_rotation_arg,
         mipi_gdc_enable_arg,
@@ -142,6 +188,8 @@ def generate_launch_description():
         mipi_node,
         # image codec
         jpeg_codec_node,
+        sub_jpeg_codec_node,
         # web display
-        web_node
+        web_node,
+        sub_web_node
     ])

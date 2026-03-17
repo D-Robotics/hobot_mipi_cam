@@ -31,53 +31,59 @@
 
 //#include "hb_mem_mgr.h"
 #include "hbm_img_msgs/msg/hbm_msg1080_p.hpp"
+#include "imu_manager.hpp"
+#include <sensor_msgs/msg/imu.hpp>
 
 namespace mipi_cam
 {
 
-typedef struct Publisher_info_base {
+class Publisher_info_base {
+  public:
   // shared image message
-  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info_;
-  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info2_;
+  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info_ = nullptr;
+  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info2_ = nullptr;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr info_pub_ = nullptr;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr info_pub2_ = nullptr;
   std::chrono::time_point<std::chrono::system_clock> time_start_;
-} Publisher_info_base_st;
+};
 
-typedef struct Publisher_info : Publisher_info_base_st  {
+class Publisher_info : public Publisher_info_base  {
+  public:
   // shared image message
-  sensor_msgs::msg::Image::UniquePtr img_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_pub_ = nullptr;
+  std::string frame_id = "";
   std::string topic_type;
-} Publisher_info_st;
+};
 
-typedef struct Publisher_hbmem_info : Publisher_info_base_st {
+class Publisher_hbmem_info : public Publisher_info_base {
+  public:
   // shared image message
   int mSendIdx;
   rclcpp::Publisher<hbm_img_msgs::msg::HbmMsg1080P>::SharedPtr publisher_hbmem_;
   std::string topic_type;
-} Publisher_hbmem_info_st;
+};
 
 class MipiCamNode : public rclcpp::Node {
  public:
   MipiCamNode(const rclcpp::NodeOptions & node_options);
   ~MipiCamNode();
   void init();
-  void update(Publisher_info_st* pub_info);
-  void hbmemUpdate(Publisher_hbmem_info_st* pub_info);
+  void update(std::shared_ptr<Publisher_info> pub_info);
+  void hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info);
+  void read_imu_data();
 
  private:
   void save_yuv(const builtin_interfaces::msg::Time stamp, void *data, int data_size);
   void save_jpg(const builtin_interfaces::msg::Time stamp, std::string encode, int w, int h, void *data);
-  void init_publisher(Publisher_info_st&  Pub_info, std::string topic, std::string topic_type,
+  void init_publisher(std::shared_ptr<Publisher_info>  Pub_info, std::string topic, std::string topic_type,
                       std::string frame_id);
-  void init_publisher_hbmem(Publisher_hbmem_info_st&  Pub_info, std::string topic, std::string topic_type);
+  void init_publisher_hbmem(std::shared_ptr<Publisher_hbmem_info>  Pub_info, std::string topic, std::string topic_type);
   
-  void init_Calibration(Publisher_info_base_st*  Pub_info,
+  void init_Calibration(Publisher_info_base*  Pub_info,
                     std::string info_topic, std::string info_file);
-  void init_DualCalibration(Publisher_info_base_st*  Pub_info,
+  void init_DualCalibration(Publisher_info_base*  Pub_info,
                     std::string info_topic, std::string info_topic2, std::string info_file);
-  void init_DualCalibration(Publisher_info_base_st*  Pub_info, Publisher_info_base_st*  Pub_info2,
+  void init_DualCalibration(Publisher_info_base*  Pub_info, Publisher_info_base*  Pub_info2,
                     std::string info_topic, std::string info_topic2, std::string info_file);
 
   std::shared_ptr<MipiCam> mipiCam_ptr_;
@@ -85,12 +91,12 @@ class MipiCamNode : public rclcpp::Node {
   std::vector<std::shared_ptr<std::thread>> timer_;
   int32_t mSendIdx = 0;
 
-  rclcpp::TimerBase::SharedPtr timer_tmp_;
+  rclcpp::TimerBase::SharedPtr timer_tmp_ = nullptr;
 
-  std::vector<Publisher_info_st> Pub_info_;
-  std::vector<Publisher_hbmem_info_st> Pub_hbmem_info_;
+  std::vector<std::shared_ptr<Publisher_info>> Pub_info_;
+  std::vector<std::shared_ptr<Publisher_hbmem_info>> Pub_hbmem_info_;
 
-  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info_;
+  sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info_ = nullptr;
   
 
   // parameters
@@ -99,6 +105,13 @@ class MipiCamNode : public rclcpp::Node {
   //struct NodePara nodePare_;
   std::shared_ptr<struct NodePara> nodePare_;
   int m_bIsInit;
+
+  std::atomic_bool is_imu_running_ = false;
+  std::string imu_type_;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu_;
+  std::shared_ptr<imu_sensor::ImuManager> imu_manager_;
+  std::vector<std::shared_ptr<std::thread>> imu_timer_;
+
 };
 }  // namespace mipi_cam
 #endif  // HOBOT_MIPI_NODE_HPP_
