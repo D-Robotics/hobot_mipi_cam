@@ -294,7 +294,7 @@ void MipiCamNode::init() {
       }
     } else if (nodePare_->device_mode_.compare("multi") == 0) {
       auto pub_info1 = std::make_shared<Publisher_info>();
-      init_publisher(pub_info1, "image_raw", "combine", frame_id_);
+      init_publisher(pub_info1, "image_combine_raw", "combine", frame_id_);
       Pub_info_.push_back(pub_info1);
     } else if ((nodePare_->device_mode_.compare("single") == 0) ||
       (nodePare_->device_mode_.compare("") == 0)) {

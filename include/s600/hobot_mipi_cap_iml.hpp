@@ -363,6 +363,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
+  std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_r_;
 
   std::mutex queue_mtx_;
 

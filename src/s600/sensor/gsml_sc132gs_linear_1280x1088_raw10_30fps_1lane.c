@@ -319,6 +319,77 @@ static isp_cfg_t gsml_sc132gs_isp_cfg = {
     },
 };
 
+struct ynr_init_attr gsml_sc132gs_ynr_attr = {
+	.work_mode = 1,
+	.slot_id = 4,
+
+	.width = SENSOR_WIDTH,
+	.height = SENSOR_HEIGHT,
+	.nr_static_switch = 0b11, // (nr3d_en << 1) | (nr2d_en);
+	.in_stride = {
+		SENSOR_WIDTH, SENSOR_HEIGHT
+	},
+	.nr2d_en = 1,
+	.nr3d_en = 0,
+
+	.dma_output_en = 1, // nr3d_en
+
+	.debug_en = 0,    
+};
+
+pym_cfg_t gsml_sc132gs_pym_common_config = {
+    .hw_id = 1,
+    .pym_mode = 1,
+    .slot_id = 5,
+    .pingpong_ring = 0,
+    .output_buf_num = 6,
+    .fb_buf_num = 2,
+    .timeout = 0,
+    .threshold_time = 0,
+    .layer_num_trans_next = 0,
+    .layer_num_share_prev = -1,
+    .out_buf_noinvalid = 1,
+    .out_buf_noncached = 0,
+    .in_buf_noclean = 1,
+    .in_buf_noncached = 0,
+    .chn_ctrl = {
+        //.pixel_num_before_sol = DEF_PIX_NUM_BF_SOL,
+        .invalid_head_lines = 0,
+        .src_in_width = SENSOR_WIDTH,
+        .src_in_height = SENSOR_HEIGHT,
+        .src_in_stride_y = SENSOR_WIDTH,
+        .src_in_stride_uv = SENSOR_WIDTH,
+        .suffix_hb_val = 68,
+        .prefix_hb_val = 2,
+        .suffix_vb_val = 20,
+        .prefix_vb_val = 2,
+        .ds_roi_en = 1,
+        .bl_max_layer_en = 5,
+        .ds_roi_uv_bypass = 0,
+        .ds_roi_sel = {
+            [0] = 0,
+        },
+        .ds_roi_layer = {
+            [0] = 0,
+        },
+        .ds_roi_info = {
+            [0] = {
+                .start_left = 0,
+                .start_top = 0,
+                .region_width = SENSOR_WIDTH,
+                .region_height = SENSOR_HEIGHT,
+                .wstride_uv = SENSOR_WIDTH,
+                .wstride_y = SENSOR_WIDTH,
+                .out_width = SENSOR_WIDTH,
+                .out_height = SENSOR_HEIGHT,
+                .vstride = SENSOR_HEIGHT, //.out_height,
+            },
+        },
+    },
+.magicNumber = MAGIC_NUMBER,
+};
+
+
 vp_sensor_config_t gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane = {
 	.chip_id_reg = 0,
 	.chip_id = 0x0820,
@@ -331,6 +402,6 @@ vp_sensor_config_t gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane = {
     .deserial_slave_attr = &gsml_sc132gs_deserial_config,
 	.vin_attr = &gsml_sc132gs_vin_attr,
 	.isp_cfg  = &gsml_sc132gs_isp_cfg,
-    .ynr_attr = NULL,
-	.pym_cfg = NULL,
+    .ynr_attr = &gsml_sc132gs_ynr_attr,
+	.pym_cfg = &gsml_sc132gs_pym_common_config,
 };

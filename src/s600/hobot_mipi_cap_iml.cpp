@@ -327,6 +327,8 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 		deserial_config_t *deserial_attr;
 		deserial_handle_t des_fd;
 		//pipe_contex.resize(pipeline_num);
+		gdc_bin_buf_.clear();
+		gdc_bin_buf_r_.clear();
 		for (auto gsml_cfg : gsml_config_) {
 			int des_num = vp_get_deserial_list_number();
 			vp_deserial_config_t *deserial_cfg = nullptr;
@@ -372,6 +374,41 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 
 					pipe_contex_tmp.cap_info_->link_port_ = pipeline_num % 4;
 					pipe_contex_tmp.camera_bind_ = true;
+					if (cap_info_.gdc_enable_) {
+						if (cam_info_.size() > 0 && gdc_bin_buf_.empty()) {
+							sensor_msgs::msg::CameraInfo cal_cam_info;
+							if (cal_tpye_ == 0) {
+								auto gdc_bin = gen_gdc_bin(pipe_contex_tmp.sensor_config.isp_cfg->isp_attr.size.width, pipe_contex_tmp.sensor_config.isp_cfg->isp_attr.size.height,
+										cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_);
+								//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
+								if (gdc_bin) {
+									gdc_bin_buf_.push_back(gdc_bin);
+									pipe_contex_tmp.gdc_bin = gdc_bin;
+									cal_cam_info_.push_back(cal_cam_info);
+								}
+							}
+						} else if (!gdc_bin_buf_.empty()) {
+							pipe_contex_tmp.gdc_bin = gdc_bin_buf_[0];
+						}
+					}
+					if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0) && (gdc_bin_buf_r_.empty())) {
+						int width;
+						int height;
+						if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+							width = cap_info_.height;
+							height = cap_info_.width;
+						} else {
+							width = cap_info_.width;
+							height = cap_info_.height;
+						}
+						auto gdc_bin = gen_gdc_bin_rotation(width, height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+						if (gdc_bin) {
+							gdc_bin_buf_r_.push_back(gdc_bin);
+							pipe_contex_tmp.gdc_bin_r = gdc_bin;
+						}
+					} else if (!gdc_bin_buf_r_.empty()) {
+						pipe_contex_tmp.gdc_bin_r = gdc_bin_buf_r_[0];
+					}
 					pipeline_connect_param_init(&pipe_contex_tmp);
 					ret = create_and_run_vflow(&pipe_contex_tmp);
 					ERR_CON_EQ(ret, 0);		
@@ -388,6 +425,11 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					pipe_contex_tmp.sensor_config.isp_cfg->isp_attr.channel.slot_id = pipeline_num + 4;
 					pipe_contex_tmp.cap_info_->link_port_ = pipeline_num % 4;
 					pipe_contex_tmp.camera_bind_ = false;
+					if (!gdc_bin_buf_.empty()) {
+						pipe_contex_tmp.gdc_bin = gdc_bin_buf_[0];
+					} else if (!gdc_bin_buf_r_.empty()) {
+						pipe_contex_tmp.gdc_bin_r = gdc_bin_buf_r_[0];
+					}
 					pipeline_connect_param_init(&pipe_contex_tmp);
 					ret = create_and_run_vflow(&pipe_contex_tmp);
 					ERR_CON_EQ(ret, 0);
@@ -396,12 +438,6 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 				}
 			}
 		}
-
-		for (auto pipe_ctx : pipe_contex) {
-			//ret = create_and_run_vflow(&pipe_ctx);
-			//ERR_CON_EQ(ret, 0);
-		}
-
 		cap_info_.device_mode_ = "multi";
 		combine_flag_ = true;
 
@@ -1681,10 +1717,6 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 		ret = create_pym_node(pipe_contex, ch_info->pym_hw_id, ch_info->pym_slot_id, ch_info->pym_mode);
 		ERR_CON_EQ(ret, 0);
 	}
-
-
-
-
 	// 2. 添加node 到 flow
 	ret = hbn_vflow_create(&pipe_contex->vflow_fd);
 	ERR_CON_EQ(ret, 0);
