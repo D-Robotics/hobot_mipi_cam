@@ -240,6 +240,7 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   nodePare_->image_height_ = cap_info_.height;
   nodePare_->video_device_name_ = cap_info_.sensor_type;
   nodePare_->sub_stream_enable_ = cap_info_.sub_stream_enable_;
+  nodePare_->device_mode_ = cap_info_.device_mode_;
 
   RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
     "[%s]->cap %s init success.\r\n", __func__, cap_info_.sensor_type.c_str());

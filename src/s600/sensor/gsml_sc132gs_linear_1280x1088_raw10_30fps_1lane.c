@@ -9,6 +9,7 @@
 #define SETTLE 16
 #define MIPILINE  2000
 #define MIPIFRAME 2673
+#define MAGIC_NUMBER 0x12345678
 
 
 static mipi_config_t g_mipi_config = {
@@ -36,7 +37,7 @@ static mipi_config_t g_mipi_config = {
 
 static camera_config_t gsml_sc132gs_camera_config = {
     .name = "sc132gs",
-    .addr = 0x13,
+    .addr =0x31,
     .eeprom_addr = 0x51,
     .serial_addr = 0x41,
     .sensor_mode = 0x01,
@@ -48,6 +49,44 @@ static camera_config_t gsml_sc132gs_camera_config = {
     .config_index = 2304,
     .mipi_cfg = &g_mipi_config, // MIPI配置,NULL自动获取
     .calib_lname = "lib_metoak_gmsl_sc132gs_linear.so",
+    .end_flag = CAMERA_CONFIG_END_FLAG,	
+};
+
+static camera_config_t gsml_sc132gs_camera_config_slave = {
+    .name = "dummystd",
+    .addr = 0xff,
+    .eeprom_addr = 0xff,
+    .serial_addr = 0xff,
+    .sensor_mode = 0x1,
+    .fps = SENSOR_FPS,
+    .width = SENSOR_WIDTH,
+    .height = SENSOR_HEIGHT,
+    .format = 10,	//Notice
+    .extra_mode = 22,
+    .config_index = 0,
+    .mipi_cfg = &g_mipi_config,
+    .calib_lname = "lib_metoak_gmsl_sc132gs_linear.so",
+    .sensor_param = 
+    "{"
+        "\"tuning_data\": {"
+            "\"enable\": 1,"
+            "\"VMAX\": 5400,"
+            "\"HMAX\": 0,"
+            "\"gain_max\": 104856,"
+            "\"analog_gain_max\": 104856,"
+            "\"digital_gain_max\": 0,"
+            "\"exposure_time_min\": 1,"
+            "\"exposure_time_max\": 4000,"
+            "\"exposure_time_long_max\": 4000,"
+            "\"lines_per_second\": 162000,"
+            "\"turning_type\": 6,"
+            "\"conversion\": 0,"
+            "\"data_width\": 10,"
+            "\"bayer_start\": 3,"
+            "\"bayer_pattern\": 0,"
+            "\"exposure_max_bit_width\": 12"
+        "}"
+    "}",
     .end_flag = CAMERA_CONFIG_END_FLAG,	
 };
 
@@ -79,7 +118,21 @@ static deserial_config_t gsml_sc132gs_deserial_config = {
     .addr = 0x29,
     .poc_cfg = &g_poc_cfg[0],
     .end_flag = DESERIAL_CONFIG_END_FLAG,
+};
 
+static deserial_config_t gsml_sc132gs_deserial_config_slave = {
+        .name = "max96712",
+        .link_desp[0] = "sc132gs:1@2304",
+        .link_desp[1] = "",
+        .link_desp[2] = "sc132gs:1@2304",
+        .link_desp[3] = "",
+        .gpio_mfp[CAMERA_DES_GPIO_TRIG0] = 0x5,
+        .gpio_mfp[CAMERA_DES_GPIO_TRIG1] = 0x5,
+        .gpio_mfp[CAMERA_DES_GPIO_TRIG2] = 0x5,
+        .gpio_mfp[CAMERA_DES_GPIO_TRIG3] = 0x5,
+        .addr = 0x29,
+        .poc_cfg = &g_poc_cfg[1],
+        .end_flag = DESERIAL_CONFIG_END_FLAG,        
 };
 
 static vin_attr_t gsml_sc132gs_vin_attr = {
@@ -170,7 +223,7 @@ static vin_attr_t gsml_sc132gs_vin_attr = {
             .ddr_en = 1,
             .vin_basic_attr = {
                 .format = RAW10,
-                .wstride = 0,
+                .wstride = 1376,
                 .vstride = 0,
                 .pack_mode = 1,
             },
@@ -216,7 +269,7 @@ static isp_cfg_t gsml_sc132gs_isp_cfg = {
             .width = SENSOR_WIDTH,
             .height = SENSOR_HEIGHT,
         },
-        .frame_rate = 15,
+        .frame_rate = SENSOR_FPS,
         .isp_combine = {
             .isp_channel_mode = 0,
             .bind_channel = {
@@ -266,60 +319,6 @@ static isp_cfg_t gsml_sc132gs_isp_cfg = {
     },
 };
 
-
-
-static pym_cfg_t pym_common_config = {
-        .hw_id = 1,
-        .pym_mode = 1,
-        .slot_id = 4,
-        .pingpong_ring = 0,
-        .output_buf_num = 6,
-        .fb_buf_num = 2,
-        .timeout = 0,
-        .threshold_time = 0,
-        .layer_num_trans_next = 0,
-        .layer_num_share_prev = -1,
-        .out_buf_noinvalid = 1,
-        .out_buf_noncached = 0,
-        .in_buf_noclean = 1,
-        .in_buf_noncached = 0,
-        .chn_ctrl = {
-            //.pixel_num_before_sol = DEF_PIX_NUM_BF_SOL,
-            .invalid_head_lines = 0,
-            .src_in_width = 1920,
-            .src_in_height = 1080,
-            .src_in_stride_y = 1920,
-            .src_in_stride_uv = 1920,
-            .suffix_hb_val = 100,
-            .prefix_hb_val = 2,
-            .suffix_vb_val = 10,
-            .prefix_vb_val = 0,
-            .ds_roi_en = 1,
-            .bl_max_layer_en = 5,
-            .ds_roi_uv_bypass = 0,
-            .ds_roi_sel = {
-                [0] = 0,
-            },
-            .ds_roi_layer = {
-                [0] = 0,
-            },
-            .ds_roi_info = {
-                [0] = {
-                    .start_left = 0,
-                    .start_top = 0,
-                    .region_width = 1920,
-                    .region_height = 1080,
-                    .wstride_uv = 1920,
-                    .wstride_y = 1920,
-                    .out_width = 1920,
-                    .out_height = 1080,
-                    .vstride = 1080, //.out_height,
-                },
-            },
-        },
-    .magicNumber = MAGIC_NUMBER,
-};
-
 vp_sensor_config_t gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane = {
 	.chip_id_reg = 0,
 	.chip_id = 0x0820,
@@ -328,9 +327,10 @@ vp_sensor_config_t gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane = {
 	.sensor_name = "gsml_sc132gs",
 	.config_file = "gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane.c",
 	.camera_config = &gsml_sc132gs_camera_config,
-    .deserial_attr = &gsml_sc132gs_deserial_config,
+    .camera_slave_config = &gsml_sc132gs_camera_config_slave,
+    .deserial_slave_attr = &gsml_sc132gs_deserial_config,
 	.vin_attr = &gsml_sc132gs_vin_attr,
 	.isp_cfg  = &gsml_sc132gs_isp_cfg,
     .ynr_attr = NULL,
-	.pym_cfg = &pym_common_config,
+	.pym_cfg = NULL,
 };
