@@ -419,7 +419,7 @@ bool mipi_calibration::getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) 
 		std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cal_param.cam_info_[0].k.begin());
 		
 		int d_num = 8;
-		if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
+		if (head_buf_ptr->d_num > 0 && head_buf_ptr->d_num < 8) {
 			d_num = head_buf_ptr->d_num;
 		}
 		cal_param.cam_info_[0].d.resize(d_num);
@@ -772,7 +772,7 @@ bool mipi_calibration::getCamCalibration_union(int i2c_bus, uint16_t i2c_addr) {
 				cal_param.cam_info_[1].d[3] = m_d_info_r.d[5];
 		  } else {
 			int d_num = 8;
-			if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
+			if (head_buf_ptr->d_num > 0 && head_buf_ptr->d_num < 8) {
 				d_num = head_buf_ptr->d_num;
 			}
 			cal_param.cam_info_[0].d.resize(d_num);
@@ -1179,7 +1179,7 @@ bool mipi_calibration::getCamCalibration_abham(int i2c_bus, uint16_t i2c_addr) {
 		  std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cal_param.cam_info_[0].k.begin());
 		  
 		  int d_num = 8;
-		  if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
+		  if (head_buf_ptr->d_num > 0 && head_buf_ptr->d_num < 8) {
 			  d_num = head_buf_ptr->d_num;
 		  }
 		  cal_param.cam_info_[0].d.resize(d_num);
