@@ -117,7 +117,7 @@ def generate_launch_description():
             description='mipi camera gdc enable'),
         DeclareLaunchArgument(
             'mipi_cal_alpha',
-            default_value='90.0',
+            default_value='0.0',
             description='gmsl link port'),
         DeclareLaunchArgument(
             'mipi_stream_mode',

@@ -2059,8 +2059,8 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	// TODO: Set alpha from config
 	// cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0.391 ,cv::Size(out_gdc_width, out_gdc_height));
 	if (cam_info[0].distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
-		if (target_hfov == 0) {
-			double fov_scale = find_best_fov_scale(Kl, Dl, Kr, Dr, R_rl, t_rl, cv::Size(in_gdc_width, in_gdc_height), cv::Size(out_gdc_width, out_gdc_height));
+		if (target_hfov <= 0) {
+			fov_scale = find_best_fov_scale(Kl, Dl, Kr, Dr, R_rl, t_rl, cv::Size(in_gdc_width, in_gdc_height), cv::Size(out_gdc_width, out_gdc_height));
 		} else {
 			// target_hfov > 0: 只关心逼近目标 FOV，不关心越界
 			bool ok_ = computeFisheyeStereoParamsFromFOV(
@@ -2091,6 +2091,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 			// RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
         	// 	"Auto compute alpha: %f\n , Left actual FOV: %f\n, Right actual FOV: %f\n ", alpha, actual_hfov_l, actual_hfov_r);
 			RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Auto compute alpha: %f", alpha);
+			RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "hfov_l: " << hfov_l);
 		}
 		cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, alpha ,cv::Size(out_gdc_width, out_gdc_height));
 		cv::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
