@@ -33,7 +33,10 @@
 #include "hobot_mipi_comm.hpp"
 #include "hobot_mipi_cap_iml.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
+#include "sensor_msgs/distortion_models.hpp"
 #include "opencv2/opencv.hpp"
+
+#include "hobot_mipi_calibration.hpp"
 
 #include "hb_media_codec.h"
 #include "hb_media_error.h"
@@ -151,25 +154,27 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
 	ERR_CON_EQ(ret, 0);
 	gdc_bin_buf_.clear();
+	mipi_calibration &calibration_instance = mipi_calibration::GetInstance();
 	if (cap_info_.gdc_enable_) {
 		vp_sensor_config_t *sensor_cfg = &pipe_contex[0].sensor_config;
 		if (cam_info_.size() != 2) {
-			if (!getDualCamCalibrationFromEeprom()) {
-				if(strcasecmp(sensor_cfg->sensor_name, "sc230ai-30fps") == 0) {
-					getDualCamCalibrationFromEeprom_230ai();
-				}		
+			auto cal_params = mipi_calibration::GetInstance().getCalibrationParams();
+			if (cal_params.size() >= 1)
+			{
+				cam_info_ = cal_params[0].cam_info_;
+				cap_info_.cal_rotation_ = cal_params[0].cal_rotation_;
+				imu_info_ = cal_params[0].imu_info_;
+				awb_otp_data_ = cal_params[0].awb_otp_data_;
 			}
 		}
-		if (cal_tpye_ == 0) {
 			auto gdc_bin = gen_gdc_bin_stereo(sensor_cfg->isp_cfg->isp_attr.size.width, sensor_cfg->isp_cfg->isp_attr.size.height,
-					cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_);
+					cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_);
 			if (gdc_bin.size() == 2) {
 				gdc_bin_buf_.push_back(gdc_bin[0]);
 				gdc_bin_buf_.push_back(gdc_bin[1]);
 				pipe_contex[0].gdc_bin = gdc_bin[0];
 				pipe_contex[1].gdc_bin = gdc_bin[1];
 			}			
-		}
 	}
 	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
 		vp_sensor_config_t *sensor_conf = &pipe_contex[0].sensor_config;
@@ -1875,7 +1880,7 @@ static int save_gdc_bin = 0;
 
 std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(int in_width, int in_height,int out_width, int out_height,
 		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
-		double rotation, double cal_rotate) {
+		double rotation, double cal_rotate, double cal_alpha) {
 	std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf;
 if (in_width <= 0 || in_height<= 0 || out_width <= 0 || out_height <= 0 || cam_info.size() != 2) {
 		return gdc_bin_buf;
@@ -1955,9 +1960,69 @@ if (!((rotation == 0.0) || (rotation == 90.0) || (rotation == 180.0) || (rotatio
 		<< "\n===================="
 	);
 
-	cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0 ,cv::Size(out_gdc_width, out_gdc_height));
-	cv::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
-	cv::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1r, undistmap2r);
+	double target_hfov = cal_alpha;
+	double balance = 0.0;
+	double fov_scale = 1.0;
+	double hfov_l = 0.0, hfov_r = 0.0;
+	// double alpha = 0;
+	//  TODO: Set alpha from config
+	//  cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0.391 ,cv::Size(out_gdc_width, out_gdc_height));
+	if (cam_info[0].distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
+	{
+		// 克隆非连续矩阵为连续存储（const 转非 const，不影响原数据）
+		cv::Mat Kl_cont = Kl.isContinuous() ? Kl : Kl.clone();
+		cv::Mat Dl_cont = Dl.isContinuous() ? Dl : Dl.clone();
+		cv::Mat Kr_cont = Kr.isContinuous() ? Kr : Kr.clone();
+		cv::Mat Dr_cont = Dr.isContinuous() ? Dr : Dr.clone();
+		cv::Mat R_rl_cont = R_rl.isContinuous() ? R_rl : R_rl.clone();
+		cv::Mat t_rl_cont = t_rl.isContinuous() ? t_rl : t_rl.clone();
+		if (target_hfov <= 0.0)
+		{
+			fov_scale = find_best_fov_scale(Kl_cont, Dl_cont, Kr_cont, Dr_cont, R_rl_cont, t_rl_cont, cv::Size(in_gdc_width, in_gdc_height), cv::Size(out_gdc_width, out_gdc_height));
+		}
+		else
+		{
+			// target_hfov > 0: 只关心逼近目标 FOV，不关心越界
+			bool ok_ = computeFisheyeStereoParamsFromFOV(
+				 target_hfov,
+				 Kl_cont, Dl_cont, Kr_cont, Dr_cont, R_rl_cont, t_rl_cont,
+				 cv::Size(in_gdc_width, in_gdc_height),
+				 cv::Size(out_gdc_width, out_gdc_height),
+				 balance, fov_scale, hfov_l, hfov_r);
+		}
+		RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "best fov scale: " << fov_scale);
+		RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "final_balance: " << balance);
+		RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "hfov_l: " << hfov_l);
+		RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "target_hfov: " << target_hfov);
+
+		cv::fisheye::stereoRectify(Kl_cont, Dl_cont, Kr_cont, Dr_cont, cv::Size(in_gdc_width, in_gdc_height), R_rl_cont, t_rl_cont, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), 0.0, fov_scale);
+		cv::fisheye::initUndistortRectifyMap(Kl_cont, Dl_cont, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
+		cv::fisheye::initUndistortRectifyMap(Kr_cont, Dr_cont, Rr, Pr, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1r, undistmap2r);
+	}
+	else
+	{
+		double alpha = computeStereoAlphaFromFOV(
+			 target_hfov,
+			 Kl, Dl, Kr, Dr, R_rl, t_rl,
+			 in_gdc_width, in_gdc_height,
+			 out_gdc_width, out_gdc_height,
+			 hfov_l, hfov_r);
+		if (alpha <= 0)
+		{
+			alpha = 0;
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "Use default alpha=0.0 (target FOV invalid)");
+		}
+		else
+		{
+			// RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+			// 	"Auto compute alpha: %f\n , Left actual FOV: %f\n, Right actual FOV: %f\n ", alpha, actual_hfov_l, actual_hfov_r);
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "Auto compute alpha: %f", alpha);
+			RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "hfov_l: " << hfov_l);
+		}
+		cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, alpha, cv::Size(out_gdc_width, out_gdc_height));
+		cv::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
+		cv::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1r, undistmap2r);
+	}
     int rotation_diff_int = rotation_diff;
 	cv::Mat tmp;
 	cv::Mat rotation_1l;
@@ -2741,507 +2806,256 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin_json(std::string file
 #endif
 }
 
-bool HobotMipiCapIml::readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize) {
-	int32_t ret;
-	struct i2c_rdwr_ioctl_data data;
-	uint8_t sendbuf[32] = {0};
-	uint8_t readbuf[32] = {0};
-	struct i2c_msg msgs[I2C_RDRW_IOCTL_MAX_MSGS] = {0};
-	char filename[20];
-	int file;
+std::pair<double, double> HobotMipiCapIml::calculatePinholeFOV(const cv::Mat &K_rect, int width, int height)
+{
+	if (K_rect.type() != CV_64F || K_rect.rows != 3 || K_rect.cols != 3)
+	{
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Invalid Camera matrix!");
+		return {0.0, 0.0};
+	}
+	double fx = K_rect.at<double>(0, 0);
+	double fy = K_rect.at<double>(1, 1);
+	double h_fov = 2 * atan2(static_cast<double>(width) / 2, fx) * 180.0 / CV_PI;
+	double v_fov = 2 * atan2(static_cast<double>(height) / 2, fy) * 180.0 / CV_PI;
+	return {h_fov, v_fov};
+}
 
-	// Open the I2C bus
-	snprintf(filename, sizeof(filename), "/dev/i2c-%d", bus);
-	file = open(filename, O_RDWR);
-	if (file < 0) {
-		//std::cout << "Failed to open the I2C bus " << bus << std::endl;
-		//perror("open the I2C bus");
+double HobotMipiCapIml::computeInitAlpha(double target_hfov, double fov_min, double fov_max)
+{
+	if (std::abs(fov_max - fov_min) < 1e-6)
+	{
+		return 0.0; // 如果FOV范围非常小，直接返回0
+	}
+	if (target_hfov <= fov_min - 1e-3)
+		return 0.0;
+	if (target_hfov >= fov_max + 1e-3)
+		return 1.0;
+	return (target_hfov - fov_min) / (fov_max - fov_min);
+}
+
+double HobotMipiCapIml::computeStereoAlphaFromFOV(
+	 double target_hfov,
+	 const cv::Mat &Kl, const cv::Mat &Dl,
+	 const cv::Mat &Kr, const cv::Mat &Dr,
+	 const cv::Mat &R_rl, const cv::Mat &t_rl,
+	 int in_gdc_width, int in_gdc_height,
+	 int out_gdc_width, int out_gdc_height,
+	 double &actual_hfov_l, double &actual_hfov_r)
+{
+
+	// ------------ 步骤1：计算alpha=0时的双目FOV（FOV_min） ------------
+	cv::Mat Rl0, Rr0, Pl0, Pr0, Q0;
+	cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+							R_rl, t_rl, Rl0, Rr0, Pl0, Pr0, Q0,
+							cv::CALIB_ZERO_DISPARITY, 0.0, cv::Size(out_gdc_width, out_gdc_height));
+	// 提取校正后内参（投影矩阵Pl/Pr的前3x3）
+	cv::Mat K_l0 = Pl0(cv::Rect(0, 0, 3, 3)).clone();
+	cv::Mat K_r0 = Pr0(cv::Rect(0, 0, 3, 3)).clone();
+	// 计算alpha=0时的FOV
+	auto [fov_l0, _] = calculatePinholeFOV(K_l0, out_gdc_width, out_gdc_height);
+	auto [fov_r0, __] = calculatePinholeFOV(K_r0, out_gdc_width, out_gdc_height);
+
+	// ------------ 步骤2：计算alpha=1时的双目FOV（FOV_max） ------------
+	cv::Mat Rl1, Rr1, Pl1, Pr1, Q1;
+	cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+							R_rl, t_rl, Rl1, Rr1, Pl1, Pr1, Q1,
+							cv::CALIB_ZERO_DISPARITY, 1.0, cv::Size(out_gdc_width, out_gdc_height));
+
+	cv::Mat K_l1 = Pl1(cv::Rect(0, 0, 3, 3)).clone();
+	cv::Mat K_r1 = Pr1(cv::Rect(0, 0, 3, 3)).clone();
+	auto [fov_l1, ___] = calculatePinholeFOV(K_l1, out_gdc_width, out_gdc_height);
+	auto [fov_r1, ____] = calculatePinholeFOV(K_r1, out_gdc_width, out_gdc_height);
+
+	// ------------ 步骤3：确定双目FOV的有效交集 ------------
+	double fov_min = std::max(fov_l0, fov_r0); // 双目最小FOV（取较大值）
+	double fov_max = std::min(fov_l1, fov_r1); // 双目最大FOV（取较小值）
+	if (target_hfov < fov_min - 1e-3 || target_hfov > fov_max + 1e-3)
+	{
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+						 "Target FOV %.2f° out of valid range [%.2f°, %.2f°]",
+						 target_hfov, fov_min, fov_max);
+		actual_hfov_l = actual_hfov_r = 0.0;
+		return -1.0;
+	}
+
+	// ------------ 步骤4：迭代微调alpha（保证FOV精度） ------------
+	const double eps = 3.0;	 // FOV允许误差（°）
+	const int max_iter = 10; // 最大迭代次数
+	double alpha = computeInitAlpha(target_hfov, fov_min, fov_max);
+	double left_alpha = 0.0, right_alpha = 1.0;
+	int iter = 0;
+
+	while (iter < max_iter)
+	{
+		// 用当前alpha计算校正后FOV
+		cv::Mat Rl, Rr, Pl, Pr, Q;
+		cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+								R_rl, t_rl, Rl, Rr, Pl, Pr, Q,
+								cv::CALIB_ZERO_DISPARITY, alpha, cv::Size(out_gdc_width, out_gdc_height));
+		cv::Mat K_l = Pl(cv::Rect(0, 0, 3, 3)).clone();
+		cv::Mat K_r = Pr(cv::Rect(0, 0, 3, 3)).clone();
+		auto [hfov_l, _] = calculatePinholeFOV(K_l, out_gdc_width, out_gdc_height);
+		auto [hfov_r, __] = calculatePinholeFOV(K_r, out_gdc_width, out_gdc_height);
+
+		// 验证双目FOV是否接近目标
+		double avg_hfov = (hfov_l + hfov_r) / 2;
+		if (fabs(avg_hfov - target_hfov) < eps)
+		{
+			actual_hfov_l = hfov_l;
+			actual_hfov_r = hfov_r;
+			return alpha;
+		}
+
+		// 二分法调整alpha
+		if (avg_hfov < target_hfov)
+		{
+			left_alpha = alpha;
+		}
+		else
+		{
+			right_alpha = alpha;
+		}
+		alpha = (left_alpha + right_alpha) / 2;
+		iter++;
+	}
+
+	// ------------ 步骤5：返回最终alpha并输出实际FOV ------------
+	cv::Mat Rl_final, Rr_final, Pl_final, Pr_final, Q_final;
+	cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+							R_rl, t_rl, Rl_final, Rr_final, Pl_final, Pr_final, Q_final,
+							cv::CALIB_ZERO_DISPARITY, alpha, cv::Size(out_gdc_width, out_gdc_height));
+	cv::Mat K_l_final = Pl_final(cv::Rect(0, 0, 3, 3)).clone();
+	cv::Mat K_r_final = Pr_final(cv::Rect(0, 0, 3, 3)).clone();
+	actual_hfov_l = calculatePinholeFOV(K_l_final, out_gdc_width, out_gdc_height).first;
+	actual_hfov_r = calculatePinholeFOV(K_r_final, out_gdc_width, out_gdc_height).first;
+
+	return alpha;
+}
+
+double HobotMipiCapIml::find_best_fov_scale(const cv::Mat &Kl, const cv::Mat &Dl,
+														  const cv::Mat &Kr, const cv::Mat &Dr,
+														  const cv::Mat &R_rl, const cv::Mat &t_rl,
+														  cv::Size in_size,
+														  cv::Size out_size)
+{
+	double best_scale = 1.0;
+	for (double fov = 1.0; fov >= 0.3; fov -= 0.02)
+	{
+		cv::Mat Rl, Rr, Pl, Pr, Q;
+		cv::fisheye::stereoRectify(
+			 Kl, Dl, Kr, Dr,
+			 in_size,
+			 R_rl, t_rl,
+			 Rl, Rr, Pl, Pr, Q,
+			 cv::CALIB_ZERO_DISPARITY,
+			 out_size,
+			 0.0,
+			 fov);
+		cv::Mat mapx, mapy;
+		cv::fisheye::initUndistortRectifyMap(Kl, Dl, Rl, Pl, out_size, CV_32FC1, mapx, mapy);
+		int invalid = 0;
+		int total = out_size.area();
+		for (int y = 0; y < mapx.rows; y++)
+		{
+			const float *ptrx = mapx.ptr<float>(y);
+			const float *ptry = mapy.ptr<float>(y);
+			for (int x = 0; x < mapx.cols; x++)
+			{
+				float sx = ptrx[x];
+				float sy = ptry[x];
+				if (sx < 0 || sx >= in_size.width || sy < 0 || sy >= in_size.height)
+				{
+					invalid++;
+				}
+			}
+		}
+
+		if (invalid == 0)
+		{
+			best_scale = fov;
+			break;
+		}
+	}
+
+	return best_scale;
+}
+
+bool HobotMipiCapIml::computeFisheyeStereoParamsFromFOV(
+	 double target_hfov,
+	 const cv::Mat &Kl, const cv::Mat &Dl,
+	 const cv::Mat &Kr, const cv::Mat &Dr,
+	 const cv::Mat &R_rl, const cv::Mat &t_rl,
+	 cv::Size in_size, cv::Size out_size,
+	 double &out_balance, double &out_fov_scale,
+	 double &actual_hfov_l, double &actual_hfov_r,
+	 double tol,	// 默认 3.0°
+	 int max_iter) // 默认 10
+{
+	constexpr double SCALE_LO = 0.05;
+	constexpr double SCALE_HI = 2.0;
+
+	out_balance = 0.0;
+	out_fov_scale = 1.0;
+	actual_hfov_l = 0.0;
+	actual_hfov_r = 0.0;
+
+	if (in_size.area() <= 0 || out_size.area() <= 0)
+	{
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						"Invalid params: target_hfov=%.1f, in=%dx%d, out=%dx%d",
+						target_hfov, in_size.width, in_size.height, out_size.width, out_size.height);
 		return false;
 	}
 
-	sendbuf[0] = (uint8_t)((reg_addr >> 8u) & 0xffu);
-	sendbuf[1] = (uint8_t)(reg_addr & 0xffu);
+	double lo = SCALE_LO, hi = SCALE_HI;
+	double best_diff = std::numeric_limits<double>::max();
 
-	data.msgs = msgs; /*PRQA S 5118*/
-	data.nmsgs = 2;
+	for (int i = 0; i < max_iter; ++i)
+	{
+		double mid = 0.5 * (lo + hi);
 
-	data.msgs[0].len = 2;
-	data.msgs[0].addr = i2c_addr;
-	data.msgs[0].flags = 0;
-	data.msgs[0].buf = sendbuf;
+		// stereoRectify 拿到 Pl/Pr，从中提取 fx 算 HFOV
+		cv::Mat Rl, Rr, Pl, Pr, Q;
+		cv::fisheye::stereoRectify(
+			 Kl, Dl, Kr, Dr, in_size, R_rl, t_rl,
+			 Rl, Rr, Pl, Pr, Q,
+			 cv::CALIB_ZERO_DISPARITY, out_size, 0.0, mid);
 
-	data.msgs[1].len = bufsize;
-	data.msgs[1].addr = i2c_addr;
-	data.msgs[1].flags = I2C_M_RD;
-	data.msgs[1].buf = (uint8_t*)buf;
+		double hl = 2.0 * std::atan2(out_size.width * 0.5, Pl.at<double>(0, 0)) * 180.0 / CV_PI;
+		double hr = 2.0 * std::atan2(out_size.width * 0.5, Pr.at<double>(0, 0)) * 180.0 / CV_PI;
+		double avg = 0.5 * (hl + hr);
+		double diff = std::abs(avg - target_hfov);
 
-	ret = ioctl(file, I2C_RDWR, (uint64_t)&data);
-	if (ret < 0) {
-		// perror("Failed to read from the I2C bus");
-		//*value = 0;
-		close(file);
-		return false;
+		if (diff < best_diff)
+		{
+			best_diff = diff;
+			out_fov_scale = mid;
+			actual_hfov_l = hl;
+			actual_hfov_r = hr;
+		}
+
+		if (diff < tol)
+		{
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+							"Converged at iter %d: fov_scale=%.6f, HFOV=[%.2f°, %.2f°], target=%.2f°",
+							i, out_fov_scale, hl, hr, target_hfov);
+			return true;
+		}
+
+		// fov_scale ↑ → fx ↓ → HFOV ↑（单调递增）
+		if (avg < target_hfov)
+			lo = mid;
+		else
+			hi = mid;
+
+		if (hi - lo < 1e-7)
+			break;
 	}
 
-	//*value = (uint16_t)((readbuf[0] << 8) | readbuf[1]);
-
-	// Close the I2C bus
-	close(file);
-
-	return true;
-}
-
-
-int HobotMipiCapIml::detectEeprom_lianhe(std::string &device, int &i2c_bus, uint16_t &i2c_addr) {
-
-  // mipi sensor的信息数组
-  EEPROM_ID_T eeprom_id_list[] = {
-    {1, 0x50, I2C_ADDR_16, 0x21, 0x01, "P24C64G-C4H-MIR"},  // P24C64G-C4H-MIR
-  };
-  std::vector<int> i2c_buss= {0,1,2,3,4,5,6,7,8,9,10};
-
-  char buf[512];
-  std::vector<char> buf_type;
-  buf_type.resize(0x1f);
-  char check_0;
-  char checksum;
-  std::string chip_type;
-
-  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"==========detectEeprom lianhe start==========\n");
-
-  for (auto num : i2c_buss) {
-    for (auto eeprom_id : eeprom_id_list) {
-      if (readEeprom16(num, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 1)) {
-		readEeprom16(num, eeprom_id.i2c_dev_addr, 0x0000, &check_0, 1);
-		readEeprom16(num, eeprom_id.i2c_dev_addr, 0x0001, buf_type.data(), 0x1f);
-		readEeprom16(num, eeprom_id.i2c_dev_addr, 0x0020, &checksum, 1);
-		chip_type = buf_type.data();
-		int sum = 0;
-		std::for_each(buf_type.begin(), buf_type.end(), [&sum](char c) {
-			sum += static_cast<int>(c);
-		});
-
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"eeprom infomation:" \
-			"\n ----------------" \
-			"\n bus: %d" \
-			"\n check_0: %s" \
-			"\n chip_type: %s" \
-			"\n checksum: %s" \
-			"\n sum: %s" \
-			"\n ----------------",
-			num,
-			std::to_string(check_0).c_str(),
-			chip_type.c_str(),
-			std::to_string(checksum).c_str(),
-			std::to_string(sum%255).c_str()
-		);
-		if (buf[0] == eeprom_id.check_value) {
-			i2c_bus = num;
-			i2c_addr = eeprom_id.i2c_dev_addr;
-			device = eeprom_id.device_name;
-			return 0;
-		} else {
-			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"eeprom check failure bus: %d, addr: %d, device_name: %s", num, eeprom_id.i2c_dev_addr, eeprom_id.device_name);
-		}
-      }
-    }
-  }
-  return -1;
-}
-
-int HobotMipiCapIml::detectEeprom_drobot(std::string &device, int &i2c_bus, uint16_t &i2c_addr) {
-
-  // mipi sensor的信息数组
-  EEPROM_DETECT_T eeprom_detect_list[] = {
-    {1, 0x50, I2C_ADDR_16, 0x00, "SZYGSJKJ", "yuguang"},  // P24C64G-C4H-MIR
-  };
-  std::vector<int> i2c_buss= {0,1,2,3,4,5,6,7,8,9,10};
-
-  char buf[9] = {0};
-  std::vector<char> buf_type;
-  buf_type.resize(0x1f);
-  char check_0;
-  char checksum;
-  std::string chip_type;
-  
-  for (auto num : i2c_buss) {
-    for (auto eeprom_id : eeprom_detect_list) {
-      if (readEeprom16(num, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 8)) {
-		std::string buf_str = buf;
-		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),"i2c bus: %d, EEPROM FLAG: %s\n", num, buf_str.c_str());
-		if (eeprom_id.check_str == buf_str) {
-			i2c_bus = num;
-			i2c_addr = eeprom_id.i2c_dev_addr;
-			device = eeprom_id.device_name;
-			return 0;
-		}
-      }
-    }
-  }
-  return -1;
-}
-
-
-bool HobotMipiCapIml::getDualCamCalibrationFromEeprom() {
-int i2c_bus;
-  uint16_t i2c_addr;
-  std::string device;
-  std::vector<char> i2c_buf;
-  i2c_buf.resize(sizeof(CalDualCamInfo_ST));
-  char chech_value;
-  if (detectEeprom_drobot(device, i2c_bus, i2c_addr) == -1) {
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+					"Not fully converged: fov_scale=%.6f, HFOV=[%.2f°, %.2f°], target=%.2f°, diff=%.2f°",
+					out_fov_scale, actual_hfov_l, actual_hfov_r, target_hfov, best_diff);
 	return false;
-  }
-  if (device == "yuguang") {
-	getDualCamCalibration_yugang(i2c_bus, i2c_addr);
-  }
-  return true;
-}
-
-bool HobotMipiCapIml::getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) {
-  std::string device;
-  std::vector<char> head_buf;
-  head_buf.resize(sizeof(EepromDrobotHead_ST));
-  char chech_value;
-  if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(), sizeof(EepromDrobotHead_ST)) == false) {
-	return false;
-  }
-  int chech_index = sizeof(EepromDrobotHead_ST) - 1;
-  chech_value = head_buf[chech_index];
-  head_buf[chech_index] = 0;
-  int sum = 0;
-  
-  std::for_each(head_buf.begin(), head_buf.end(), [&sum](char c) {
-	sum += static_cast<int>(c);
-  });
-  if (((sum % 255) + 1) == chech_value) {
-	EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
-
-	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
-		"\n ----------------" \
-		"\n bus: %d" \
-		"\n flag: %s" \
-		"\n camType: %d" \
-		"\n cal_tpye: %d" \
-		"\n ver_main: %d" \
-		"\n ver_min: %d" \
-		"\n angle: %d" \
-		"\n d_num: %d" \
-		"\n ----------------",
-		i2c_bus,
-		head_buf_ptr->flag,
-		head_buf_ptr->camType,
-		head_buf_ptr->cal_tpye,
-		head_buf_ptr->ver_main,
-		head_buf_ptr->ver_min,
-		head_buf_ptr->angle,
-		head_buf_ptr->d_num
-	);
-
-	if (head_buf_ptr->angle == 0x00) {
-		cap_info_.cal_rotation_ = 0.0;
-	} else if (head_buf_ptr->angle == 0x01) {
-		cap_info_.cal_rotation_ = 90.0;
-	} else if (head_buf_ptr->angle == 0x02) {
-		cap_info_.cal_rotation_ = 180.0;
-	} else if (head_buf_ptr->angle == 0x03) {
-		cap_info_.cal_rotation_ = 270.0;
-	}
-
-	if (head_buf_ptr->cal_tpye == 0x00) {
-		cal_tpye_ = 0; //针孔标定
-	} else if (head_buf_ptr->cal_tpye == 0x01) {
-		cal_tpye_ = 1; //鱼眼标定
-	} 
-
-	if (head_buf_ptr->camType == 0x01) {
-		cam_info_.resize(2);
-		CalDualMDInfo_ST m_d_info_l, m_d_info_r;
-		CalDualRTInfo_ST r_t_info;
-		if (readEeprom16(i2c_bus, i2c_addr, 0x0010, (char*)&m_d_info_l, sizeof(CalDualMDInfo_ST)) == false) {
-			return false;
-		}
-		if (readEeprom16(i2c_bus, i2c_addr, 0x0048, (char*)&m_d_info_r, sizeof(CalDualMDInfo_ST)) == false) {
-			return false;
-		}
-		if (readEeprom16(i2c_bus, i2c_addr, 0x008C, (char*)&r_t_info, sizeof(CalDualRTInfo_ST)) == false) {
-			return false;
-		}
-		
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_l======" \
-			"\n ----------------" \
-			"\n width: %d" \
-			"\n height: %d" \
-			"\n fx: %f" \
-			"\n fx: %f" \
-			"\n fy: %f" \
-			"\n cy: %f" \
-			"\n ----------------",
-			m_d_info_l.width,
-			m_d_info_l.height,
-			m_d_info_l.fx,
-			m_d_info_l.fx,
-			m_d_info_l.fy,
-			m_d_info_l.cy
-		);
-
-		// printf("k1:%f\n",m_d_info_l.k1);
-		// printf("k2:%f\n",m_d_info_l.k2);
-		// printf("p1:%f\n",m_d_info_l.p1);
-		// printf("p2:%f\n",m_d_info_l.p2);
-		// printf("k3:%f\n",m_d_info_l.k3);
-		// printf("k4:%f\n",m_d_info_l.k4);
-		// printf("k5:%f\n",m_d_info_l.k5);
-		// printf("k6:%f\n",m_d_info_l.k6);
-
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_r======" \
-			"\n ----------------" \
-			"\n width: %d" \
-			"\n height: %d" \
-			"\n fx: %f" \
-			"\n fx: %f" \
-			"\n fy: %f" \
-			"\n cy: %f" \
-			"\n ----------------",
-			m_d_info_r.width,
-			m_d_info_r.height,
-			m_d_info_r.fx,
-			m_d_info_r.fx,
-			m_d_info_r.fy,
-			m_d_info_r.cy
-		);
-
-		// printf("k1:%f\n",m_d_info_r.k1);
-		// printf("k2:%f\n",m_d_info_r.k2);
-		// printf("p1:%f\n",m_d_info_r.p1);
-		// printf("p2:%f\n",m_d_info_r.p2);
-		// printf("k3:%f\n",m_d_info_r.k3);
-		// printf("k4:%f\n",m_d_info_r.k4);
-		// printf("k5:%f\n",m_d_info_r.k5);
-		// printf("k6:%f\n",m_d_info_r.k6);
-
-
-
-
-		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====r_t_info======" \
-			"\n ----------------" \
-			"\n r11: %f" \
-			"\n r12: %f" \
-			"\n r13: %f" \
-			"\n r21: %f" \
-			"\n r22: %f" \
-			"\n r23: %f" \
-			"\n r31: %f" \
-			"\n r32: %f" \
-			"\n r33: %f" \
-			"\n tx: %f" \
-			"\n ty: %f" \
-			"\n tz: %f" \
-			"\n ----------------",
-			r_t_info.r11,
-			r_t_info.r12,
-			r_t_info.r13,
-			r_t_info.r21,
-			r_t_info.r22,
-			r_t_info.r23,
-			r_t_info.r31,
-			r_t_info.r32,
-			r_t_info.r33,
-			r_t_info.tx,
-			r_t_info.ty,
-			r_t_info.tz
-		);
-
-		cam_info_[0].width = m_d_info_l.width;
-		cam_info_[0].height = m_d_info_l.height;
-		cam_info_[1].width = m_d_info_r.width;
-		cam_info_[1].height = m_d_info_r.height;
-
-		cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
-		l_k.at<double>(0,0) = m_d_info_l.fx;
-		l_k.at<double>(0,2) = m_d_info_l.cx;
-		l_k.at<double>(1,1) = m_d_info_l.fy;
-		l_k.at<double>(1,2) = m_d_info_l.cy;
-		l_k.at<double>(2,2) = 1;
-		std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
-		
-		int d_num = 8;
-		if (head_buf_ptr->d_num <= 0 && head_buf_ptr->d_num >=4) {
-			d_num = head_buf_ptr->d_num;
-		}
-		cam_info_[0].d.resize(d_num);
-		for (int i = 0; i < d_num; i++) {
-			cam_info_[0].d[i] = m_d_info_l.d[i];
-		}
-		// cam_info_[0].d[0] = m_d_info_l.k1;
-		// cam_info_[0].d[1] = m_d_info_l.k2;
-		// cam_info_[0].d[2] = m_d_info_l.p1;
-		// cam_info_[0].d[3] = m_d_info_l.p2;
-		// cam_info_[0].d[4] = m_d_info_l.k3;
-		// cam_info_[0].d[5] = m_d_info_l.k4;
-		// cam_info_[0].d[6] = m_d_info_l.k5;
-		// cam_info_[0].d[7] = m_d_info_l.k6;
-
-		cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
-		std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
-
-		cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
-		cv::Mat l_p = l_k * l_p_eye;
-		std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
-
-
-
-		cv::Mat r_k= cv::Mat::zeros(3,3,CV_64F);
-		r_k.at<double>(0,0) = m_d_info_r.fx;
-		r_k.at<double>(0,2) = m_d_info_r.cx;
-		r_k.at<double>(1,1) = m_d_info_r.fy;
-		r_k.at<double>(1,2) = m_d_info_r.cy;
-		r_k.at<double>(2,2) = 1;
-		std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
-
-		// cam_info_[1].d.resize(8);
-		// cam_info_[1].d[0] = m_d_info_r.k1;
-		// cam_info_[1].d[1] = m_d_info_r.k2;
-		// cam_info_[1].d[2] = m_d_info_r.p1;
-		// cam_info_[1].d[3] = m_d_info_r.p2;
-		// cam_info_[1].d[4] = m_d_info_r.k3;
-		// cam_info_[1].d[5] = m_d_info_r.k4;
-		// cam_info_[1].d[6] = m_d_info_r.k5;
-		// cam_info_[1].d[7] = m_d_info_r.k6;
-
-		cam_info_[1].d.resize(d_num);
-		for (int i = 0; i < d_num; i++) {
-			cam_info_[1].d[i] = m_d_info_r.d[i];
-		}
-
-		cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
-		R.at<double>(0,0) = r_t_info.r11;
-		R.at<double>(0,1) = r_t_info.r12;
-		R.at<double>(0,2) = r_t_info.r13;
-		R.at<double>(1,0) = r_t_info.r21;
-		R.at<double>(1,1) = r_t_info.r22;
-		R.at<double>(1,2) = r_t_info.r23;
-		R.at<double>(2,0) = r_t_info.r31;
-		R.at<double>(2,1) = r_t_info.r32;
-		R.at<double>(2,2) = r_t_info.r33;
-
-		cv::Mat T = cv::Mat::zeros(3, 1, CV_64F);
-		T.at<double>(0,0) = r_t_info.tx;
-		T.at<double>(0,1) = r_t_info.ty;
-		T.at<double>(0,2) = r_t_info.tz;
-
-		cv::Mat RT;
-		cv::hconcat(R, T, RT);
-		cv::Mat P = r_k * RT;
-		std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
-		std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
-		return true;
-	}
-
-  }
-  return false;
-}
-
-
-bool HobotMipiCapIml::getDualCamCalibrationFromEeprom_230ai() {
-  int i2c_bus;
-  uint16_t i2c_addr;
-  std::string device;
-  std::vector<char> i2c_buf;
-  i2c_buf.resize(sizeof(CalDualCamInfo_ST));
-  char chech_value;
-  if (detectEeprom_lianhe(device, i2c_bus, i2c_addr) == -1) {
-	return false;
-  }
-
-  if (readEeprom16(i2c_bus, i2c_addr, 0x0022, i2c_buf.data(), sizeof(CalDualCamInfo_ST)) == false) {
-	return false;
-  }
-  if (readEeprom16(i2c_bus, i2c_addr, 0x0022+sizeof(CalDualCamInfo_ST), &chech_value, 1) == false) {
-	return false;
-  }
-  int sum = 0;
-  std::for_each(i2c_buf.begin(), i2c_buf.end(), [&sum](char c) {
-	sum += static_cast<int>(c);
-  });
-  if (((sum % 255) + 1) == chech_value) {
-	cam_info_.resize(2);
-	CalDualCamInfo_ST* i2c_buf_ptr = (CalDualCamInfo_ST *)i2c_buf.data();
-	int width = (i2c_buf_ptr->h_v[0] << 8) | i2c_buf_ptr->h_v[1];
-	int height = (i2c_buf_ptr->h_v[2] << 8) | i2c_buf_ptr->h_v[3];
-
-	cam_info_[0].width = width;
-    cam_info_[0].height = height;
-	cam_info_[1].width = width;
-    cam_info_[1].height = height;
-
-	cv::Mat l_k= cv::Mat::zeros(3,3,CV_64F);
-	l_k.at<double>(0,0) = i2c_buf_ptr->fxl;
-	l_k.at<double>(0,2) = i2c_buf_ptr->cxl;
-	l_k.at<double>(1,1) = i2c_buf_ptr->fyl;
-	l_k.at<double>(1,2) = i2c_buf_ptr->cyl;
-	l_k.at<double>(2,2) = 1;
-	std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(), cam_info_[0].k.begin());
-
-	cam_info_[0].d.resize(8);
-	cam_info_[0].d[0] = i2c_buf_ptr->k1l;
-	cam_info_[0].d[1] = i2c_buf_ptr->k2l;
-	cam_info_[0].d[2] = i2c_buf_ptr->p1l;
-	cam_info_[0].d[3] = i2c_buf_ptr->p2l;
-	cam_info_[0].d[4] = i2c_buf_ptr->k3l;
-	cam_info_[0].d[5] = i2c_buf_ptr->k4l;
-	cam_info_[0].d[6] = i2c_buf_ptr->k5l;
-	cam_info_[0].d[7] = i2c_buf_ptr->k6l;
-
-	cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
-    std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(), cam_info_[0].r.begin());
-
-	cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
-    cv::Mat l_p = l_k * l_p_eye;
-    std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(), cam_info_[0].p.begin());
-
-	cv::Mat r_k= cv::Mat::zeros(3,3,CV_64F);
-	r_k.at<double>(0,0) = i2c_buf_ptr->fxr;
-	r_k.at<double>(0,2) = i2c_buf_ptr->cxr;
-	r_k.at<double>(1,1) = i2c_buf_ptr->fyr;
-	r_k.at<double>(1,2) = i2c_buf_ptr->cyr;
-	r_k.at<double>(2,2) = 1;
-	std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(), cam_info_[1].k.begin());
-
-	cam_info_[1].d.resize(8);
-	cam_info_[1].d[0] = i2c_buf_ptr->k1r;
-	cam_info_[1].d[1] = i2c_buf_ptr->k2r;
-	cam_info_[1].d[2] = i2c_buf_ptr->p1r;
-	cam_info_[1].d[3] = i2c_buf_ptr->p2r;
-	cam_info_[1].d[4] = i2c_buf_ptr->k3r;
-	cam_info_[1].d[5] = i2c_buf_ptr->k4r;
-	cam_info_[1].d[6] = i2c_buf_ptr->k5r;
-	cam_info_[1].d[7] = i2c_buf_ptr->k6r;
-
-	cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
-	R.at<double>(0,0) = i2c_buf_ptr->r11;
-	R.at<double>(0,1) = i2c_buf_ptr->r12;
-	R.at<double>(0,2) = i2c_buf_ptr->r13;
-	R.at<double>(1,0) = i2c_buf_ptr->r21;
-	R.at<double>(1,1) = i2c_buf_ptr->r22;
-	R.at<double>(1,2) = i2c_buf_ptr->r23;
-	R.at<double>(2,0) = i2c_buf_ptr->r31;
-	R.at<double>(2,1) = i2c_buf_ptr->r32;
-	R.at<double>(2,2) = i2c_buf_ptr->r33;
-
-	cv::Mat T = cv::Mat::zeros(3, 1, CV_64F);
-	T.at<double>(0,0) = i2c_buf_ptr->tx;
-	T.at<double>(0,1) = i2c_buf_ptr->ty;
-	T.at<double>(0,2) = i2c_buf_ptr->tz;
-
-	cv::Mat RT;
-	cv::hconcat(R, T, RT);
-	cv::Mat P = r_k * RT;
-    std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cam_info_[1].r.begin());
-    std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cam_info_[1].p.begin());
-	return true;
-  }
-  return false;
 }
 
 }  // namespace mipi_cam
