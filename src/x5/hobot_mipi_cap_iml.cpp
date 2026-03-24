@@ -2575,7 +2575,7 @@ double HobotMipiCapIml::computeStereoAlphaFromFOV(
     double fov_min = std::max(fov_l0, fov_r0); // 双目最小FOV（取较大值）
     double fov_max = std::min(fov_l1, fov_r1); // 双目最大FOV（取较小值）
     if (target_hfov < fov_min - 1e-3 || target_hfov > fov_max + 1e-3) {
-        RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+        RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
             "Target FOV %.2f° out of valid range [%.2f°, %.2f°]",
             target_hfov, fov_min, fov_max);
         actual_hfov_l = actual_hfov_r = 0.0;
@@ -2668,17 +2668,25 @@ double HobotMipiCapIml::find_best_fov_scale(const cv::Mat& Kl, const cv::Mat& Dl
 		out_size,
 		0.0,
 		fov);
-    cv::Mat mapx, mapy;
-    cv::fisheye::initUndistortRectifyMap(Kl, Dl, Rl, Pl, out_size, CV_32FC1, mapx, mapy);
+    cv::Mat mapx_l, mapy_l;
+    cv::Mat mapx_r, mapy_r;
+    cv::fisheye::initUndistortRectifyMap(Kl, Dl, Rl, Pl, out_size, CV_32FC1, mapx_l, mapy_l);
+    cv::fisheye::initUndistortRectifyMap(Kr, Dr, Rr, Pr, out_size, CV_32FC1, mapx_r, mapy_r);
     int invalid = 0;
-    int total = out_size.area();
-    for (int y = 0; y < mapx.rows; y++) {
-        const float* ptrx = mapx.ptr<float>(y);
-        const float* ptry = mapy.ptr<float>(y);
-        for (int x = 0; x < mapx.cols; x++) {
-            float sx = ptrx[x];
-            float sy = ptry[x];
-			if (sx < 0 || sx >= in_size.width || sy < 0 || sy >= in_size.height) {
+    for (int y = 0; y < mapx_l.rows; y++) {
+        const float* ptrx_l = mapx_l.ptr<float>(y);
+        const float* ptry_l = mapy_l.ptr<float>(y);
+        const float* ptrx_r = mapx_r.ptr<float>(y);
+        const float* ptry_r = mapy_r.ptr<float>(y);
+        for (int x = 0; x < mapx_l.cols; x++) {
+            float sx_l = ptrx_l[x];
+            float sy_l = ptry_l[x];
+            float sx_r = ptrx_r[x];
+            float sy_r = ptry_r[x];
+            if (sx_l < 1 || sx_l >= in_size.width - 2 ||
+                sy_l < 1 || sy_l >= in_size.height - 2 ||
+                sx_r < 1 || sx_r >= in_size.width - 2 ||
+                sy_r < 1 || sy_r >= in_size.height - 2) {
                     invalid++;
                 }
             }
