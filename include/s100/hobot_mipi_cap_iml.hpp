@@ -29,7 +29,7 @@
 #include "vp_sensors.h"
 #include "hb_gdc_cfg.h"
 #include "gdc_cfg.h"
-#include "codec_cfg.h"
+//#include "codec_cfg.h"
 
 namespace mipi_cam {
 
@@ -99,6 +99,8 @@ typedef struct pipe_contex_s {
   MIPI_CAP_INFO_ST *cap_info_;
   pipeline_channel_info_t pipe_info_;
   pipeline_usage_scene_type_t sensor_type_;
+  int gsml_link_port_; // 0~3
+  bool camera_bind_ = true;
 }pipe_contex_t;
 
 typedef struct eeprom_id {
@@ -230,6 +232,17 @@ typedef struct cal_dual_R_T_info_st {
 } CalDualRTInfo_ST;
 #pragma pack()
 
+typedef struct {
+  int link_id;
+  std::string sensor_type; //"single"： 每个连接输出一个sensor的数据； "dual":每个连接输出两个sensor的数据。
+  std::string camera_mode; //"single"： 每个连接输出一个sensor的数据； "dual":每个连接输出两个sensor的数据。
+} LINK_CONFIG_ST;
+
+typedef struct {
+  int deserial_id;
+  std::vector<LINK_CONFIG_ST> link;
+} GSML_CONFIG_ST;
+
 class HobotMipiCapIml : public HobotMipiCap {
  public:
   HobotMipiCapIml() {}
@@ -243,6 +256,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   // 输入参数：info--sensor的配置参数。
   // 返回值：0，初始化成功；-1，初始化失败。
   int init(MIPI_CAP_INFO_ST &info);
+  int mipi_init(MIPI_CAP_INFO_ST &info);
+  int gsml_init(MIPI_CAP_INFO_ST &info);
 
   // 反初始化相关sensor的VIO pipeline ；
   // 返回值：0，反初始化成功；-1，反初始化失败。
@@ -289,15 +304,12 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool getDualCamCalibrationFromEeprom();
   bool getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr);
   bool getDualCamCalibrationFromEeprom_230ai();
-
   void multiFrameTask();
   void sync_task();
   void sub_sync_task();
   bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
-
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
   int getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
-      
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
   int create_pym_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int pym_mode);
   int create_isp_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int mode, int is_online);
@@ -306,6 +318,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int create_gdc_node(pipe_contex_t *pipe_contex);
   int create_gdc_node_r(pipe_contex_t *pipe_contex);
   int create_deserial_node(pipe_contex_t *pipe_contex);
+  int create_deserial_node(deserial_config_t *deserial_attr, deserial_handle_t &des_fd);
   int create_camera_node(pipe_contex_t *pipe_contex, int link_port);
   std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height,
@@ -340,9 +353,12 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
   std::shared_ptr<std::thread> sync_task_ = nullptr;
   std::shared_ptr<std::thread> sub_sync_task_ = nullptr;
+  std::vector<GSML_CONFIG_ST> gsml_config_;
+  int isp0_next_slot_id = 4;
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
+  std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_r_;
 
   std::mutex queue_mtx_;
 
