@@ -1395,25 +1395,18 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 		return -1;
 	}
 	int32_t ret = 0;
-    if (pipe_contex->cap_info_->device_mode_.compare("dual") == 0) {
-		pipe_contex->sensor_config.isp_attr->input_mode = 2;
-		if (pipe_contex->cap_info_->lpwm_enable_) {
-			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
-			int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
-			pipe_contex->sensor_config.camera_config->sensor_mode = 6;
-			pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 1;
-			for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
-				attr.period = fps_rate;
-			}
-		} else {
-			pipe_contex->sensor_config.camera_config->sensor_mode = 1;
-			pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 0;
-			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-		    pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+	pipe_contex->sensor_config.isp_attr->input_mode = 2;
+	if (pipe_contex->cap_info_->lpwm_enable_) {
+		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+		int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
+		pipe_contex->sensor_config.camera_config->sensor_mode = 6;
+		pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 1;
+		for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
+			attr.period = fps_rate;
 		}
 	} else {
-		pipe_contex->sensor_config.isp_attr->input_mode = 2;
+		//pipe_contex->sensor_config.camera_config->sensor_mode = 1;
 		pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 0;
 		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
