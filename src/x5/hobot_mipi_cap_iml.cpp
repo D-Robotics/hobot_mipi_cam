@@ -199,7 +199,14 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	if (cap_info_.gdc_enable_) {
 		std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin;
 		if (cap_info_.stream_mode_ == 1) {
-			gdc_bin = gen_gdc_bin_stereo(cap_info_.width, cap_info_.height, cap_info_.width,
+			vp_sensor_config_t *sensor_conf = &pipe_contex[1].sensor_config;
+			int input_width = sensor_cof->isp_ichn_attr->width;
+			int input_height = sensor_cof->isp_ichn_attr->height;
+			if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+				input_width = sensor_cof->isp_ichn_attr->height;
+				input_height = sensor_cof->isp_ichn_attr->width;
+			}		
+			gdc_bin = gen_gdc_bin_stereo(input_width, input_height, cap_info_.width,
 				cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
 				cap_info_.cal_alpha_, !gdc_bin_buf_.empty());
 		} else {
@@ -1155,11 +1162,13 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	vse_ochn_attr.roi.h = input_height;
 	vse_ochn_attr.fmt = FRM_FMT_NV12;
 	vse_ochn_attr.bit_width = 8;
-	//vse_ochn_attr.target_w = input_width;
-	//vse_ochn_attr.target_h = input_height;
-	vse_ochn_attr.target_w = pipe_contex->cap_info_->width;
-	vse_ochn_attr.target_h = pipe_contex->cap_info_->height;
-
+	if (pipe_contex->cap_info_->stream_mode_ == 1) {
+		vse_ochn_attr.target_w = input_width;
+		vse_ochn_attr.target_h = input_height;
+	} else {
+		vse_ochn_attr.target_w = pipe_contex->cap_info_->width;
+		vse_ochn_attr.target_h = pipe_contex->cap_info_->height;
+	}
 	vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
 	vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
 
@@ -1204,8 +1213,10 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 			ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 1, &sub_alloc_attr);
 			ERR_CON_EQ(ret, 0);
 			pipe_contex->sub_stream_channel = 1;
-		} else if ((pipe_contex->cap_info_->sub_width >= input_width) 
-				&& (pipe_contex->cap_info_->sub_height >= input_height)) {
+		} else if ((pipe_contex->cap_info_->sub_width >= input_width) &&
+				(pipe_contex->cap_info_->sub_height >= input_height) &&
+				(pipe_contex->cap_info_->sub_width <= input_width * 2) &&
+				(pipe_contex->cap_info_->sub_height <= input_height * 2)) {
 			sub_vse_ochn_attr.chn_en = CAM_TRUE;
 			sub_vse_ochn_attr.roi.x = 0;
 			sub_vse_ochn_attr.roi.y = 0;
@@ -1233,6 +1244,8 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 			ERR_CON_EQ(ret, 0);
 			pipe_contex->sub_stream_channel = 5;		
 		} else {
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),"sub stream width = %d and height = %d is error, don't start the sub stream ",
+				pipe_contex->cap_info_->sub_width, pipe_contex->cap_info_->sub_height);
 			pipe_contex->cap_info_->sub_stream_enable_ = false;
 		}
 	}
@@ -1316,13 +1329,14 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 	int output_width;
 	int output_height;
 
-	if (pipe_contex->gdc_init_valid_r == 1) {
+	if (pipe_contex->cap_info_->stream_mode_ == 1) {
 		vse_ochn_attr_t vse_ochn_attr;
 		ret = hbn_vnode_get_ochn_attr(pipe_contex->vse_node_handle, chn_id, &vse_ochn_attr);
 		ERR_CON_EQ(ret, 0);
-		output_width = input_width = vse_ochn_attr.target_w;
-		output_height = input_height = vse_ochn_attr.target_h;
-
+		input_width = vse_ochn_attr.target_w;
+		input_height = vse_ochn_attr.target_h;
+		output_width = pipe_contex->cap_info_->width;
+		output_height = pipe_contex->cap_info_->height;
 	} else {
 		isp_ichn_attr_t isp_ichn_attr;
 		ret = hbn_vnode_get_ichn_attr(pipe_contex->isp_node_handle, chn_id, &isp_ichn_attr);

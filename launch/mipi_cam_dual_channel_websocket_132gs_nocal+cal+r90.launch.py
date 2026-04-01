@@ -80,6 +80,10 @@ def generate_launch_description():
         'mipi_frame_ts_type',
         default_value='sensor',
         description='mipi camera out image framerate')
+    mipi_stream_mode_arg = DeclareLaunchArgument(
+        'mipi_stream_mode',
+        default_value='1',
+        description='mipi camera output dual stream is no calibration and calibration image')
     mipi_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -102,7 +106,7 @@ def generate_launch_description():
             'mipi_rotation': LaunchConfiguration('mipi_rotation'),
             'mipi_cal_rotation': LaunchConfiguration('mipi_cal_rotation'),
             'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
-            'mipi_stream_mode': '1',
+            'mipi_stream_mode': LaunchConfiguration('mipi_stream_mode'),
             'mipi_sub_stream_enable': 'True',
             'mipi_lpwm_enable': 'True',
             'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type')
@@ -183,6 +187,7 @@ def generate_launch_description():
         mipi_gdc_enable_arg,
         mipi_image_framerate_arg,
         mipi_frame_ts_type_arg,
+        mipi_stream_mode_arg,
         shared_mem_node,
         # image publish
         mipi_node,
