@@ -19,8 +19,11 @@
 #include <string>
 #include "hobot_mipi_comm.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
+#include "hobot_mipi_calibration.hpp"
 
 namespace mipi_cam {
+
+struct Imu_params;
 
 class HobotMipiCap {
  public:
@@ -66,7 +69,10 @@ class HobotMipiCap {
     return -1;
   }
 
-  
+  virtual std::vector<Imu_params>* getImuInfo() {
+    return nullptr;
+  }
+
 };
 
 }  // namespace mipi_cam

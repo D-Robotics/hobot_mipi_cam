@@ -122,6 +122,9 @@ class MipiCamIml : public MipiCam {
   bool getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,
                 sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
 
+  
+  bool getImuCalibration(Imu_params &imu_params);
+
   bool isCapturing();
 
  private:
@@ -468,6 +471,24 @@ bool MipiCamIml::getImageMem(
               << ", laps ms=" << msEnd - msStart);
 
   return true;
+}
+
+bool MipiCamIml::getImuCalibration(Imu_params &imu_params) {
+  if (!mipiCap_ptr_)
+  {
+    return false;
+  }
+  auto imu_v_ptr = mipiCap_ptr_->getImuInfo();
+  if (imu_v_ptr != nullptr && !imu_v_ptr->empty())
+  {
+    imu_params = imu_v_ptr->at(0); // 取第一组 IMU 标定
+    RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
+                "get IMU calibration from EEPROM");
+    return true;
+  }
+  RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
+              "no IMU calibration data in EEPROM");
+  return false;
 }
 
 bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
