@@ -77,7 +77,22 @@ typedef struct pipe_contex_s {
 class HobotMipiCapIml : public HobotMipiCap {
  public:
   HobotMipiCapIml() {}
-  ~HobotMipiCapIml() {}
+  ~HobotMipiCapIml() {
+    // Safety cleanup: ensure threads are joined before destruction
+    started_ = false;
+    if (multi_frame_task_ && multi_frame_task_->joinable()) {
+      multi_frame_task_->join();
+    }
+    if (sync_task_ && sync_task_->joinable()) {
+      sync_task_->join();
+    }
+    if (sub_multi_frame_task_ && sub_multi_frame_task_->joinable()) {
+      sub_multi_frame_task_->join();
+    }
+    if (sub_sync_task_ && sub_sync_task_->joinable()) {
+      sub_sync_task_->join();
+    }
+  }
 
   // 初始化设备环境，如X3的sensor GPIO配置和时钟配置
   // 返回值：0，成功；-1，配置失败
