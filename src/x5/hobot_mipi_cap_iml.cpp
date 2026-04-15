@@ -1169,8 +1169,15 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 		vse_ochn_attr.target_w = pipe_contex->cap_info_->width;
 		vse_ochn_attr.target_h = pipe_contex->cap_info_->height;
 	}
-	vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
-	vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
+	float vse_fps = pipe_contex->cap_info_->fps * 30 / pipe_contex->sensor_config.camera_config->fps;
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"vse_fps: %f\n", vse_fps);
+	if (pipe_contex->cap_info_->lpwm_enable_) {
+		vse_ochn_attr.fps.src = 0;
+		vse_ochn_attr.fps.dst = 0;
+	} else {
+		vse_ochn_attr.fps.src = 0;
+		vse_ochn_attr.fps.dst = vse_fps;
+	}
 
 	ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 0, &vse_ochn_attr);
 	ERR_CON_EQ(ret, 0);
@@ -1199,9 +1206,14 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 			sub_vse_ochn_attr.target_w = pipe_contex->cap_info_->sub_width;
 			sub_vse_ochn_attr.target_h = pipe_contex->cap_info_->sub_height;
 		
-			sub_vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
-			sub_vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
-		
+			if (pipe_contex->cap_info_->lpwm_enable_) {
+				sub_vse_ochn_attr.fps.src = 0;
+				sub_vse_ochn_attr.fps.dst = 0;
+			} else {
+				sub_vse_ochn_attr.fps.src = 0;
+				sub_vse_ochn_attr.fps.dst = vse_fps;
+			}
+
 			ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 1, &sub_vse_ochn_attr);
 			ERR_CON_EQ(ret, 0);
 			sub_alloc_attr.buffers_num = 3;
@@ -1229,8 +1241,13 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 			sub_vse_ochn_attr.target_w = pipe_contex->cap_info_->sub_width;
 			sub_vse_ochn_attr.target_h = pipe_contex->cap_info_->sub_height;
 		
-			sub_vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
-			sub_vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
+			if (pipe_contex->cap_info_->lpwm_enable_) {
+				sub_vse_ochn_attr.fps.src = 0;
+				sub_vse_ochn_attr.fps.dst = 0;
+			} else {
+				sub_vse_ochn_attr.fps.src = 0;
+				sub_vse_ochn_attr.fps.dst = vse_fps;
+			}
 		
 			ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 5, &sub_vse_ochn_attr);
 			ERR_CON_EQ(ret, 0);
@@ -1422,8 +1439,8 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	} else {
 		//pipe_contex->sensor_config.camera_config->sensor_mode = 1;
 		pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 0;
-		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+		//pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+		//pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
 	}
 	// 创建pipeline中的每个node
 	ret = creat_camera_node(pipe_contex->sensor_config.camera_config, &pipe_contex->cam_fd);
