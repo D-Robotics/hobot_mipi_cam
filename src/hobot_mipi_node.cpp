@@ -179,7 +179,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   );
 
   init();
-
+  std::cout << std::endl;
 }
 
 MipiCamNode::~MipiCamNode() {
@@ -211,6 +211,7 @@ MipiCamNode::~MipiCamNode() {
     timer->join();
   }
   imu_timer_.clear();
+  std::cout << std::endl;
 }
 
 void MipiCamNode::init() {
