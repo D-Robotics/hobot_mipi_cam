@@ -473,7 +473,20 @@ int HobotMipiCapIml::stop() {
       "x5 camera isn't started");
     return -1;
   }
+  // Safety cleanup: ensure threads are joined before destruction
   started_ = false;
+  if (multi_frame_task_ && multi_frame_task_->joinable()) {
+    multi_frame_task_->join();
+  }
+  if (sync_task_ && sync_task_->joinable()) {
+    sync_task_->join();
+  }
+  if (sub_multi_frame_task_ && sub_multi_frame_task_->joinable()) {
+    sub_multi_frame_task_->join();
+  }
+  if (sub_sync_task_ && sub_sync_task_->joinable()) {
+    sub_sync_task_->join();
+  }
   for(auto contex : pipe_contex){
     ret = hbn_vflow_stop(contex.vflow_fd);
     ERR_CON_EQ(ret, 0);
