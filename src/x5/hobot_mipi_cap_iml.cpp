@@ -1182,7 +1182,7 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 		vse_ochn_attr.target_w = pipe_contex->cap_info_->width;
 		vse_ochn_attr.target_h = pipe_contex->cap_info_->height;
 	}
-	float vse_fps = pipe_contex->cap_info_->fps * 30 / pipe_contex->sensor_config.camera_config->fps;
+	int vse_fps = pipe_contex->cap_info_->fps == 1.0 ? 1 : ceil(pipe_contex->cap_info_->fps * 30 / pipe_contex->sensor_config.camera_config->fps);
 	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"vse_fps: %f\n", vse_fps);
 	if (pipe_contex->cap_info_->lpwm_enable_) {
 		vse_ochn_attr.fps.src = 0;
