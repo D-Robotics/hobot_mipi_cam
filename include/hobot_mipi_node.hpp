@@ -119,8 +119,6 @@ class MipiCamNode : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu_;
   std::shared_ptr<imu_sensor::ImuManager> imu_manager_;
   std::vector<std::shared_ptr<std::thread>> imu_timer_;
-  Imu_params imu_calib_params_;
-  bool has_imu_calib_ = false;
 
   std::string imu_calib_file_path_; // 标定文件保存路径
   void saveImuCalibration(const std::string &file_path);

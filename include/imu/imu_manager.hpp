@@ -23,6 +23,9 @@
 
 #include "imu_base.hpp"
 
+#include "hobot_mipi_calibration.hpp"
+
+using mipi_cam::Imu_params;
 namespace imu_sensor
 {
 
@@ -37,13 +40,22 @@ class ImuManager {
 
   std::shared_ptr<imu_base> createImuDevice(const std::string &dev_name);
 
-  
- private:
+  bool loadCalibrationFromEeprom();
+
+  /// 是否已有有效标定数据
+  bool hasValidCalibration() const { return has_valid_calibration_; }
+  /// 获取 IMU 标定参数（const 引用，零拷贝）
+  const Imu_params &getCalibParams() const { return imu_calib_params_; }
+
+private:
   int auto_detect_iio_devices();
 
   //std::map<std::string,std::string> devices_map_;
   std::map<std::string,std::vector<DeviceInfo_T>> devices_map_;
   std::shared_ptr<imu_base> imu_handle;
+
+  Imu_params imu_calib_params_;
+  bool has_valid_calibration_ = false;
 };
 }
 

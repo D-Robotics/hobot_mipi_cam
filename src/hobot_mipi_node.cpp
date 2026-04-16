@@ -436,16 +436,19 @@ void MipiCamNode::init() {
   if (0 == imu_manager_->init_sensor(imu_type_)) {
     pub_imu_ = this->create_publisher<sensor_msgs::msg::Imu>("/imu_data", 10);
 
-    if (mipiCam_ptr_ && mipiCam_ptr_->getImuCalibration(imu_calib_params_)) {
-      has_imu_calib_ = true;
-
+    if (imu_manager_->loadCalibrationFromEeprom())
+    {
+      RCLCPP_INFO(this->get_logger(),
+                  "IMU calibration loaded from EEPROM");
       // 创建外参 topic publisher（transient_local: 后来的订阅者也能收到）
       auto qos = rclcpp::QoS(1).reliable().transient_local();
       pub_imu_extrinsic_ = this->create_publisher<geometry_msgs::msg::TransformStamped>(
           "/imu_extrinsic", qos);
       static_tf_broadcaster_ =
           std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
-    } else {
+    }
+    else
+    {
       RCLCPP_WARN(this->get_logger(),
                   "No IMU calibration in EEPROM, publishing raw IMU data");
     }
@@ -608,12 +611,13 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
 }
 
 void MipiCamNode::read_imu_data() {
-  if (has_imu_calib_) {
-    const auto &rt = imu_calib_params_.r_t_info_;
+  geometry_msgs::msg::TransformStamped tf_msg;
+  bool publish_extrinsic = false;
+  if (imu_manager_->hasValidCalibration())
+  {
+    const auto &rt = imu_manager_->getCalibParams().r_t_info_;
 
     // 构造 TransformStamped（TF 和 Topic 共用同一份数据）
-    geometry_msgs::msg::TransformStamped tf_msg;
-    tf_msg.header.stamp = this->get_clock()->now();
     tf_msg.header.frame_id = frame_id_; // 与图像 frame_id 一致
     tf_msg.child_frame_id = "imu_link";
 
@@ -634,17 +638,7 @@ void MipiCamNode::read_imu_data() {
     tf_msg.transform.rotation.y = q.y();
     tf_msg.transform.rotation.z = q.z();
     tf_msg.transform.rotation.w = q.w();
-
-    // 发布静态 TF
-    if (static_tf_broadcaster_)
-    {
-      static_tf_broadcaster_->sendTransform(tf_msg);
-    }
-    // 发布外参 Topic（同一份 TransformStamped）
-    if (pub_imu_extrinsic_)
-    {
-      pub_imu_extrinsic_->publish(tf_msg);
-    }
+    publish_extrinsic = true;
     //saveImuCalibration(imu_calib_file_path_);
   }
   sensor_msgs::msg::Imu imu_msg;
@@ -655,8 +649,12 @@ void MipiCamNode::read_imu_data() {
     size_t subscriber_count = pub_imu_->get_subscription_count();
     if (subscriber_count > 0) {
       imu_manager_->read_sensor_data(&imu_data);
-      imu_msg.header.stamp.set__sec(imu_data.timestamp / 1e9);
-      imu_msg.header.stamp.set__nanosec(imu_data.timestamp - imu_msg.header.stamp.sec * 1e9);
+      // ---- IMU 时间戳 ----
+      auto sec = static_cast<int32_t>(imu_data.timestamp / 1e9);
+      auto nanosec = static_cast<uint32_t>(
+          imu_data.timestamp - sec * 1e9);
+      imu_msg.header.stamp.set__sec(sec);
+      imu_msg.header.stamp.set__nanosec(nanosec);
       imu_msg.linear_acceleration.x = imu_data.ax;
       imu_msg.linear_acceleration.y = imu_data.ay;
       imu_msg.linear_acceleration.z = imu_data.az;
@@ -664,6 +662,22 @@ void MipiCamNode::read_imu_data() {
       imu_msg.angular_velocity.y = imu_data.gy;
       imu_msg.angular_velocity.z = imu_data.gz;
       pub_imu_->publish(imu_msg);
+
+      // ---- 发布外参（与 IMU 同频，时间戳同步） ----
+      if (publish_extrinsic)
+      {
+        tf_msg.header.stamp.set__sec(sec);
+        tf_msg.header.stamp.set__nanosec(nanosec);
+
+        if (static_tf_broadcaster_)
+        {
+          static_tf_broadcaster_->sendTransform(tf_msg);
+        }
+        if (pub_imu_extrinsic_)
+        {
+          pub_imu_extrinsic_->publish(tf_msg);
+        }
+      }
     } else {
       usleep(1000*1000);
     }
@@ -726,6 +740,7 @@ void MipiCamNode::saveImuCalibration(const std::string &file_path)
 
   ofs << std::fixed << std::setprecision(9);
 
+  const auto &imu_calib_params_ = imu_manager_->getCalibParams();
   const auto &acc_m = imu_calib_params_.acc_mislign_;
   const auto &gyro_m = imu_calib_params_.gyro_mislign_;
   const auto &acc_s = imu_calib_params_.acc_scale_;

@@ -23,8 +23,6 @@
 
 namespace mipi_cam {
 
-struct Imu_params;
-
 class HobotMipiCap {
  public:
   HobotMipiCap(/* args */) {}
@@ -67,10 +65,6 @@ class HobotMipiCap {
 
   virtual int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
     return -1;
-  }
-
-  virtual std::vector<Imu_params>* getImuInfo() {
-    return nullptr;
   }
 
 };
