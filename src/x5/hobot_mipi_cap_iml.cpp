@@ -207,7 +207,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 				input_height = sensor_cof->isp_ichn_attr->width;
 			}		
 			gdc_bin = gen_gdc_bin_stereo(input_width, input_height, cap_info_.width,
-				cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
+				cap_info_.height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
 				cap_info_.cal_alpha_, !gdc_bin_buf_.empty());
 		} else {
 			int out_width = sensor_cof->isp_ichn_attr->width;
@@ -224,7 +224,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 				pipe_contex[1].gdc_resize_enable = true;
 			}
 			gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, out_width,
-				out_height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
+				out_height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
 				cap_info_.cal_alpha_);
 		}
 		if (gdc_bin.size() == 2) {
@@ -1183,7 +1183,6 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 		vse_ochn_attr.target_h = pipe_contex->cap_info_->height;
 	}
 	int vse_fps = pipe_contex->cap_info_->fps == 1.0 ? 1 : ceil(pipe_contex->cap_info_->fps * 30 / pipe_contex->sensor_config.camera_config->fps);
-	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"vse_fps: %f\n", vse_fps);
 	if (pipe_contex->cap_info_->lpwm_enable_) {
 		vse_ochn_attr.fps.src = 0;
 		vse_ochn_attr.fps.dst = 0;
@@ -1990,7 +1989,7 @@ double  heigh_tmp;
 
 static int save_gdc_bin = 0;
 
-std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(int in_width, int in_height,int out_width, int out_height,
+std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(int in_width, int in_height,int out_width, int out_height, int final_width, int final_height, 
 		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
 		double rotation, double cal_rotate, double cal_alpha, bool pre_rotation) {
 	std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf;
@@ -2410,11 +2409,14 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	gdc_bin_ptr->bin_buf_size = bin_buf_size;
 	gdc_bin_buf.push_back(gdc_bin_ptr);
 	
+	float w_scale = final_width / out_width;
+	float h_scale = final_height / out_height;
+
 	float camera_cx, camera_cy, camera_fx, camera_fy, base_line;
-	camera_fx = Q.at<double>(2, 3);
-	camera_fy = Q.at<double>(2, 3);
-	camera_cx = -Q.at<double>(0, 3);
-	camera_cy = -Q.at<double>(1, 3);
+	camera_fx = Q.at<double>(2, 3) * w_scale;
+	camera_fy = Q.at<double>(2, 3) * h_scale;
+	camera_cx = -Q.at<double>(0, 3) * w_scale;
+	camera_cy = -Q.at<double>(1, 3) * h_scale;
 	base_line = std::abs(1 / Q.at<double>(3, 2));
 
 	cv::Mat K = cv::Mat::zeros(3, 3, CV_64F);
@@ -2424,6 +2426,16 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	K.at<double>(1, 2) = camera_cy;
 	K.at<double>(2, 2) = 1;
 
+	Pl.at<double>(0, 0) *= w_scale;
+	Pl.at<double>(0, 2) *= w_scale;
+	Pl.at<double>(1, 1) *= h_scale;
+	Pl.at<double>(1, 2) *= h_scale;
+
+	Pr.at<double>(0, 0) *= w_scale;
+	Pr.at<double>(0, 2) *= w_scale;
+	Pr.at<double>(1, 1) *= h_scale;
+	Pr.at<double>(1, 2) *= h_scale;
+	
 	double tmp_t = 0;
     switch(rotation_diff_int) {	
         case 90:
@@ -2432,7 +2444,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 			K.at<double>(0,0) = K.at<double>(1,1);
 			K.at<double>(1,1) = tmp_t;
 			tmp_t = K.at<double>(0,2);
-			K.at<double>(0,2) = out_height - K.at<double>(1,2);
+			K.at<double>(0,2) = final_height - K.at<double>(1,2);
 			K.at<double>(1,2) = tmp_t;
             break;
 		default:
@@ -2444,8 +2456,8 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	cv::Mat P = K * RT;
 
 	sensor_msgs::msg::CameraInfo tmp_cam_info; 
-	tmp_cam_info.width = out_width;
-	tmp_cam_info.height = out_height;
+	tmp_cam_info.width = final_width;
+	tmp_cam_info.height = final_height;
 	tmp_cam_info.d.resize(5, 0.0);
 	memcpy(tmp_cam_info.k.data(), K.data, sizeof(tmp_cam_info.k));
 
@@ -2474,7 +2486,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
         case 90:
 			S.at<double>(0,0) = 0;
 			S.at<double>(0,1) = -1;
-			S.at<double>(0,2) = (double)(out_height - 1);
+			S.at<double>(0,2) = (double)(final_height - 1);
 			S.at<double>(1,0) = 1;
 			S.at<double>(1,1) = 0;
 			S.at<double>(1,2) = 0;
@@ -2482,10 +2494,10 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 		case 180:
 			S.at<double>(0,0) = -1;
 			S.at<double>(0,1) = 0;
-			S.at<double>(0,2) = (double)(out_width - 1);
+			S.at<double>(0,2) = (double)(final_width - 1);
 			S.at<double>(1,0) = 0;
 			S.at<double>(1,1) = -1;
-			S.at<double>(1,2) = (double)(out_height - 1);
+			S.at<double>(1,2) = (double)(final_height - 1);
 			break;			
 		case 270:
 			S.at<double>(0,0) = 0;
@@ -2493,15 +2505,15 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 			S.at<double>(0,2) = 0;
 			S.at<double>(1,0) = -1;
 			S.at<double>(1,1) = 0;
-			S.at<double>(1,2) = (double)(out_width - 1);
+			S.at<double>(1,2) = (double)(final_width - 1);
             break;
 		default:
 			break;
     }
 
 	sensor_msgs::msg::CameraInfo tmp_cam_info; 
-	tmp_cam_info.width = out_width;
-	tmp_cam_info.height = out_height;
+	tmp_cam_info.width = final_width;
+	tmp_cam_info.height = final_height;
 	tmp_cam_info.d.resize(5, 0.0);
 	memcpy(tmp_cam_info.k.data(), K.data, sizeof(tmp_cam_info.k));
 	cv::Mat new_Rl = S * Rl;
