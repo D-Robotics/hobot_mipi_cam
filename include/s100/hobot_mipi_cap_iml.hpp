@@ -238,12 +238,19 @@ typedef struct {
   std::string camera_mode; //"single"： 每个连接输出一个sensor的数据； "dual":每个连接输出两个sensor的数据。
   int dual_mode;
   int mipi_rx;
+  bool valid_phy;
+  int phy;
 } LINK_CONFIG_ST;
 
 typedef struct {
   std::string deserial_name;
   std::vector<LINK_CONFIG_ST> link;
 } GSML_CONFIG_ST;
+
+typedef struct {
+  deserial_config_t deserial_attr;
+  std::vector<std::shared_ptr<pipe_contex_t>> pipe;
+} DESERIAL_CONTEX_ST;
 
 class HobotMipiCapIml : public HobotMipiCap {
  public:
@@ -312,16 +319,16 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
   int getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
-  int create_and_run_vflow(pipe_contex_t *pipe_contex);
-  int create_pym_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int pym_mode);
-  int create_isp_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int mode, int is_online);
-  int create_ynr_node(pipe_contex_t *pipe_contex, int slot_id, int work_mode);
-  int create_vin_node(pipe_contex_t *pipe_contex, int is_online, int link_port);
-  int create_gdc_node(pipe_contex_t *pipe_contex);
-  int create_gdc_node_r(pipe_contex_t *pipe_contex);
-  int create_deserial_node(pipe_contex_t *pipe_contex);
+  int create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_contex);
+  int create_pym_node(std::shared_ptr<pipe_contex_t> pipe_contex, int hw_id, int slot_id, int pym_mode);
+  int create_isp_node(std::shared_ptr<pipe_contex_t> pipe_contex, int hw_id, int slot_id, int mode, int is_online);
+  int create_ynr_node(std::shared_ptr<pipe_contex_t> pipe_contex, int slot_id, int work_mode);
+  int create_vin_node(std::shared_ptr<pipe_contex_t> pipe_contex, int is_online, int link_port);
+  int create_gdc_node(std::shared_ptr<pipe_contex_t> pipe_contex);
+  int create_gdc_node_r(std::shared_ptr<pipe_contex_t> pipe_contex);
+  int create_deserial_node(std::shared_ptr<pipe_contex_t> pipe_contex);
   int create_deserial_node(deserial_config_t *deserial_attr, deserial_handle_t &des_fd);
-  int create_camera_node(pipe_contex_t *pipe_contex, int link_port);
+  int create_camera_node(std::shared_ptr<pipe_contex_t> pipe_contex, int link_port);
   std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height,
 		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
@@ -333,7 +340,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
   bool read_gsml_config(std::string gsml_cfg_file);
 
-  void pipeline_connect_param_init(pipe_contex_t *pipe_contex);
+  void pipeline_connect_param_init(std::shared_ptr<pipe_contex_t> pipe_contex);
 
   bool m_inited_ = false;
   bool started_ = false;
@@ -380,7 +387,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   hbn_vflow_handle_t g_vflow_fd[PIPES_TOTAL] = {0};
   int64_t g_cam_fd[PIPES_TOTAL] = {-1};
   hbn_vnode_handle_t pym_node_handle[PIPES_TOTAL] = {0};
-  std::vector<pipe_contex_t> pipe_contex;
+  std::vector<std::shared_ptr<pipe_contex_t>> pipe_contex;
+  std::vector<std::shared_ptr<DESERIAL_CONTEX_ST>> deserial_contex;
   std::vector<std::shared_ptr<BuffQueueManage>> v_buff_que_manger_;
   std::shared_ptr<BuffQueueManage> combine_buff_que_manger_;
   std::vector<std::shared_ptr<FrameQueue>> v_frame_que_;

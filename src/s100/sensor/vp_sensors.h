@@ -135,8 +135,10 @@ int32_t vp_sensor_fixed_mipi_host(vp_sensor_config_t *sensor_config, vp_csi_conf
 int32_t vp_sensor_multi_fixed_mipi_host(vp_sensor_config_t *sensor_config, int used_mipi_host, vp_csi_config_t* mipi_config);
 int32_t vp_sensor_detect_2(int host, mipi_host_info_t* host_info);
 int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config, vp_csi_config_t* csi_config);
+void vp_deserial_config_update(deserial_config_t *deserial, const camera_config_t *camera_config, int link_port);
 int copy_config(vp_sensor_config_t* dest, vp_sensor_config_t* src);
 void free_config(vp_sensor_config_t* config);
+int copy_deserial_config(deserial_config_t* dest, deserial_config_t* src);
 #ifdef __cplusplus
 }
 #endif

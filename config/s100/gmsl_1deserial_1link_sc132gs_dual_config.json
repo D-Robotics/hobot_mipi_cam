@@ -5,6 +5,7 @@
       "camera_num": 2,
       "link": [
         {
+          "link_port": 0,
           "sensor": "ov02b10-1300p25",
           "camera_mode": "dual",
           "dual_mode": 0,

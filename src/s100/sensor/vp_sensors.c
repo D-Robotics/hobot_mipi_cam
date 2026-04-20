@@ -1030,6 +1030,13 @@ int copy_config(vp_sensor_config_t* dest, vp_sensor_config_t* src) {
 			return -1;
 		}
 		memcpy(dest->camera_config, src->camera_config, sizeof(camera_config_t));
+		if (src->camera_config->mipi_cfg) {
+			dest->camera_config->mipi_cfg = malloc(sizeof(mipi_config_t));
+			if (dest->camera_config->mipi_cfg == NULL) {
+				return -1;
+			}
+			memcpy(dest->camera_config->mipi_cfg, src->camera_config->mipi_cfg, sizeof(mipi_config_t));
+		}
 	}
 	if (src->camera_slave_config) {
 		dest->camera_slave_config = malloc(sizeof(camera_config_t));
@@ -1037,6 +1044,13 @@ int copy_config(vp_sensor_config_t* dest, vp_sensor_config_t* src) {
 			return -1;
 		}
 		memcpy(dest->camera_slave_config, src->camera_slave_config, sizeof(camera_config_t));
+		if (src->camera_slave_config->mipi_cfg) {
+			dest->camera_slave_config->mipi_cfg = malloc(sizeof(mipi_config_t));
+			if (dest->camera_slave_config->mipi_cfg == NULL) {
+				return -1;
+			}
+			memcpy(dest->camera_slave_config->mipi_cfg, src->camera_slave_config->mipi_cfg, sizeof(mipi_config_t));
+		}
 	}
 	if (src->vin_attr) {
 		dest->vin_attr = malloc(sizeof(vin_attr_t));
@@ -1089,9 +1103,17 @@ void free_config(vp_sensor_config_t* config) {
 	}
 	
 	// Free all dynamically allocated pointers
+	if (config->camera_config->mipi_cfg) {
+		free(config->camera_config->mipi_cfg);
+		config->camera_config->mipi_cfg = NULL;
+	}
 	if (config->camera_config) {
 		free(config->camera_config);
 		config->camera_config = NULL;
+	}
+	if (config->camera_slave_config->mipi_cfg) {
+		free(config->camera_slave_config->mipi_cfg);
+		config->camera_slave_config->mipi_cfg = NULL;
 	}
 	if (config->camera_slave_config) {
 		free(config->camera_slave_config);
@@ -1122,3 +1144,22 @@ void free_config(vp_sensor_config_t* config) {
 		config->deserial_slave_attr = NULL;
 	}
 }
+
+
+int copy_deserial_config(deserial_config_t* dest, deserial_config_t* src) {
+	if ((dest == NULL) || (src == NULL)) {
+		return -1;
+	}
+
+	memcpy(dest, src, sizeof(deserial_config_t));
+	if (src->poc_cfg) {
+		dest->poc_cfg = malloc(sizeof(poc_config_t));
+		if (dest->poc_cfg == NULL) {
+			return -1;
+		}
+		memcpy(dest->poc_cfg, src->poc_cfg, sizeof(poc_config_t));
+	}
+	return 0;
+}
+
+
