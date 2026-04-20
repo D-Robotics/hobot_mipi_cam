@@ -651,6 +651,20 @@ static void should_used_csi(int *is_need_used_csi)
 	}
 }
 
+void vp_deserial_config_update(const deserial_config_t *deserial, const camera_config_t *camera_config, int link_port){
+	if (!deserial || !camera_config) {
+		return;
+	}
+	snprintf(deserial->link_desp[link_port],
+			sizeof(deserial->link_desp[link_port]),
+			"%.32s:%d@%d",
+			camera_config->name, camera_config->extra_mode, camera_config->config_index);
+
+	if(camera_config->sensor_mode == 6){
+		deserial->gpio_mfp[link_port] = 0x5;
+	}
+}
+
 static int32_t vp_sensor_mipi_host_mclk_is_not_configed(int csi_index){
 	int mclk_is_not_configed = 0;
 	struct mipi_properties mipi_property;

@@ -36,6 +36,10 @@ def generate_launch_description():
             default_value=TextSubstitution(text=str(config_file_path)),
             description='mipi camera calibration file path'),
         DeclareLaunchArgument(
+            'mipi_gsml_cfg_file',
+            default_value='',
+            description='gsml camera config file'),
+        DeclareLaunchArgument(
             'mipi_camera_calibration_file_path',
             default_value=TextSubstitution(text=str(config_file_path)+"calib_params.yaml"),
             description='mipi camera calibration file path'),
@@ -154,6 +158,7 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 {"config_path": LaunchConfiguration('mipi_config_path')},
+                {'gsml_cfg_file': LaunchConfiguration('mipi_gsml_cfg_file')},
                 {"camera_calibration_file_path": LaunchConfiguration(
                     'mipi_camera_calibration_file_path')},
                 {"out_format": LaunchConfiguration('mipi_out_format')},

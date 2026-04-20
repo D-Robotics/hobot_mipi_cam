@@ -296,14 +296,16 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 	int sensor_index2 = 0;
 	bool sensor_flag2 = false;
 	mipi_host_info_t host_info;
-	gsml_config_.resize(2);
+	read_gsml_config(cap_info_.gsml_cfg_file_);
+#if 0
+	gsml_config_.resize(1);
 	LINK_CONFIG_ST g_link;
 	g_link.link_id = 0;
 	g_link.sensor_type = "ov02b10-1300p25";
 	g_link.camera_mode = "dual";
 	gsml_config_[0].link.push_back(g_link);
 
-#if 0
+
 	g_link.link_id = 1;
 	g_link.sensor_type = "ov02b10-1300p25";
 	g_link.camera_mode = "dual";
@@ -326,7 +328,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 	int text_flag = 0;
 	if (!gsml_config_.empty()) {
 		deserial_config_t *deserial_attr;
-		deserial_handle_t des_fd;
+		deserial_handle_t des_fd = 0;
 		//pipe_contex.resize(pipeline_num);
 		gdc_bin_buf_.clear();
 		gdc_bin_buf_r_.clear();
@@ -342,12 +344,8 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 			if (deserial_cfg == nullptr) {
 				return -1;
 			}
-			if (text_flag == 0) {
-				text_flag = 1;
-				ret = create_deserial_node(deserial_cfg->deserial_attr, des_fd);
-			} else {
-				ret = create_deserial_node(deserial_cfg->deserial_slave_attr, des_fd);
-			}
+			des_fd = 0;
+			ret = create_deserial_node(deserial_cfg->deserial_attr, des_fd);
 			ERR_CON_EQ(ret, 0);
 
 			for (auto link : gsml_cfg.link) {
@@ -366,11 +364,12 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 				if (sensor_cfg == nullptr) {
 					return -1;
 				}
+
 				if (link.camera_mode == "dual") {
 					//memcpy(&pipe_contex_tmp.sensor_config, sensor_cfg, sizeof(vp_sensor_config_t));
 					copy_config(&pipe_contex_tmp.sensor_config, sensor_cfg);
 					pipe_contex_tmp.des_fd = des_fd;
-					pipe_contex_tmp.sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = 1;
+					pipe_contex_tmp.sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx;
 					pipe_contex_tmp.sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num;
 					//pipe_contex_tmp.sensor_config.camera_config->addr += pipeline_num;
 					//pipe_contex_tmp.sensor_config.camera_config->eeprom_addr += pipeline_num;
@@ -380,7 +379,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 
 					pipe_contex_tmp.gsml_link_port_ = pipeline_num % 4;
 					pipe_contex_tmp.camera_bind_ = true;
-					#if 0
+					#if 1
 					if (cap_info_.gdc_enable_) {
 						if (cam_info_.size() > 0 && gdc_bin_buf_.empty()) {
 							sensor_msgs::msg::CameraInfo cal_cam_info;
@@ -433,13 +432,11 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					//pipe_contex_tmp.sensor_config.isp_cfg->isp_attr.channel.slot_id = pipeline_num + 4 + 4;
 					pipe_contex_tmp.gsml_link_port_ = -1;
 					pipe_contex_tmp.camera_bind_ = false;
-					#if 0
 					if (!gdc_bin_buf_.empty()) {
 						pipe_contex_tmp.gdc_bin = gdc_bin_buf_[0];
 					} else if (!gdc_bin_buf_r_.empty()) {
 						pipe_contex_tmp.gdc_bin_r = gdc_bin_buf_r_[0];
 					}
-					#endif
 					pipeline_connect_param_init(&pipe_contex_tmp);
 					ret = create_and_run_vflow(&pipe_contex_tmp);
 					ERR_CON_EQ(ret, 0);
@@ -1945,6 +1942,47 @@ bool HobotMipiCapIml::detectSensor(SENSOR_ID_T &sensor_info, int i2c_bus) {
     return true;
   }
   return false;
+}
+
+bool HobotMipiCapIml::read_gsml_config(std::string gsml_cfg_file) {
+  std::ifstream gsml_config(gsml_cfg_file);
+  if (!gsml_config.is_open()) {
+    return false;
+  }
+  Json::CharReaderBuilder builder;
+  Json::Value root;
+  std::string errs;
+
+  if (!Json::parseFromStream(builder, gsml_config, &root, &errs)) {
+	  std::cout << "解析失败: " << errs << std::endl;
+	  return false;
+  }
+  try {
+	// 获取 deserial 数组
+	const Json::Value deserials = root["deserial"];
+
+	for (unsigned int i = 0; i < deserials.size(); i++) {
+		const Json::Value& des = deserials[i];
+		GSML_CONFIG_ST gsml_config;
+		gsml_config.deserial_name = des["name"].asString();
+		// 获取 link 数组
+		const Json::Value links = des["link"];
+		for (unsigned int j = 0; j < links.size(); j++) {
+			const Json::Value& link = links[j];
+			LINK_CONFIG_ST link_config;
+			link_config.link_id = link["link_id"].asInt();
+			link_config.sensor_type = link["sensor"].asString();
+			link_config.camera_mode = link["camera_mode"].asString();
+			link_config.dual_mode = link["dual_mode"].asInt();
+			link_config.mipi_rx = link["mipi_rx"].asInt();
+			gsml_config.link.push_back(link_config);
+		}
+		gsml_config_.push_back(gsml_config);
+	}
+  }catch (std::runtime_error& e) {
+    return false;
+  }
+  return true;
 }
 
 

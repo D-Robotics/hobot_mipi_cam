@@ -54,3 +54,13 @@ vp_deserial_config_t deserial_max96712_4link = {
     .deserial_attr = &gsml_deserial_config,
     .deserial_slave_attr = &gsml_deserial_config_slave,
 };
+
+vp_deserial_config_t deserial_max96712_4link_slave = {
+	.chip_id_reg = 0,
+	.chip_id = 0x0820,
+	.sensor_i2c_addr_list = {0x29},
+	.sensor_name = "max96712_slave",
+	.config_file = "deserial_max96712_4link.c",
+    .deserial_attr = &gsml_deserial_config_slave,
+    .deserial_slave_attr = &gsml_deserial_config_slave,
+};

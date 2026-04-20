@@ -1,0 +1,16 @@
+{
+  "deserial": [
+    {
+      "name": "max96712",
+      "camera_num": 2,
+      "link": [
+        {
+          "sensor": "ov02b10-1300p25",
+          "camera_mode": "dual",
+          "dual_mode": 0,
+          "mipi_rx": 1
+        }
+      ]
+    }
+  ]
+}

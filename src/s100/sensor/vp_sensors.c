@@ -93,9 +93,11 @@ vp_sensor_config_t *vp_get_gmsl_config_by_name(char *sensor_name)
 
 
 extern vp_deserial_config_t deserial_max96712_4link;
+extern vp_deserial_config_t deserial_max96712_4link_slave;
 
 vp_deserial_config_t *vp_deserial_config_list[] = {
-	&deserial_max96712_4link
+	&deserial_max96712_4link,
+	&deserial_max96712_4link_slave
 };
 
 uint32_t vp_get_deserial_list_number() {
@@ -666,6 +668,20 @@ static int32_t vp_sensor_mipi_host_mclk_is_not_configed(int csi_index){
 			//printf("mipi mclk is configed.\n");
 		}
 	return mclk_is_not_configed;
+}
+
+void vp_deserial_config_update(deserial_config_t *deserial, const camera_config_t *camera_config, int link_port){
+	if (!deserial || !camera_config) {
+		return;
+	}
+	snprintf(deserial->link_desp[link_port],
+			sizeof(deserial->link_desp[link_port]),
+			"%.32s:%d@%d",
+			camera_config->name, camera_config->extra_mode, camera_config->config_index);
+
+	if(camera_config->sensor_mode == 6){
+		deserial->gpio_mfp[link_port] = 0x05;
+	}
 }
 
 void vp_sensor_detect_structed(csi_list_info_t *csi_list_info)

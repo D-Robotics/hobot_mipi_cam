@@ -58,6 +58,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->frame_ts_type_ = "sensor"; //sensor,realtime;
   nodePare_->link_type_ = 0; 
   nodePare_->link_port_ = 0; 
+  nodePare_->gsml_cfg_file_ = ""; //sensor,realtime;
   nodePare_->cal_alpha_ = 0.0; 
   nodePare_->stream_mode_ = 0; //0: slave stream can gdc; 1: slave stream can't gdc.
   nodePare_->sub_stream_enable_ = false; 
@@ -90,6 +91,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<std::string>("frame_ts_type", nodePare_->frame_ts_type_);
   this->declare_parameter<int>("link_type", nodePare_->link_type_); // 0:表示mipi接口，1：表示解串器接口。
   this->declare_parameter<int>("link_port", nodePare_->link_port_);
+  this->declare_parameter<std::string>("gsml_cfg_file", nodePare_->gsml_cfg_file_);
   this->declare_parameter<std::string>("imu_type", imu_type_);
   this->declare_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
   this->declare_parameter<int>("stream_mode", nodePare_->stream_mode_);
@@ -119,6 +121,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<std::string>("frame_ts_type", nodePare_->frame_ts_type_);
   this->get_parameter<int>("link_type", nodePare_->link_type_);
   this->get_parameter<int>("link_port", nodePare_->link_port_);
+  this->get_parameter<std::string>("gsml_cfg_file", nodePare_->gsml_cfg_file_);
   this->get_parameter<std::string>("imu_type", imu_type_);
   this->get_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
   this->get_parameter<int>("stream_mode", nodePare_->stream_mode_);
@@ -150,6 +153,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     "\n                     frame_id: %s" \
     "\n                    link_type: %d" \
     "\n                    link_port: %d" \
+    "\n               gsml_cfg_file: %s" \
     "\n               io_method_name: %s" \
     "\n                    cal_alpha: %.3f",
     nodePare_->config_path_.c_str(),
@@ -174,6 +178,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     frame_id_.c_str(),
     nodePare_->link_type_,
     nodePare_->link_port_,
+    nodePare_->gsml_cfg_file_.c_str(),
     io_method_name_.c_str(),
     nodePare_->cal_alpha_
   );

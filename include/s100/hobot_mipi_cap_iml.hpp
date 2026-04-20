@@ -234,12 +234,14 @@ typedef struct cal_dual_R_T_info_st {
 
 typedef struct {
   int link_id;
-  std::string sensor_type; //"single"： 每个连接输出一个sensor的数据； "dual":每个连接输出两个sensor的数据。
+  std::string sensor_type; 
   std::string camera_mode; //"single"： 每个连接输出一个sensor的数据； "dual":每个连接输出两个sensor的数据。
+  int dual_mode;
+  int mipi_rx;
 } LINK_CONFIG_ST;
 
 typedef struct {
-  int deserial_id;
+  std::string deserial_name;
   std::vector<LINK_CONFIG_ST> link;
 } GSML_CONFIG_ST;
 
@@ -329,6 +331,7 @@ class HobotMipiCapIml : public HobotMipiCap {
        double rotation = 0.0, double cal_rotate = 0.0);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
+  bool read_gsml_config(std::string gsml_cfg_file);
 
   void pipeline_connect_param_init(pipe_contex_t *pipe_contex);
 
