@@ -598,8 +598,7 @@ void MipiCamNode::read_imu_data() {
 
   while (is_imu_running_ ) {
     size_t subscriber_count = pub_imu_->get_subscription_count();
-    if (subscriber_count > 0) {
-      imu_manager_->read_sensor_data(&imu_data);
+    if ((subscriber_count > 0) && (imu_manager_->read_sensor_data(&imu_data) == 0)) {
       imu_msg.header.stamp.set__sec(imu_data.timestamp / 1e9);
       imu_msg.header.stamp.set__nanosec(imu_data.timestamp - imu_msg.header.stamp.sec * 1e9);
       imu_msg.linear_acceleration.x = imu_data.ax;
