@@ -61,7 +61,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->cal_alpha_ = 0.0; 
   nodePare_->stream_mode_ = 0; //0: slave stream can gdc; 1: slave stream can't gdc.
   nodePare_->sub_stream_enable_ = false; 
-  frame_id_ = "default_cam";
+  frame_id_ = "camera_link";
   io_method_name_ = "ros"; //shared_mem, ros;
   double framerate = 30.0;
   imu_type_ = "";
