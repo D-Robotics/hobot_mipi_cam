@@ -8,7 +8,7 @@
           "link_port": 0,
           "sensor": "ov02b10-1300p25",
           "camera_mode": "dual",
-          "dual_mode": 0,
+          "dual_mode": 1,
           "mipi_rx": 1
         }
       ]
