@@ -330,8 +330,6 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 	hb_mem_module_open();
 	int text_flag = 0;
 	if (!gsml_config_.empty()) {
-		deserial_config_t *deserial_attr;
-		//pipe_contex.resize(pipeline_num);
 		gdc_bin_buf_.clear();
 		gdc_bin_buf_r_.clear();
 		for (auto gsml_cfg : gsml_config_) {
@@ -346,12 +344,10 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 			if (deserial_cfg == nullptr) {
 				return -1;
 			}
-			//des_fd = 0;
 			auto des_contex = std::make_shared<DESERIAL_CONTEX_ST>();
 			copy_deserial_config(&des_contex->deserial_attr, deserial_cfg->deserial_attr);
 			deserial_contex.push_back(des_contex);
-			// ret = create_deserial_node(deserial_cfg->deserial_attr, des_fd);
-			// ERR_CON_EQ(ret, 0);
+
 
 			for (auto link : gsml_cfg.link) {
 				int num = 0;
@@ -367,12 +363,10 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 				if (sensor_cfg == nullptr) {
 					return -1;
 				}
-
 				if (link.camera_mode == "dual") {
 					auto pipe_contex_tmp = std::make_shared<pipe_contex_t>();
 					pipe_contex_tmp->cap_info_ = &cap_info_;
 					copy_config(&pipe_contex_tmp->sensor_config, sensor_cfg);
-					//pipe_contex_tmp->des_fd = des_fd;
 					vp_deserial_config_update(&des_contex->deserial_attr, pipe_contex_tmp->sensor_config.camera_config, link.link_id);
 					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx;
 					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;

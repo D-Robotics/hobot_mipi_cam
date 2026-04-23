@@ -1,0 +1,50 @@
+{
+  "deserial": [
+    {
+      "name": "max96712",
+      "link": [
+        {
+          "link_port": 0,
+          "sensor": "gsml_sc132gs",
+          "camera_mode": "dual",
+          "dual_mode": 0,
+          "mipi_rx": 2,
+          "valid_phy": true,
+          "phy": 0
+        },
+        {
+          "link_port": 1,
+          "sensor": "gsml_sc132gs",
+          "camera_mode": "dual",
+          "dual_mode": 0,
+          "mipi_rx": 2,
+          "valid_phy": true,
+          "phy": 0
+        }
+      ]
+    },
+    {
+      "name": "max96712_slave",
+      "link": [
+        {
+          "link_port": 2,
+          "sensor": "gsml_sc132gs",
+          "camera_mode": "dual",
+          "dual_mode": 0,
+          "mipi_rx": 3,
+          "valid_phy": true,
+          "phy": 1
+        },
+        {
+          "link_port": 3,
+          "sensor": "gsml_sc132gs",
+          "camera_mode": "dual",
+          "dual_mode": 0,
+          "mipi_rx": 3,
+          "valid_phy": true,
+          "phy": 1
+        }
+      ]
+    }
+  ]
+}

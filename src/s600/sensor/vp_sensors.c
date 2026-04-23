@@ -91,9 +91,11 @@ vp_sensor_config_t *vp_get_gmsl_config_by_name(char *sensor_name)
 
 
 extern vp_deserial_config_t deserial_max96712_4link;
+extern vp_deserial_config_t deserial_max96712_4link_slave;
 
 vp_deserial_config_t *vp_deserial_config_list[] = {
-	&deserial_max96712_4link
+	&deserial_max96712_4link,
+	&deserial_max96712_4link_slave
 };
 
 uint32_t vp_get_deserial_list_number() {
@@ -651,20 +653,6 @@ static void should_used_csi(int *is_need_used_csi)
 	}
 }
 
-void vp_deserial_config_update(const deserial_config_t *deserial, const camera_config_t *camera_config, int link_port){
-	if (!deserial || !camera_config) {
-		return;
-	}
-	snprintf(deserial->link_desp[link_port],
-			sizeof(deserial->link_desp[link_port]),
-			"%.32s:%d@%d",
-			camera_config->name, camera_config->extra_mode, camera_config->config_index);
-
-	if(camera_config->sensor_mode == 6){
-		deserial->gpio_mfp[link_port] = 0x5;
-	}
-}
-
 static int32_t vp_sensor_mipi_host_mclk_is_not_configed(int csi_index){
 	int mclk_is_not_configed = 0;
 	struct mipi_properties mipi_property;
@@ -678,6 +666,20 @@ static int32_t vp_sensor_mipi_host_mclk_is_not_configed(int csi_index){
 			//printf("mipi mclk is configed.\n");
 		}
 	return mclk_is_not_configed;
+}
+
+void vp_deserial_config_update(deserial_config_t *deserial, const camera_config_t *camera_config, int link_port){
+	if (!deserial || !camera_config) {
+		return;
+	}
+	snprintf(deserial->link_desp[link_port],
+			sizeof(deserial->link_desp[link_port]),
+			"%.32s:%d@%d",
+			camera_config->name, camera_config->extra_mode, camera_config->config_index);
+
+	if(camera_config->sensor_mode == 6){
+		deserial->gpio_mfp[link_port] = 0x05;
+	}
 }
 
 void vp_sensor_detect_structed(csi_list_info_t *csi_list_info)
@@ -1026,6 +1028,13 @@ int copy_config(vp_sensor_config_t* dest, vp_sensor_config_t* src) {
 			return -1;
 		}
 		memcpy(dest->camera_config, src->camera_config, sizeof(camera_config_t));
+		if (src->camera_config->mipi_cfg) {
+			dest->camera_config->mipi_cfg = malloc(sizeof(mipi_config_t));
+			if (dest->camera_config->mipi_cfg == NULL) {
+				return -1;
+			}
+			memcpy(dest->camera_config->mipi_cfg, src->camera_config->mipi_cfg, sizeof(mipi_config_t));
+		}
 	}
 	if (src->camera_slave_config) {
 		dest->camera_slave_config = malloc(sizeof(camera_config_t));
@@ -1033,6 +1042,13 @@ int copy_config(vp_sensor_config_t* dest, vp_sensor_config_t* src) {
 			return -1;
 		}
 		memcpy(dest->camera_slave_config, src->camera_slave_config, sizeof(camera_config_t));
+		if (src->camera_slave_config->mipi_cfg) {
+			dest->camera_slave_config->mipi_cfg = malloc(sizeof(mipi_config_t));
+			if (dest->camera_slave_config->mipi_cfg == NULL) {
+				return -1;
+			}
+			memcpy(dest->camera_slave_config->mipi_cfg, src->camera_slave_config->mipi_cfg, sizeof(mipi_config_t));
+		}
 	}
 	if (src->vin_attr) {
 		dest->vin_attr = malloc(sizeof(vin_attr_t));
@@ -1085,9 +1101,17 @@ void free_config(vp_sensor_config_t* config) {
 	}
 	
 	// Free all dynamically allocated pointers
+	if (config->camera_config->mipi_cfg) {
+		free(config->camera_config->mipi_cfg);
+		config->camera_config->mipi_cfg = NULL;
+	}
 	if (config->camera_config) {
 		free(config->camera_config);
 		config->camera_config = NULL;
+	}
+	if (config->camera_slave_config->mipi_cfg) {
+		free(config->camera_slave_config->mipi_cfg);
+		config->camera_slave_config->mipi_cfg = NULL;
 	}
 	if (config->camera_slave_config) {
 		free(config->camera_slave_config);
@@ -1118,3 +1142,22 @@ void free_config(vp_sensor_config_t* config) {
 		config->deserial_slave_attr = NULL;
 	}
 }
+
+
+int copy_deserial_config(deserial_config_t* dest, deserial_config_t* src) {
+	if ((dest == NULL) || (src == NULL)) {
+		return -1;
+	}
+
+	memcpy(dest, src, sizeof(deserial_config_t));
+	if (src->poc_cfg) {
+		dest->poc_cfg = malloc(sizeof(poc_config_t));
+		if (dest->poc_cfg == NULL) {
+			return -1;
+		}
+		memcpy(dest->poc_cfg, src->poc_cfg, sizeof(poc_config_t));
+	}
+	return 0;
+}
+
+

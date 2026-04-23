@@ -17,9 +17,9 @@ static poc_config_t g_poc_cfg[] = {
 
 static deserial_config_t gsml_deserial_config = {
     .name = "max96712",
-    .link_desp[0] = "sc132gs:1@2304",
+    .link_desp[0] = "",
     .link_desp[1] = "",
-    .link_desp[2] = "sc132gs:1@2304",
+    .link_desp[2] = "",
     .link_desp[3] = "",
     .gpio_mfp[CAMERA_DES_GPIO_TRIG0] = 0x5,
     .gpio_mfp[CAMERA_DES_GPIO_TRIG1] = 0x5,
@@ -32,9 +32,9 @@ static deserial_config_t gsml_deserial_config = {
 
 static deserial_config_t gsml_deserial_config_slave = {
     .name = "max96712",
-    .link_desp[0] = "sc132gs:1@2304",
+    .link_desp[0] = "ov02b10std:0@512",
     .link_desp[1] = "",
-    .link_desp[2] = "sc132gs:1@2304",
+    .link_desp[2] = "ov02b10std:0@512",
     .link_desp[3] = "",
     .gpio_mfp[CAMERA_DES_GPIO_TRIG0] = 0x5,
     .gpio_mfp[CAMERA_DES_GPIO_TRIG1] = 0x5,
@@ -52,5 +52,15 @@ vp_deserial_config_t deserial_max96712_4link = {
 	.sensor_name = "max96712",
 	.config_file = "deserial_max96712_4link.c",
     .deserial_attr = &gsml_deserial_config,
+    .deserial_slave_attr = &gsml_deserial_config_slave,
+};
+
+vp_deserial_config_t deserial_max96712_4link_slave = {
+	.chip_id_reg = 0,
+	.chip_id = 0x0820,
+	.sensor_i2c_addr_list = {0x29},
+	.sensor_name = "max96712_slave",
+	.config_file = "deserial_max96712_4link.c",
+    .deserial_attr = &gsml_deserial_config_slave,
     .deserial_slave_attr = &gsml_deserial_config_slave,
 };
