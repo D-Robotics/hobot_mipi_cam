@@ -17,10 +17,10 @@ static poc_config_t g_poc_cfg[] = {
 
 static deserial_config_t gsml_deserial_config = {
     .name = "max96712",
-    .link_desp[0] = "ov02b10std:1@2560",
-    .link_desp[1] = "ov02b10std:0@512",
-    .link_desp[2] = "ov02b10std:0@512",
-    .link_desp[3] = "ov02b10std:0@512",
+    .link_desp[0] = "",
+    .link_desp[1] = "",
+    .link_desp[2] = "",
+    .link_desp[3] = "",
     .gpio_mfp[CAMERA_DES_GPIO_TRIG0] = 0x5,
     .gpio_mfp[CAMERA_DES_GPIO_TRIG1] = 0x5,
     .gpio_mfp[CAMERA_DES_GPIO_TRIG2] = 0x5,

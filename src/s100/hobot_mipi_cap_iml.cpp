@@ -338,7 +338,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 			int des_num = vp_get_deserial_list_number();
 			vp_deserial_config_t *deserial_cfg = nullptr;
 			for (int i = 0; i < des_num; i++) {
-				if (strcasecmp(vp_deserial_config_list[i]->sensor_name, "max96712") == 0) {
+				if (strcasecmp(vp_deserial_config_list[i]->sensor_name, gsml_cfg.deserial_name.c_str()) == 0) {
 					deserial_cfg = vp_deserial_config_list[i];
 					break;
 				}
@@ -375,7 +375,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					//pipe_contex_tmp->des_fd = des_fd;
 					vp_deserial_config_update(&des_contex->deserial_attr, pipe_contex_tmp->sensor_config.camera_config, link.link_id);
 					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx;
-					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num;
+					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;
 					if (link.valid_phy && pipe_contex_tmp->sensor_config.camera_config->mipi_cfg) {
 						pipe_contex_tmp->sensor_config.camera_config->mipi_cfg->rx_attr.phy = link.phy;
 					}
@@ -437,8 +437,10 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					copy_config(&pipe_contex_tmp->sensor_config, sensor_cfg);
 					//pipe_contex_tmp->des_fd = des_fd;
 					//pipe_contex_tmp->sensor_config.camera_config = pipe_contex_tmp->sensor_config.camera_slave_config;
+					auto link_id = link.link_id >= 4 ? 4 : link.link_id + 1;
+					vp_deserial_config_update(&des_contex->deserial_attr, pipe_contex_tmp->sensor_config.camera_config, link_id);
 					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx;
-					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num;
+					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;
 					if (link.valid_phy && pipe_contex_tmp->sensor_config.camera_config->mipi_cfg) {
 						pipe_contex_tmp->sensor_config.camera_config->mipi_cfg->rx_attr.phy = link.phy;
 					}
@@ -461,7 +463,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					copy_config(&pipe_contex_tmp->sensor_config, sensor_cfg);
 					vp_deserial_config_update(&des_contex->deserial_attr, pipe_contex_tmp->sensor_config.camera_config, link.link_id);
 					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx;
-					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num;
+					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;
 					if (link.valid_phy && pipe_contex_tmp->sensor_config.camera_config->mipi_cfg) {
 						pipe_contex_tmp->sensor_config.camera_config->mipi_cfg->rx_attr.phy = link.phy;
 					}
