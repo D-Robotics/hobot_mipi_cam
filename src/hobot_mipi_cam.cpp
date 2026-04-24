@@ -122,6 +122,9 @@ class MipiCamIml : public MipiCam {
   bool getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,
                 sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
 
+  bool getDualCamCalibrationSub(sensor_msgs::msg::CameraInfo &cam_info_l,
+                                        sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
+
   bool isCapturing();
 
  private:
@@ -133,6 +136,8 @@ class MipiCamIml : public MipiCam {
   
   bool getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info_l,
                 sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
+
+  void scaleSubStreamCamInfo(sensor_msgs::msg::CameraInfo &cam_info, int target_w, int target_h);
 
   typedef struct camera_image_s {
     int width;
@@ -579,10 +584,47 @@ bool MipiCamIml::getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,
     cam_info_l = cal_l;
     const sensor_msgs::msg::CameraInfo& cal_r = cal_v_ptr->at(1);
     cam_info_r = cal_r;
+    scaleSubStreamCamInfo(cam_info_l, cap_info_.width, cap_info_.height);
+    scaleSubStreamCamInfo(cam_info_r, cap_info_.width, cap_info_.height);
     return true;
   } else {
-    return getDualCamCalibrationIml(cam_info_l, cam_info_r, file_path);
+    bool result = getDualCamCalibrationIml(cam_info_l, cam_info_r, file_path);
+    if (result) {
+      scaleSubStreamCamInfo(cam_info_l, cap_info_.width, cap_info_.height);
+      scaleSubStreamCamInfo(cam_info_r, cap_info_.width, cap_info_.height);
+    }
+    return result;
   }                     
+}
+
+bool MipiCamIml::getDualCamCalibrationSub(sensor_msgs::msg::CameraInfo &cam_info_l, sensor_msgs::msg::CameraInfo &cam_info_r,
+                                       const std::string &file_path)
+{
+  if (!mipiCap_ptr_)
+  {
+    return false;
+  }
+  auto cal_v_ptr = mipiCap_ptr_->getCalCamInfoSub();
+  if (cal_v_ptr != nullptr && (cal_v_ptr->size() == 2))
+  {
+    RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
+    const sensor_msgs::msg::CameraInfo &cal_l = cal_v_ptr->at(0);
+    cam_info_l = cal_l;
+    const sensor_msgs::msg::CameraInfo &cal_r = cal_v_ptr->at(1);
+    cam_info_r = cal_r;
+    scaleSubStreamCamInfo(cam_info_l, cap_info_.sub_width, cap_info_.sub_height);
+    scaleSubStreamCamInfo(cam_info_r, cap_info_.sub_width, cap_info_.sub_height);
+    return true;
+  }
+  else
+  {
+    bool result = getDualCamCalibrationIml(cam_info_l, cam_info_r, file_path);
+    if (result) {
+      scaleSubStreamCamInfo(cam_info_l, cap_info_.sub_width, cap_info_.sub_height);
+      scaleSubStreamCamInfo(cam_info_r, cap_info_.sub_width, cap_info_.sub_height);
+    }
+    return result;
+  }
 }
 
 bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info_l,sensor_msgs::msg::CameraInfo &cam_info_r,
@@ -674,6 +716,56 @@ bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info
       e.what());
     return false;
   }
+}
+
+void MipiCamIml::scaleSubStreamCamInfo(
+    sensor_msgs::msg::CameraInfo &cam_info,
+    int target_w, int target_h)
+{
+  if (cam_info.width == 0 || cam_info.height == 0)
+  {
+    return;
+  }
+
+  // 同分辨率无需缩放
+  if (cam_info.width == static_cast<uint32_t>(target_w) &&
+      cam_info.height == static_cast<uint32_t>(target_h))
+  {
+    return;
+  }
+
+  double sx = static_cast<double>(target_w) / cam_info.width;
+  double sy = static_cast<double>(target_h) / cam_info.height;
+
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
+              "Sub-stream scale: %dx%d -> %dx%d (sx=%.4f, sy=%.4f)",
+              cam_info.width, cam_info.height, target_w, target_h, sx, sy);
+
+  // 更新分辨率
+  cam_info.width = target_w;
+  cam_info.height = target_h;
+
+  // K: 第0行 × sx，第1行 × sy，第2行不变
+  cam_info.k[0] *= sx; // fx
+  //cam_info.k[1] *= sx; // 0
+  cam_info.k[2] *= sx; // cx
+  //cam_info.k[3] *= sy; // 0
+  cam_info.k[4] *= sy; // fy
+  cam_info.k[5] *= sy; // cy
+  // k[6]=0, k[7]=0, k[8]=1 不变
+
+  // P: 第0行 × sx，第1行 × sy，第2行不变
+  cam_info.p[0] *= sx;
+  //cam_info.p[1] *= sx;
+  cam_info.p[2] *= sx;
+  cam_info.p[3] *= sx;
+  //cam_info.p[4] *= sy;
+  cam_info.p[5] *= sy;
+  cam_info.p[6] *= sy;
+  cam_info.p[7] *= sy;
+  // p[8]=0, p[9]=0, p[10]=1, p[11]=0 不变
+
+  // R, D, distortion_model: 不变
 }
 
 #ifdef PLATFORM_X5

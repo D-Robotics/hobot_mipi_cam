@@ -62,6 +62,11 @@ class HobotMipiCap {
     return nullptr;
   }
 
+  virtual std::vector<sensor_msgs::msg::CameraInfo>* getCalCamInfoSub()
+  {
+    return nullptr;
+  }
+
   virtual int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
     return -1;
   }

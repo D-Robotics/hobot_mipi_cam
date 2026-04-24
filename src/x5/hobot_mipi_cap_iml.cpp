@@ -277,6 +277,20 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	if ((cap_info_.dual_combine_ == 1) || (cap_info_.dual_combine_ == 2)) {
 		combine_flag_ = true;
 	}
+	if (cap_info_.stream_mode_ == 0)
+	{
+		for (auto cal_info : cal_cam_info_)
+		{
+			cal_cam_info_sub_.push_back(cal_info);
+		}
+	}
+	else
+	{
+		for (auto cal_info : cam_info_)
+		{
+			cal_cam_info_sub_.push_back(cal_info);
+		}
+	}
   } else {
 	bool deteced_flag = false;
 	int sensor_count = vp_get_sensors_list_number();
@@ -2428,14 +2442,18 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 
 	Pl.at<double>(0, 0) *= w_scale;
 	Pl.at<double>(0, 2) *= w_scale;
+	Pl.at<double>(0, 3) *= w_scale;
 	Pl.at<double>(1, 1) *= h_scale;
 	Pl.at<double>(1, 2) *= h_scale;
+	Pl.at<double>(1, 3) *= h_scale;
 
 	Pr.at<double>(0, 0) *= w_scale;
 	Pr.at<double>(0, 2) *= w_scale;
+	Pr.at<double>(0, 3) *= w_scale;
 	Pr.at<double>(1, 1) *= h_scale;
 	Pr.at<double>(1, 2) *= h_scale;
-	
+	Pr.at<double>(1, 3) *= h_scale;
+
 	double tmp_t = 0;
     switch(rotation_diff_int) {	
         case 90:

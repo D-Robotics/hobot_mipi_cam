@@ -253,8 +253,8 @@ void MipiCamNode::init() {
           pub_info1 = std::make_shared<Publisher_info>();
           pub_info2 = std::make_shared<Publisher_info>();
           pub_info3 = std::make_shared<Publisher_info>();
-          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
-          init_DualCalibration(pub_info3.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration_Sub(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration_Sub(pub_info3.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher(pub_info1, "sub_image_left_raw", "sub_left", frame_id_);
           init_publisher(pub_info2, "sub_image_right_raw", "sub_right", frame_id_);
           init_publisher(pub_info3, "sub_image_combine_raw", "sub_combine", frame_id_);
@@ -270,7 +270,7 @@ void MipiCamNode::init() {
         Pub_info_.push_back(pub_info1);
         if (nodePare_->sub_stream_enable_) {
           pub_info1 = std::make_shared<Publisher_info>();
-          init_DualCalibration(pub_info1.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration_Sub(pub_info1.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher(pub_info1, "sub_image_combine_raw", "sub_combine", frame_id_);
           Pub_info_.push_back(pub_info1);
         }
@@ -286,7 +286,7 @@ void MipiCamNode::init() {
         if (nodePare_->sub_stream_enable_) {
           auto pub_info1 = std::make_shared<Publisher_info>();
           auto pub_info2 = std::make_shared<Publisher_info>();
-          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration_Sub(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher(pub_info1, "sub_image_left_raw", "sub_left", frame_id_);
           init_publisher(pub_info2, "sub_image_right_raw", "sub_right", frame_id_);      
           Pub_info_.push_back(pub_info1);
@@ -508,6 +508,48 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base*  Pub_info, Publisher
   return;
 }
 
+void MipiCamNode::init_DualCalibration_Sub(Publisher_info_base *Pub_info,
+                                       std::string info_topic, std::string info_topic2, std::string info_file)
+{
+  Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  Pub_info->camera_calibration_info2_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  if (!mipiCam_ptr_ || !mipiCam_ptr_->getDualCamCalibrationSub(*Pub_info->camera_calibration_info_,
+                                                            *Pub_info->camera_calibration_info2_, info_file))
+  {
+    Pub_info->camera_calibration_info_ = nullptr;
+    Pub_info->camera_calibration_info2_ = nullptr;
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                "get camera calibration parameters failed");
+    return;
+  }
+
+  Pub_info->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+      info_topic, PUB_BUF_NUM);
+  Pub_info->info_pub2_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+      info_topic2, PUB_BUF_NUM);
+  return;
+}
+
+void MipiCamNode::init_DualCalibration_Sub(Publisher_info_base *Pub_info, Publisher_info_base *Pub_info2,
+                                       std::string info_topic, std::string info_topic2, std::string info_file)
+{
+  Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  Pub_info2->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  if (!mipiCam_ptr_ || !mipiCam_ptr_->getDualCamCalibrationSub(*Pub_info->camera_calibration_info_,
+                                                            *Pub_info2->camera_calibration_info_, info_file))
+  {
+    Pub_info->camera_calibration_info_ = nullptr;
+    Pub_info2->camera_calibration_info_ = nullptr;
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                "get camera calibration parameters failed");
+    return;
+  }
+  Pub_info->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+      info_topic, PUB_BUF_NUM);
+  Pub_info2->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+      info_topic2, PUB_BUF_NUM);
+  return;
+}
 
 void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
   if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing() && (pub_info->image_pub_->get_subscription_count() > 0)) {
