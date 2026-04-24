@@ -304,11 +304,12 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 	gsml_config_.resize(1);
 	LINK_CONFIG_ST g_link;
 	g_link.link_id = 0;
-	g_link.sensor_type = "ov02b10-1300p25";
+	g_link.sensor_type = "gsml_sc132gs";
 	g_link.camera_mode = "dual";
+	g_link.mipi_rx = 4;
 	gsml_config_[0].link.push_back(g_link);
-
-
+#endif
+#if 0
 	g_link.link_id = 1;
 	g_link.sensor_type = "ov02b10-1300p25";
 	g_link.camera_mode = "dual";

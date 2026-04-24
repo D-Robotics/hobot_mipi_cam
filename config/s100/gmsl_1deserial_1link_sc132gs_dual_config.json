@@ -6,10 +6,12 @@
       "link": [
         {
           "link_port": 0,
-          "sensor": "ov02b10-1300p25",
+          "sensor": "gsml_sc132gs",
           "camera_mode": "dual",
-          "dual_mode": 1,
-          "mipi_rx": 1
+          "dual_mode": 0,
+          "mipi_rx": 4,
+          "valid_phy": true,
+          "phy": 0
         }
       ]
     }
