@@ -24,6 +24,7 @@
 
 #include "hobot_mipi_comm.hpp"
 #include "hobot_mipi_cap.hpp"
+#include "hobot_mipi_calibration.hpp"
 
 namespace mipi_cam
 {

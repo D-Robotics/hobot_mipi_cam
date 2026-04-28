@@ -475,6 +475,7 @@ bool MipiCamIml::getImageMem(
   return true;
 }
 
+
 bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
                                   const std::string &file_path) {
   if (!mipiCap_ptr_) {

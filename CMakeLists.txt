@@ -46,6 +46,10 @@ find_package(sensor_msgs REQUIRED)
 find_package(yaml_cpp_vendor REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(OpenCV 4 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 #set(PREFIX_PATH x3)
 
@@ -197,6 +201,10 @@ ament_target_dependencies(
   yaml_cpp_vendor
   hbm_img_msgs
   OpenCV
+  tf2_ros
+  tf2
+  tf2_geometry_msgs
+  geometry_msgs
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}_plugin
