@@ -104,6 +104,10 @@ def generate_launch_description():
             default_value='0.0',
             description='gmsl link port'),
         DeclareLaunchArgument(
+            'mipi_sub_stream_enable',
+            default_value='False',
+            description='mipi sub stream enable'),
+        DeclareLaunchArgument(
             'log_level',
             default_value='warn',
             description='log level'),
@@ -139,6 +143,7 @@ def generate_launch_description():
                 {"link_type": LaunchConfiguration('mipi_link_type')},
                 {"link_port": LaunchConfiguration('mipi_link_port')},
                 {"cal_alpha": LaunchConfiguration('mipi_cal_alpha')},
+                {"sub_stream_enable": LaunchConfiguration('mipi_sub_stream_enable')},
             ],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         )

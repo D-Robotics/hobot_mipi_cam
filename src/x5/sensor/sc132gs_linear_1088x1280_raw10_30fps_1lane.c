@@ -2,7 +2,7 @@
 
 #define SENSOR_WIDTH  1088
 #define SENSOR_HEIGHT  1280
-#define SENSOE_FPS 30
+#define SENSOE_FPS 60
 #define RAW10 0x2B
 
 static mipi_config_t mipi_config = {

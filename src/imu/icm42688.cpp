@@ -172,30 +172,41 @@ int icm42688::init() {
     return 0;
 #else
 
-int ret;
+    int ret;
 
-ret = inv_icm42600_i2c_fd_auto_init();
-printf("[inv_icm42600_i2c_fd_auto_init]run return: %d.\n",ret);
+    ret = inv_icm42600_i2c_fd_auto_init();
+    printf("[inv_icm42600_i2c_fd_auto_init]run return: %d.\n",ret);
+    if (ret != 0) {
+        return -1;
+    }
 
-ret = inv_icm42600_soft_reset();
-printf("[inv_icm42600_soft_reset]run return: %d.\n",ret);
-
-ret = inv_icm42600_all_sel();
-printf("[inv_icm42600_all_sel]run return: %d.\n",ret);
-
-ret = inv_icm42600_pwr_mgmt(
-    INV_ICM_42600_GYRO_LN,
-    INV_ICM_42600_ACCEL_LN,
-    true,
-    true);
-printf("[inv_icm42600_pwr_mgmt]run return: %d.\n",ret);
-
-ret = inv_icm42600_filt_setting();
-printf("[inv_icm42600_filt_setting]run return: %d.\n",ret);
-
-//usleep(1000000);
-initialized = 1;
-return 0;
+    ret = inv_icm42600_soft_reset();
+    printf("[inv_icm42600_soft_reset]run return: %d.\n",ret);
+    if (ret != 0) {
+        return -1;
+    }
+    ret = inv_icm42600_all_sel();
+    printf("[inv_icm42600_all_sel]run return: %d.\n",ret);
+    if (ret != 0) {
+        return -1;
+    }
+    ret = inv_icm42600_pwr_mgmt(
+        INV_ICM_42600_GYRO_LN,
+        INV_ICM_42600_ACCEL_LN,
+        true,
+        true);
+    printf("[inv_icm42600_pwr_mgmt]run return: %d.\n",ret);
+    if (ret != 0) {
+        return -1;
+    }
+    ret = inv_icm42600_filt_setting();
+    printf("[inv_icm42600_filt_setting]run return: %d.\n",ret);
+    if (ret != 0) {
+        return -1;
+    }
+    //usleep(1000000);
+    initialized = 1;
+    return 0;
 
 #endif 
 }
@@ -269,44 +280,43 @@ int icm42688::read(ImuData_T *data) {
     int ret;
 
     ret = inv_icm42600_origin_data_read(&dtpkt, true);
-
+    if (ret != 0) {
+        return -1;
+    }
     // system("clear");
     //for(int i=0; i<50; i++)printf("=");printf("\n");
 
     //printf("[origin data read]function return: %d\n", ret);
 
     ret = inv_icm42600_data_process(&dtpkt);
-
+    if (ret != 0) {
+        return -1;
+    }
     //printf("[data process]function return: %d\n", ret);
 
     //printf("[fsync test]");
-    if (dtpkt.fsync_success) {
-        //printf("Successed.\n");
-       // printf("[temp_data]%.3f unit:Celsius\n", dtpkt.temp_processed);
-        //printf("[accel_data] x:%8.3f    y:%8.3f    z:%8.3f    unit:g\n", dtpkt.accel_data_processed.x, dtpkt.accel_data_processed.y, dtpkt.accel_data_processed.z);
-       // printf("[gyro_data]  x:%8.3f    y:%8.3f    z:%8.3f    unit:dps\n", dtpkt.gyro_data_processed.x, dtpkt.gyro_data_processed.y, dtpkt.gyro_data_processed.z);
-       // printf("[timestamp_data]%ld\n", dtpkt.accel_data_processed.timestamp);
-        data->ax = dtpkt.accel_data_processed.x * gravity;
-        data->ay = dtpkt.accel_data_processed.y * gravity;
-        data->az = dtpkt.accel_data_processed.z * gravity;
-        data->gx = dtpkt.gyro_data_processed.x * M_PI / 180.0;
-        data->gy = dtpkt.gyro_data_processed.y * M_PI / 180.0;
-        data->gz = dtpkt.gyro_data_processed.z * M_PI / 180.0;
-        data->timestamp = dtpkt.accel_data_processed.timestamp * 1000;
+    //if (dtpkt.fsync_success) {
+    //printf("Successed.\n");
+    // printf("[temp_data]%.3f unit:Celsius\n", dtpkt.temp_processed);
+    //printf("[accel_data] x:%8.3f    y:%8.3f    z:%8.3f    unit:g\n", dtpkt.accel_data_processed.x, dtpkt.accel_data_processed.y, dtpkt.accel_data_processed.z);
+    // printf("[gyro_data]  x:%8.3f    y:%8.3f    z:%8.3f    unit:dps\n", dtpkt.gyro_data_processed.x, dtpkt.gyro_data_processed.y, dtpkt.gyro_data_processed.z);
+    // printf("[timestamp_data]%ld\n", dtpkt.accel_data_processed.timestamp);
+    data->ax = dtpkt.accel_data_processed.x * gravity;
+    data->ay = dtpkt.accel_data_processed.y * gravity;
+    data->az = dtpkt.accel_data_processed.z * gravity;
+    data->gx = dtpkt.gyro_data_processed.x * M_PI / 180.0;
+    data->gy = dtpkt.gyro_data_processed.y * M_PI / 180.0;
+    data->gz = dtpkt.gyro_data_processed.z * M_PI / 180.0;
+    data->timestamp = dtpkt.accel_data_processed.timestamp * 1000;
 
-        // ICM42688没有磁力计
-        data->mx = 0.0f;
-        data->my = 0.0f;
-        data->mz = 0.0f;
+    // ICM42688没有磁力计
+    data->mx = 0.0f;
+    data->my = 0.0f;
+    data->mz = 0.0f;
 
-        // 状态正常
-        data->status = 0;
-        return 0;
-    }  else {
-        printf("Failed.\n");
-        return 0;
-    }
-
+    // 状态正常
+    data->status = 0;
+    return 0;
 
 #endif
 }

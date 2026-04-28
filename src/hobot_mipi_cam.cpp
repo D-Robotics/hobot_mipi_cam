@@ -480,7 +480,7 @@ bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
   if (cal_v_ptr != nullptr && (cal_v_ptr->size() > 0)){
     RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
     const sensor_msgs::msg::CameraInfo& cameraInfo = cal_v_ptr->at(0);
-    memcpy( &cam_info, &cameraInfo, sizeof(sensor_msgs::msg::CameraInfo));
+    cam_info = cameraInfo;
     return true;
   } else {
     return getCamCalibrationIml(cam_info, file_path);
@@ -577,9 +577,9 @@ bool MipiCamIml::getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,
   if (cal_v_ptr != nullptr && (cal_v_ptr->size() == 2)){
     RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
     const sensor_msgs::msg::CameraInfo& cal_l = cal_v_ptr->at(0);
-    memcpy( &cam_info_l, &cal_l, sizeof(sensor_msgs::msg::CameraInfo));
+    cam_info_l = cal_l;
     const sensor_msgs::msg::CameraInfo& cal_r = cal_v_ptr->at(1);
-    memcpy( &cam_info_r, &cal_r, sizeof(sensor_msgs::msg::CameraInfo));
+    cam_info_r = cal_r;
     return true;
   } else {
     return getDualCamCalibrationIml(cam_info_l, cam_info_r, file_path);
