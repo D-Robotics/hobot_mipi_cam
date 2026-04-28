@@ -444,7 +444,7 @@ void MipiCamNode::init() {
       // 创建外参 topic publisher（transient_local: 后来的订阅者也能收到）
       auto qos = rclcpp::QoS(1).reliable().transient_local();
       pub_imu_extrinsic_ = this->create_publisher<geometry_msgs::msg::TransformStamped>(
-          "/imu_extrinsic", qos);
+          "/imu_extrinsic", 10);
       static_tf_broadcaster_ =
           std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
     }
