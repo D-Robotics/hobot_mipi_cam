@@ -18,6 +18,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include "hobot_mipi_comm.hpp"
 #include "hobot_mipi_cam.hpp"
+#include "hobot_mipi_calibration.hpp"
 
 // #include <vector>
 #include <memory>
@@ -29,11 +30,18 @@
 #include "sensor_msgs/msg/image.hpp"
 #include <std_msgs/msg/string.hpp>
 
+#include <fstream>
+#include <iomanip>
+#include <sys/stat.h> // mkdir
+
 //#include "hb_mem_mgr.h"
 #include "hbm_img_msgs/msg/hbm_msg1080_p.hpp"
 #include "imu_manager.hpp"
 #include <sensor_msgs/msg/imu.hpp>
-
+#include <tf2_ros/static_transform_broadcaster.h>
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 namespace mipi_cam
 {
 
@@ -112,6 +120,11 @@ class MipiCamNode : public rclcpp::Node {
   std::shared_ptr<imu_sensor::ImuManager> imu_manager_;
   std::vector<std::shared_ptr<std::thread>> imu_timer_;
 
+  std::string imu_calib_file_path_; // 标定文件保存路径
+  void saveImuCalibration(const std::string &file_path);
+
+  std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
+  rclcpp::Publisher<geometry_msgs::msg::TransformStamped>::SharedPtr pub_imu_extrinsic_;
 };
 }  // namespace mipi_cam
 #endif  // HOBOT_MIPI_NODE_HPP_

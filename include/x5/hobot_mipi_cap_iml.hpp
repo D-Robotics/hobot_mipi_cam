@@ -112,6 +112,7 @@ class HobotMipiCapIml : public HobotMipiCap {
     return &cal_cam_info_;
   }
 
+
   int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
     cam_info_ = info;
     return 0;

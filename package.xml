@@ -15,6 +15,10 @@
   <depend>hbm_img_msgs</depend>
   <depend>yaml_cpp_vendor</depend>
   <depend>rclcpp_components</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>geometry_msgs</depend>
 
   <depend condition="$PLATFORM == X3">hobot-multimedia-dev</depend>
 
