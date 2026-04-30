@@ -346,6 +346,8 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 			}
 			auto des_contex = std::make_shared<DESERIAL_CONTEX_ST>();
 			copy_deserial_config(&des_contex->deserial_attr, deserial_cfg->deserial_attr);
+            ret = create_deserial_node(&des_contex->deserial_attr, des_contex->des_fd);
+			ERR_CON_EQ(ret, 0);
 			deserial_contex.push_back(des_contex);
 
 
@@ -367,7 +369,8 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					auto pipe_contex_tmp = std::make_shared<pipe_contex_t>();
 					pipe_contex_tmp->cap_info_ = &cap_info_;
 					copy_config(&pipe_contex_tmp->sensor_config, sensor_cfg);
-					vp_deserial_config_update(&des_contex->deserial_attr, pipe_contex_tmp->sensor_config.camera_config, link.link_id);
+					pipe_contex_tmp->des_fd = des_contex->des_fd;
+					//vp_deserial_config_update(&des_contex->deserial_attr, pipe_contex_tmp->sensor_config.camera_config, link.link_id);
 					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx;
 					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;
 					if (link.valid_phy && pipe_contex_tmp->sensor_config.camera_config->mipi_cfg) {
@@ -419,8 +422,8 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					}
 					#endif
 					pipeline_connect_param_init(pipe_contex_tmp);
-					// ret = create_and_run_vflow(pipe_contex_tmp);
-					// ERR_CON_EQ(ret, 0);		
+					ret = create_and_run_vflow(pipe_contex_tmp);
+					ERR_CON_EQ(ret, 0);		
 					//pipe_contex.push_back(pipe_contex_tmp);
 					//des_contex->pipe.push_back(pipe_contex_tmp);
 					pipeline_num++;
@@ -429,10 +432,10 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					pipe_contex_tmp_2->cap_info_ = &cap_info_;
 					//memcpy(&pipe_contex_tmp_2->sensor_config, sensor_cfg, sizeof(vp_sensor_config_t));
 					copy_config(&pipe_contex_tmp_2->sensor_config, sensor_cfg);
-					//pipe_contex_tmp_2->des_fd = des_fd;
-					//pipe_contex_tmp_2->sensor_config.camera_config = pipe_contex_tmp_2->sensor_config.camera_slave_config;
+					pipe_contex_tmp_2->des_fd = des_contex->des_fd;
+					pipe_contex_tmp_2->sensor_config.camera_config = pipe_contex_tmp_2->sensor_config.camera_slave_config;
 					auto link_id = link.link_id >= 4 ? 4 : link.link_id + 1;
-					vp_deserial_config_update(&des_contex->deserial_attr, pipe_contex_tmp_2->sensor_config.camera_config, link_id);
+					//vp_deserial_config_update(&des_contex->deserial_attr, pipe_contex_tmp_2->sensor_config.camera_config, link_id);
 					pipe_contex_tmp_2->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx;
 					pipe_contex_tmp_2->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;
 					if (link.valid_phy && pipe_contex_tmp_2->sensor_config.camera_config->mipi_cfg) {
@@ -446,8 +449,8 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 						pipe_contex_tmp_2->gdc_bin_r = gdc_bin_buf_r_[0];
 					}
 					pipeline_connect_param_init(pipe_contex_tmp_2);
-					// ret = create_and_run_vflow(pipe_contex_tmp_2);
-					// ERR_CON_EQ(ret, 0);
+					ret = create_and_run_vflow(pipe_contex_tmp_2);
+					ERR_CON_EQ(ret, 0);
 					if (link.dual_mode == 1) {
 						pipe_contex.push_back(pipe_contex_tmp_2);
 						des_contex->pipe.push_back(pipe_contex_tmp_2);
@@ -541,13 +544,17 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 		if (deserial_cfg == nullptr) {
 			return -1;
 		}
-		ret = create_deserial_node(deserial_cfg->deserial_attr, des_fd);
+		
+		auto des_contex = std::make_shared<DESERIAL_CONTEX_ST>();
+		copy_deserial_config(&des_contex->deserial_attr, deserial_cfg->deserial_attr);
+		ret = create_deserial_node(&des_contex->deserial_attr, des_contex->des_fd);
 		ERR_CON_EQ(ret, 0);
+        deserial_contex.push_back(des_contex);
 
 		auto contex_tmp = std::make_shared<pipe_contex_t>();
 		pipe_contex.push_back(contex_tmp);
 		pipe_contex[0]->cap_info_ = &cap_info_;
-		pipe_contex[0]->des_fd = des_fd;
+		pipe_contex[0]->des_fd = des_contex->des_fd;
 
 		int num = 0;
 		num = vp_get_gmsl_list_number();
@@ -576,19 +583,19 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 		//ERR_CON_EQ(ret, 0);		
 	}
 
-	for (auto deserial : deserial_contex) {
-		deserial_handle_t des_fd = 0;
-		ret = create_deserial_node(&deserial->deserial_attr, des_fd);
-		ERR_CON_EQ(ret, 0);
-		for (auto contex : deserial->pipe) {
-			contex->des_fd = des_fd;
-		}
-	}
+	// for (auto deserial : deserial_contex) {
+		// 	ret = create_deserial_node(&deserial->deserial_attr, deserial->des_fd);
+		// 	ERR_CON_EQ(ret, 0);
+		// 	for (auto contex : deserial->pipe) {
+			// 		contex->des_fd = deserial->des_fd;
+	// 	}
+	// }
+	// sleep(1);
 
-	for (auto contex : pipe_contex) {
-		ret = create_and_run_vflow(contex);
-		ERR_CON_EQ(ret, 0);		
-	}
+	// for (auto contex : pipe_contex) {
+		// 	ret = create_and_run_vflow(contex);
+		// 	ERR_CON_EQ(ret, 0);		
+	// }
 	if (!pipe_contex.empty()) {
 		cap_info_.sensor_type = pipe_contex[0]->sensor_config.sensor_name;
 	} else {
@@ -606,8 +613,12 @@ int HobotMipiCapIml::deInit() {
   if (m_inited_) {
 	m_inited_ = false;
 	
-	for(auto contex : pipe_contex){
+	for(auto contex : pipe_contex) {
+		hbn_camera_destroy(contex->cam_fd);
 		hbn_vflow_destroy(contex->vflow_fd);
+	}
+    for (auto deserial : deserial_contex) {
+		hbn_deserial_destroy(deserial->des_fd);
 	}
 
 	hb_mem_module_close();
@@ -635,14 +646,12 @@ int HobotMipiCapIml::start() {
 	}
 	combine_buff_que_manger_ = std::make_shared<BuffQueueManage>();
 	combine_buff_que_manger_->creat_buff(5);
-	multi_frame_task_ = std::make_shared<std::thread>(
-	std::bind(&HobotMipiCapIml::multiFrameTask, this));
+	task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::multiFrameTask, this)));
 	if (combine_flag_) {
 		for(auto contex : pipe_contex) {
 			v_frame_que_.push_back(std::make_shared<FrameQueue>());
 		}
-		sync_task_ = std::make_shared<std::thread>(
-				std::bind(&HobotMipiCapIml::sync_task, this));
+		task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::sync_task, this)));
 	}
 #if 0
 	if (cap_info_.sub_stream_enable_ == true) {
@@ -653,14 +662,12 @@ int HobotMipiCapIml::start() {
 		}
 		sub_combine_buff_que_manger_ = std::make_shared<BuffQueueManage>();
 		sub_combine_buff_que_manger_->creat_buff(5);
-		sub_multi_frame_task_ = std::make_shared<std::thread>(
-		std::bind(&HobotMipiCapIml::subMultiFrameTask, this));
+		task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::subMultiFrameTask, this)));
 		if (combine_flag_) {
 			for(auto contex : pipe_contex) {
 				v_sub_frame_que_.push_back(std::make_shared<FrameQueue>());
 			}
-			sub_sync_task_ = std::make_shared<std::thread>(
-					std::bind(&HobotMipiCapIml::sub_sync_task, this));
+			task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::sub_sync_task, this)));
 		}
 	}
 #endif
@@ -675,10 +682,41 @@ int HobotMipiCapIml::stop() {
       "x5 camera isn't started");
     return -1;
   }
+started_ = false;
+  for (auto task : task_) {
+    task->join();
+  }
+  task_.clear();
   started_ = false;
   for(auto contex : pipe_contex){
     ret = hbn_vflow_stop(contex->vflow_fd);
     ERR_CON_EQ(ret, 0);
+if(contex->sensor_config.sensor_type != SENSOR_TYPE_NORMAL) {
+		if (contex->camera_bind_) {
+			hbn_deserial_detach_from_vin(contex->des_fd, (camera_des_link_t)contex->gsml_link_port_);
+			hbn_camera_detach_from_deserial(contex->cam_fd);
+		} else {
+			hbn_camera_detach_from_vin(contex->cam_fd);
+		}
+	}
+	if (contex->gdc_node_handle != 0) {
+		hbn_vnode_close(contex->gdc_node_handle);
+	}
+	if (contex->gdc_node_handle_r != 0) {
+		hbn_vnode_close(contex->gdc_node_handle_r);
+	}
+	if (contex->pym_node_handle != 0) {
+		hbn_vnode_close(contex->pym_node_handle);
+	}
+	if (contex->ynr_node_handle != 0) {
+		hbn_vnode_close(contex->ynr_node_handle);
+	}
+	if (contex->isp_node_handle != 0) {
+		hbn_vnode_close(contex->isp_node_handle);
+	}
+	if (contex->vin_node_handle != 0) {
+		hbn_vnode_close(contex->vin_node_handle);
+	}
   }
   RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "x5_mipi_cam_stop end.\n");
   return 0;
