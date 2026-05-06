@@ -93,6 +93,10 @@ class MipiCamNode : public rclcpp::Node {
                     std::string info_topic, std::string info_topic2, std::string info_file);
   void init_DualCalibration(Publisher_info_base*  Pub_info, Publisher_info_base*  Pub_info2,
                     std::string info_topic, std::string info_topic2, std::string info_file);
+  void init_DualCalibration_Sub(Publisher_info_base *Pub_info,
+                            std::string info_topic, std::string info_topic2, std::string info_file);
+  void init_DualCalibration_Sub(Publisher_info_base *Pub_info, Publisher_info_base *Pub_info2,
+                            std::string info_topic, std::string info_topic2, std::string info_file);
 
   std::shared_ptr<MipiCam> mipiCam_ptr_;
 

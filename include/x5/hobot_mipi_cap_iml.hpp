@@ -112,6 +112,10 @@ class HobotMipiCapIml : public HobotMipiCap {
     return &cal_cam_info_;
   }
 
+  std::vector<sensor_msgs::msg::CameraInfo>* getCalCamInfoSub()
+  {
+    return &cal_cam_info_sub_;
+  }
 
   int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
     cam_info_ = info;
@@ -199,6 +203,7 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
+  std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_sub_;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
   std::vector<Imu_params> imu_info_;
   std::vector<std::shared_ptr<sensor_otp_t_>> awb_otp_data_;
