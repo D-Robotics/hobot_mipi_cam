@@ -233,13 +233,19 @@ typedef struct cal_dual_R_T_info_st {
 #pragma pack()
 
 typedef struct {
-  int link_id;
-  std::string sensor_type; 
-  std::string camera_mode; //"single"： 每个连接输出一个sensor的数据； "dual":每个连接输出两个sensor的数据。
-  int dual_mode;
-  int mipi_rx;
-  bool valid_phy;
-  int phy;
+  std::string sensor_type; //must
+  std::string camera_mode; //must,"single"： 每个连接输出一个sensor的数据； "dual":每个连接输出两个sensor的数据。
+  int dual_mode; //must
+  int link_port; //must
+  int mipi_rx;//must
+  int dual_seq; //option
+  bool valid_phy; //option
+  int phy; //option
+  bool valid_port2; //option
+  int link_port2; //when dual mode is must
+  int mipi_rx2; //when dual mode is must
+  bool valid_phy2; //option
+  int phy2; //option
 } LINK_CONFIG_ST;
 
 typedef struct {
@@ -320,6 +326,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
   int getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
   int create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_contex);
+  int create_and_run_vflow_step1(std::shared_ptr<pipe_contex_t> pipe_contex);
+  int create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> pipe_contex);
   int create_pym_node(std::shared_ptr<pipe_contex_t> pipe_contex, int hw_id, int slot_id, int pym_mode);
   int create_isp_node(std::shared_ptr<pipe_contex_t> pipe_contex, int hw_id, int slot_id, int mode, int is_online);
   int create_ynr_node(std::shared_ptr<pipe_contex_t> pipe_contex, int slot_id, int work_mode);
@@ -338,6 +346,8 @@ class HobotMipiCapIml : public HobotMipiCap {
        double rotation = 0.0, double cal_rotate = 0.0);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
+
+  int create_gsml_gdc_bin(std::shared_ptr<pipe_contex_t> pipe_contex);
   bool read_gsml_config(std::string gsml_cfg_file);
 
   void pipeline_connect_param_init(std::shared_ptr<pipe_contex_t> pipe_contex);
