@@ -72,6 +72,10 @@ def generate_launch_description():
             default_value='sensor',
             description='type(sensor/realtime) of timestamp for publishing messages'),
         DeclareLaunchArgument(
+            'frame_id',
+            default_value='camera_link',
+            description=''),
+        DeclareLaunchArgument(
             'mipi_rotation',
             default_value='0.0',
             description='mipi camera out image rotation'),
@@ -99,6 +103,10 @@ def generate_launch_description():
             'mipi_cal_alpha',
             default_value='0.0',
             description='gmsl link port'),
+        DeclareLaunchArgument(
+            'mipi_sub_stream_enable',
+            default_value='False',
+            description='mipi sub stream enable'),
         DeclareLaunchArgument(
             'log_level',
             default_value='warn',
@@ -129,11 +137,13 @@ def generate_launch_description():
                 {"frame_ts_type": LaunchConfiguration('mipi_frame_ts_type')},
                 {"rotation": LaunchConfiguration('mipi_rotation')},
                 {"lpwm_enable": LaunchConfiguration('mipi_lpwm_enable')},
+                {"frame_id": LaunchConfiguration('frame_id')},
                 {"cal_rotation": LaunchConfiguration('mipi_cal_rotation')},
                 {"gdc_bin_file": LaunchConfiguration('mipi_gdc_bin_file')},
                 {"link_type": LaunchConfiguration('mipi_link_type')},
                 {"link_port": LaunchConfiguration('mipi_link_port')},
                 {"cal_alpha": LaunchConfiguration('mipi_cal_alpha')},
+                {"sub_stream_enable": LaunchConfiguration('mipi_sub_stream_enable')},
             ],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         )

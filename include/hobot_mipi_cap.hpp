@@ -19,6 +19,7 @@
 #include <string>
 #include "hobot_mipi_comm.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
+#include "hobot_mipi_calibration.hpp"
 
 namespace mipi_cam {
 
@@ -62,11 +63,15 @@ class HobotMipiCap {
     return nullptr;
   }
 
+  virtual std::vector<sensor_msgs::msg::CameraInfo>* getCalCamInfoSub()
+  {
+    return nullptr;
+  }
+
   virtual int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
     return -1;
   }
 
-  
 };
 
 }  // namespace mipi_cam

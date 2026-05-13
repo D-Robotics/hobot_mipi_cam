@@ -199,8 +199,15 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	if (cap_info_.gdc_enable_) {
 		std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin;
 		if (cap_info_.stream_mode_ == 1) {
-			gdc_bin = gen_gdc_bin_stereo(cap_info_.width, cap_info_.height, cap_info_.width,
-				cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
+			vp_sensor_config_t *sensor_conf = &pipe_contex[1].sensor_config;
+			int input_width = sensor_cof->isp_ichn_attr->width;
+			int input_height = sensor_cof->isp_ichn_attr->height;
+			if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+				input_width = sensor_cof->isp_ichn_attr->height;
+				input_height = sensor_cof->isp_ichn_attr->width;
+			}		
+			gdc_bin = gen_gdc_bin_stereo(input_width, input_height, cap_info_.width,
+				cap_info_.height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
 				cap_info_.cal_alpha_, !gdc_bin_buf_.empty());
 		} else {
 			int out_width = sensor_cof->isp_ichn_attr->width;
@@ -217,7 +224,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 				pipe_contex[1].gdc_resize_enable = true;
 			}
 			gdc_bin = gen_gdc_bin_stereo(sensor_cof->isp_ichn_attr->width, sensor_cof->isp_ichn_attr->height, out_width,
-				out_height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
+				out_height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_,
 				cap_info_.cal_alpha_);
 		}
 		if (gdc_bin.size() == 2) {
@@ -269,6 +276,20 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	ERR_CON_EQ(ret, 0);
 	if ((cap_info_.dual_combine_ == 1) || (cap_info_.dual_combine_ == 2)) {
 		combine_flag_ = true;
+	}
+	if (cap_info_.stream_mode_ == 0)
+	{
+		for (auto cal_info : cal_cam_info_)
+		{
+			cal_cam_info_sub_.push_back(cal_info);
+		}
+	}
+	else
+	{
+		for (auto cal_info : cam_info_)
+		{
+			cal_cam_info_sub_.push_back(cal_info);
+		}
 	}
   } else {
 	bool deteced_flag = false;
@@ -466,7 +487,20 @@ int HobotMipiCapIml::stop() {
       "x5 camera isn't started");
     return -1;
   }
+  // Safety cleanup: ensure threads are joined before destruction
   started_ = false;
+  if (multi_frame_task_ && multi_frame_task_->joinable()) {
+    multi_frame_task_->join();
+  }
+  if (sync_task_ && sync_task_->joinable()) {
+    sync_task_->join();
+  }
+  if (sub_multi_frame_task_ && sub_multi_frame_task_->joinable()) {
+    sub_multi_frame_task_->join();
+  }
+  if (sub_sync_task_ && sub_sync_task_->joinable()) {
+    sub_sync_task_->join();
+  }
   for(auto contex : pipe_contex){
     ret = hbn_vflow_stop(contex.vflow_fd);
     ERR_CON_EQ(ret, 0);
@@ -1155,13 +1189,21 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 	vse_ochn_attr.roi.h = input_height;
 	vse_ochn_attr.fmt = FRM_FMT_NV12;
 	vse_ochn_attr.bit_width = 8;
-	//vse_ochn_attr.target_w = input_width;
-	//vse_ochn_attr.target_h = input_height;
-	vse_ochn_attr.target_w = pipe_contex->cap_info_->width;
-	vse_ochn_attr.target_h = pipe_contex->cap_info_->height;
-
-	vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
-	vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
+	if (pipe_contex->cap_info_->stream_mode_ == 1) {
+		vse_ochn_attr.target_w = input_width;
+		vse_ochn_attr.target_h = input_height;
+	} else {
+		vse_ochn_attr.target_w = pipe_contex->cap_info_->width;
+		vse_ochn_attr.target_h = pipe_contex->cap_info_->height;
+	}
+	int vse_fps = pipe_contex->cap_info_->fps == 1.0 ? 1 : ceil(pipe_contex->cap_info_->fps * 30 / pipe_contex->sensor_config.camera_config->fps);
+	if (pipe_contex->cap_info_->lpwm_enable_) {
+		vse_ochn_attr.fps.src = 0;
+		vse_ochn_attr.fps.dst = 0;
+	} else {
+		vse_ochn_attr.fps.src = 0;
+		vse_ochn_attr.fps.dst = vse_fps;
+	}
 
 	ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 0, &vse_ochn_attr);
 	ERR_CON_EQ(ret, 0);
@@ -1190,9 +1232,14 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 			sub_vse_ochn_attr.target_w = pipe_contex->cap_info_->sub_width;
 			sub_vse_ochn_attr.target_h = pipe_contex->cap_info_->sub_height;
 		
-			sub_vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
-			sub_vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
-		
+			if (pipe_contex->cap_info_->lpwm_enable_) {
+				sub_vse_ochn_attr.fps.src = 0;
+				sub_vse_ochn_attr.fps.dst = 0;
+			} else {
+				sub_vse_ochn_attr.fps.src = 0;
+				sub_vse_ochn_attr.fps.dst = vse_fps;
+			}
+
 			ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 1, &sub_vse_ochn_attr);
 			ERR_CON_EQ(ret, 0);
 			sub_alloc_attr.buffers_num = 3;
@@ -1204,8 +1251,10 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 			ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->vse_node_handle, 1, &sub_alloc_attr);
 			ERR_CON_EQ(ret, 0);
 			pipe_contex->sub_stream_channel = 1;
-		} else if ((pipe_contex->cap_info_->sub_width >= input_width) 
-				&& (pipe_contex->cap_info_->sub_height >= input_height)) {
+		} else if ((pipe_contex->cap_info_->sub_width >= input_width) &&
+				(pipe_contex->cap_info_->sub_height >= input_height) &&
+				(pipe_contex->cap_info_->sub_width <= input_width * 2) &&
+				(pipe_contex->cap_info_->sub_height <= input_height * 2)) {
 			sub_vse_ochn_attr.chn_en = CAM_TRUE;
 			sub_vse_ochn_attr.roi.x = 0;
 			sub_vse_ochn_attr.roi.y = 0;
@@ -1218,8 +1267,13 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 			sub_vse_ochn_attr.target_w = pipe_contex->cap_info_->sub_width;
 			sub_vse_ochn_attr.target_h = pipe_contex->cap_info_->sub_height;
 		
-			sub_vse_ochn_attr.fps.src = pipe_contex->sensor_config.camera_config->fps;
-			sub_vse_ochn_attr.fps.dst = pipe_contex->cap_info_->fps;
+			if (pipe_contex->cap_info_->lpwm_enable_) {
+				sub_vse_ochn_attr.fps.src = 0;
+				sub_vse_ochn_attr.fps.dst = 0;
+			} else {
+				sub_vse_ochn_attr.fps.src = 0;
+				sub_vse_ochn_attr.fps.dst = vse_fps;
+			}
 		
 			ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 5, &sub_vse_ochn_attr);
 			ERR_CON_EQ(ret, 0);
@@ -1233,6 +1287,8 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 			ERR_CON_EQ(ret, 0);
 			pipe_contex->sub_stream_channel = 5;		
 		} else {
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),"sub stream width = %d and height = %d is error, don't start the sub stream ",
+				pipe_contex->cap_info_->sub_width, pipe_contex->cap_info_->sub_height);
 			pipe_contex->cap_info_->sub_stream_enable_ = false;
 		}
 	}
@@ -1316,13 +1372,14 @@ int HobotMipiCapIml::creat_gdc_node(pipe_contex_t *pipe_contex) {
 	int output_width;
 	int output_height;
 
-	if (pipe_contex->gdc_init_valid_r == 1) {
+	if (pipe_contex->cap_info_->stream_mode_ == 1) {
 		vse_ochn_attr_t vse_ochn_attr;
 		ret = hbn_vnode_get_ochn_attr(pipe_contex->vse_node_handle, chn_id, &vse_ochn_attr);
 		ERR_CON_EQ(ret, 0);
-		output_width = input_width = vse_ochn_attr.target_w;
-		output_height = input_height = vse_ochn_attr.target_h;
-
+		input_width = vse_ochn_attr.target_w;
+		input_height = vse_ochn_attr.target_h;
+		output_width = pipe_contex->cap_info_->width;
+		output_height = pipe_contex->cap_info_->height;
 	} else {
 		isp_ichn_attr_t isp_ichn_attr;
 		ret = hbn_vnode_get_ichn_attr(pipe_contex->isp_node_handle, chn_id, &isp_ichn_attr);
@@ -1395,28 +1452,21 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 		return -1;
 	}
 	int32_t ret = 0;
-    if (pipe_contex->cap_info_->device_mode_.compare("dual") == 0) {
-		pipe_contex->sensor_config.isp_attr->input_mode = 2;
-		if (pipe_contex->cap_info_->lpwm_enable_) {
-			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
-			int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
-			pipe_contex->sensor_config.camera_config->sensor_mode = 6;
-			pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 1;
-			for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
-				attr.period = fps_rate;
-			}
-		} else {
-			pipe_contex->sensor_config.camera_config->sensor_mode = 1;
-			pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 0;
-			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-		    pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
-		}
-	} else {
-		pipe_contex->sensor_config.isp_attr->input_mode = 2;
-		pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 0;
+	pipe_contex->sensor_config.isp_attr->input_mode = 2;
+	if (pipe_contex->cap_info_->lpwm_enable_) {
 		pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 		pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+		int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
+		pipe_contex->sensor_config.camera_config->sensor_mode = 6;
+		pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 1;
+		for (auto& attr : pipe_contex->sensor_config.vin_node_attr->lpwm_attr.lpwm_chn_attr) {
+			attr.period = fps_rate;
+		}
+	} else {
+		//pipe_contex->sensor_config.camera_config->sensor_mode = 1;
+		pipe_contex->sensor_config.vin_node_attr->lpwm_attr.enable = 0;
+		//pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+		//pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
 	}
 	// 创建pipeline中的每个node
 	ret = creat_camera_node(pipe_contex->sensor_config.camera_config, &pipe_contex->cam_fd);
@@ -1606,55 +1656,55 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
     pdata.awb_golden_ct_num = 3;       // AWB黄金色温配置数量
 
     // 配置3100K色温参数
-    pdata.awb_data[0].color_temperature = ::COLOR_TEMPERATURE_3100K; 
+    pdata.awb_data[0].color_temperature = COLOR_TEMPERATURE_3100K; 
     pdata.awb_data[0].r =   0;        //pipe_contex->awb_otp_data.awb_data[0].r;
     pdata.awb_data[0].gr =  0;           //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[0].gb =  0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
     pdata.awb_data[0].b =  0;                    //pipe_contex->awb_otp_data.awb_data[0].b;
-    pdata.awb_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_data[0].rg_ratio;
-    pdata.awb_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_data[0].bg_ratio;
+    pdata.awb_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.rg_ratio_3100K;
+    pdata.awb_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.bg_ratio_3100K;
 
-    pdata.awb_golden_data[0].color_temperature = ::COLOR_TEMPERATURE_3100K;
+    pdata.awb_golden_data[0].color_temperature = COLOR_TEMPERATURE_3100K;
     pdata.awb_golden_data[0].r = 0;
     pdata.awb_golden_data[0].gr = 0;
     pdata.awb_golden_data[0].gb = 0;
     pdata.awb_golden_data[0].b = 0;
-    pdata.awb_golden_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[0].rg_ratio;
-    pdata.awb_golden_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[0].bg_ratio;
+    pdata.awb_golden_data[0].rg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.rg_ratio_3100K;
+    pdata.awb_golden_data[0].bg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.bg_ratio_3100K;
 
     // 配置4000K色温参数
-    pdata.awb_data[1].color_temperature = ::COLOR_TEMPERATURE_4000K;
+    pdata.awb_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
     pdata.awb_data[1].r =    0;             //pipe_contex->awb_otp_data.awb_data[0].r;
     pdata.awb_data[1].gr =     0;         //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[1].gb =   0;                //pipe_contex->awb_otp_data.awb_data[0].gb;
     pdata.awb_data[1].b =   0;               //pipe_contex->awb_otp_data.awb_data[0].b;
-    pdata.awb_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_data[1].rg_ratio;
-    pdata.awb_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_data[1].bg_ratio;
+    pdata.awb_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.rg_ratio_4000K;
+    pdata.awb_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.bg_ratio_4000K;
 
-    pdata.awb_golden_data[1].color_temperature = ::COLOR_TEMPERATURE_4000K;
+    pdata.awb_golden_data[1].color_temperature = COLOR_TEMPERATURE_4000K;
     pdata.awb_golden_data[1].r = 0;
     pdata.awb_golden_data[1].gr = 0;
     pdata.awb_golden_data[1].gb = 0;
     pdata.awb_golden_data[1].b = 0;
-    pdata.awb_golden_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[1].rg_ratio;
-    pdata.awb_golden_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[1].bg_ratio;
+    pdata.awb_golden_data[1].rg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.rg_ratio_4000K;
+    pdata.awb_golden_data[1].bg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.bg_ratio_4000K;
 
     // 配置5800K色温参数
-    pdata.awb_data[2].color_temperature = ::COLOR_TEMPERATURE_5800K;
+    pdata.awb_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
     pdata.awb_data[2].r =      0;            //pipe_contex->awb_otp_data.awb_data[0].r;
     pdata.awb_data[2].gr =   0;                   //pipe_contex->awb_otp_data.awb_data[0].gr;
     pdata.awb_data[2].gb =   0;                  //pipe_contex->awb_otp_data.awb_data[0].gb;
     pdata.awb_data[2].b =    0;                  //pipe_contex->awb_otp_data.awb_data[0].b;
-    pdata.awb_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_data[2].rg_ratio;
-    pdata.awb_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_data[2].bg_ratio;
+    pdata.awb_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.rg_ratio_5800K;
+    pdata.awb_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_info_l_r_.bg_ratio_5800K;
 
-    pdata.awb_golden_data[2].color_temperature = ::COLOR_TEMPERATURE_5800K;
+    pdata.awb_golden_data[2].color_temperature = COLOR_TEMPERATURE_5800K;
     pdata.awb_golden_data[2].r = 0;
     pdata.awb_golden_data[2].gr = 0;
     pdata.awb_golden_data[2].gb = 0;
     pdata.awb_golden_data[2].b = 0;
-    pdata.awb_golden_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_golden_data[2].rg_ratio;
-    pdata.awb_golden_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_golden_data[2].bg_ratio;
+    pdata.awb_golden_data[2].rg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.rg_ratio_5800K;
+    pdata.awb_golden_data[2].bg_ratio = pipe_contex->awb_otp_data->awb_info_golden_.bg_ratio_5800K;
 
     // 打印日志+调用HBN接口启用AWB OTP
 	//printf("awb otp enable\n");
@@ -1667,22 +1717,22 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[2].rg_ratio: %ld",  pdata.awb_golden_data[2].rg_ratio);
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_golden_data[2].bg_ratio: %ld",  pdata.awb_golden_data[2].bg_ratio);
 
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].rg_ratio: %ld", pipe_contex->awb_otp_data->awb_data[0].rg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[0].bg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].rg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].bg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].rg_ratio);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].bg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].rg_ratio: %ld", pipe_contex->awb_otp_data->awb_data[0].rg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[0].bg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].rg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[1].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[1].bg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].rg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].rg_ratio);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[2].bg_ratio: %ld",  pipe_contex->awb_otp_data->awb_data[2].bg_ratio);
 
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pipe_contex->awb_otp_data->awb_data[0].r);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pipe_contex->awb_otp_data->awb_data[0].gr);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pipe_contex->awb_otp_data->awb_data[0].gb);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pipe_contex->awb_otp_data->awb_data[0].b);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pipe_contex->awb_otp_data->awb_data[0].r);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pipe_contex->awb_otp_data->awb_data[0].gr);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pipe_contex->awb_otp_data->awb_data[0].gb);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pipe_contex->awb_otp_data->awb_data[0].b);
 
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pdata.awb_data[0].r);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pdata.awb_data[0].gr);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pdata.awb_data[0].gb);
-	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pdata.awb_data[0].b);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].r: %ld",  pdata.awb_data[0].r);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gr: %ld",  pdata.awb_data[0].gr);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pdata.awb_data[0].gb);
+	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pdata.awb_data[0].b);
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ================== all awb otp data ==================");
 
     int32_t ret = hbn_camera_enable_otp(pipe_contex->cam_fd, &pdata);                    ////cam_fd由hbn_camera_create创建
@@ -1953,7 +2003,7 @@ double  heigh_tmp;
 
 static int save_gdc_bin = 0;
 
-std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(int in_width, int in_height,int out_width, int out_height,
+std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(int in_width, int in_height,int out_width, int out_height, int final_width, int final_height, 
 		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
 		double rotation, double cal_rotate, double cal_alpha, bool pre_rotation) {
 	std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf;
@@ -2051,34 +2101,48 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 		<< "\n===================="
 	);
 
-	double target_hfov = 0.0; // 目标FOV（可从配置/外部输入）
-	double actual_hfov_l, actual_hfov_r;
-	// 调用核心函数计算alpha
-	double alpha = computeStereoAlphaFromFOV(
-    target_hfov,
-    Kl, Dl, Kr, Dr, R_rl, t_rl,
-    in_gdc_width, in_gdc_height,
-    out_gdc_width, out_gdc_height,
-    cam_info[0].distortion_model,
-    actual_hfov_l, actual_hfov_r);
-	//double alpha = 0.0;
-	if (alpha <= 0) {
-		alpha = 0;
-		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "Use default alpha=0.0 (target FOV invalid)");
-	} else {
-		// RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
-        // 	"Auto compute alpha: %f\n , Left actual FOV: %f\n, Right actual FOV: %f\n ", alpha, actual_hfov_l, actual_hfov_r);
-		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Auto compute alpha: %f", alpha);
-	}
+	double target_hfov = cal_alpha;
+	double balance = 0.0;
+	double fov_scale = 1.0;
+	double hfov_l = 0.0, hfov_r = 0.0;
+	//double alpha = 0;
 	// TODO: Set alpha from config
 	// cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, 0.391 ,cv::Size(out_gdc_width, out_gdc_height));
 	if (cam_info[0].distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
-		double fov_scale = find_best_fov_scale(Kl, Dl, Kr, Dr, R_rl, t_rl, cv::Size(in_gdc_width, in_gdc_height), cv::Size(out_gdc_width, out_gdc_height));
+		if (target_hfov <= 0) {
+			fov_scale = find_best_fov_scale(Kl, Dl, Kr, Dr, R_rl, t_rl, cv::Size(in_gdc_width, in_gdc_height), cv::Size(out_gdc_width, out_gdc_height));
+		} else {
+			// target_hfov > 0: 只关心逼近目标 FOV，不关心越界
+			bool ok_ = computeFisheyeStereoParamsFromFOV(
+				 target_hfov,
+				 Kl, Dl, Kr, Dr, R_rl, t_rl,
+				 cv::Size(in_gdc_width, in_gdc_height),
+				 cv::Size(out_gdc_width, out_gdc_height),
+				 balance, fov_scale, hfov_l, hfov_r);
+		}
 		RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "best fov scale: " << fov_scale);
+		RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "final_balance: " << balance);
+		RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "hfov_l: " << hfov_l);
+		RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "target_hfov: " << target_hfov);
 		cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), 0.0, fov_scale);
 		cv::fisheye::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
 		cv::fisheye::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1r, undistmap2r);
 	} else {
+		double alpha = computeStereoAlphaFromFOV(
+    		target_hfov,
+    		Kl, Dl, Kr, Dr, R_rl, t_rl,
+    		in_gdc_width, in_gdc_height,
+    		out_gdc_width, out_gdc_height,
+    		hfov_l, hfov_r);
+		if (alpha <= 0) {
+			alpha = 0;
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "Use default alpha=0.0 (target FOV invalid)");
+		} else {
+			// RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+        	// 	"Auto compute alpha: %f\n , Left actual FOV: %f\n, Right actual FOV: %f\n ", alpha, actual_hfov_l, actual_hfov_r);
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "Auto compute alpha: %f", alpha);
+			RCLCPP_WARN_STREAM(rclcpp::get_logger("mipi_cap"), "hfov_l: " << hfov_l);
+		}
 		cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height), R_rl, t_rl, Rl, Rr, Pl, Pr, Q, cv::CALIB_ZERO_DISPARITY, alpha ,cv::Size(out_gdc_width, out_gdc_height));
 		cv::initUndistortRectifyMap(Kl, Dl, Rl, Pl, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1l, undistmap2l);
 		cv::initUndistortRectifyMap(Kr, Dr, Rr, Pr, cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, undistmap1r, undistmap2r);
@@ -2373,11 +2437,14 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	gdc_bin_ptr->bin_buf_size = bin_buf_size;
 	gdc_bin_buf.push_back(gdc_bin_ptr);
 	
+	float w_scale = final_width / out_width;
+	float h_scale = final_height / out_height;
+
 	float camera_cx, camera_cy, camera_fx, camera_fy, base_line;
-	camera_fx = Q.at<double>(2, 3);
-	camera_fy = Q.at<double>(2, 3);
-	camera_cx = -Q.at<double>(0, 3);
-	camera_cy = -Q.at<double>(1, 3);
+	camera_fx = Q.at<double>(2, 3) * w_scale;
+	camera_fy = Q.at<double>(2, 3) * h_scale;
+	camera_cx = -Q.at<double>(0, 3) * w_scale;
+	camera_cy = -Q.at<double>(1, 3) * h_scale;
 	base_line = std::abs(1 / Q.at<double>(3, 2));
 
 	cv::Mat K = cv::Mat::zeros(3, 3, CV_64F);
@@ -2387,6 +2454,20 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	K.at<double>(1, 2) = camera_cy;
 	K.at<double>(2, 2) = 1;
 
+	Pl.at<double>(0, 0) *= w_scale;
+	Pl.at<double>(0, 2) *= w_scale;
+	Pl.at<double>(0, 3) *= w_scale;
+	Pl.at<double>(1, 1) *= h_scale;
+	Pl.at<double>(1, 2) *= h_scale;
+	Pl.at<double>(1, 3) *= h_scale;
+
+	Pr.at<double>(0, 0) *= w_scale;
+	Pr.at<double>(0, 2) *= w_scale;
+	Pr.at<double>(0, 3) *= w_scale;
+	Pr.at<double>(1, 1) *= h_scale;
+	Pr.at<double>(1, 2) *= h_scale;
+	Pr.at<double>(1, 3) *= h_scale;
+
 	double tmp_t = 0;
     switch(rotation_diff_int) {	
         case 90:
@@ -2395,7 +2476,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 			K.at<double>(0,0) = K.at<double>(1,1);
 			K.at<double>(1,1) = tmp_t;
 			tmp_t = K.at<double>(0,2);
-			K.at<double>(0,2) = out_height - K.at<double>(1,2);
+			K.at<double>(0,2) = final_height - K.at<double>(1,2);
 			K.at<double>(1,2) = tmp_t;
             break;
 		default:
@@ -2407,8 +2488,8 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 	cv::Mat P = K * RT;
 
 	sensor_msgs::msg::CameraInfo tmp_cam_info; 
-	tmp_cam_info.width = out_width;
-	tmp_cam_info.height = out_height;
+	tmp_cam_info.width = final_width;
+	tmp_cam_info.height = final_height;
 	tmp_cam_info.d.resize(5, 0.0);
 	memcpy(tmp_cam_info.k.data(), K.data, sizeof(tmp_cam_info.k));
 
@@ -2437,7 +2518,7 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
         case 90:
 			S.at<double>(0,0) = 0;
 			S.at<double>(0,1) = -1;
-			S.at<double>(0,2) = (double)(out_height - 1);
+			S.at<double>(0,2) = (double)(final_height - 1);
 			S.at<double>(1,0) = 1;
 			S.at<double>(1,1) = 0;
 			S.at<double>(1,2) = 0;
@@ -2445,10 +2526,10 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 		case 180:
 			S.at<double>(0,0) = -1;
 			S.at<double>(0,1) = 0;
-			S.at<double>(0,2) = (double)(out_width - 1);
+			S.at<double>(0,2) = (double)(final_width - 1);
 			S.at<double>(1,0) = 0;
 			S.at<double>(1,1) = -1;
-			S.at<double>(1,2) = (double)(out_height - 1);
+			S.at<double>(1,2) = (double)(final_height - 1);
 			break;			
 		case 270:
 			S.at<double>(0,0) = 0;
@@ -2456,15 +2537,15 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::gen_gdc_bin_stereo(i
 			S.at<double>(0,2) = 0;
 			S.at<double>(1,0) = -1;
 			S.at<double>(1,1) = 0;
-			S.at<double>(1,2) = (double)(out_width - 1);
+			S.at<double>(1,2) = (double)(final_width - 1);
             break;
 		default:
 			break;
     }
 
 	sensor_msgs::msg::CameraInfo tmp_cam_info; 
-	tmp_cam_info.width = out_width;
-	tmp_cam_info.height = out_height;
+	tmp_cam_info.width = final_width;
+	tmp_cam_info.height = final_height;
 	tmp_cam_info.d.resize(5, 0.0);
 	memcpy(tmp_cam_info.k.data(), K.data, sizeof(tmp_cam_info.k));
 	cv::Mat new_Rl = S * Rl;
@@ -2509,11 +2590,10 @@ std::pair<double, double> HobotMipiCapIml::calculatePinholeFOV(const cv::Mat& K_
 	return {h_fov, v_fov};
 }
 
-std::pair<double, double> HobotMipiCapIml::calculateFisheyeFOV(const cv::Mat& K_rect, int width, int hight) {
-	return calculatePinholeFOV(K_rect, width, hight);
-}
-
 double HobotMipiCapIml::computeInitAlpha(double target_hfov, double fov_min, double fov_max) {
+	if (std::abs(fov_max - fov_min) < 1e-6) {
+        return 0.0;  // 如果FOV范围非常小，直接返回0
+    }
 	if (target_hfov <= fov_min - 1e-3) return 0.0;
     if (target_hfov >= fov_max + 1e-3) return 1.0;
     return (target_hfov - fov_min) / (fov_max - fov_min);
@@ -2526,56 +2606,36 @@ double HobotMipiCapIml::computeStereoAlphaFromFOV(
     const cv::Mat& R_rl, const cv::Mat& t_rl,
     int in_gdc_width, int in_gdc_height,
     int out_gdc_width, int out_gdc_height,
-    const std::string& distortion_model,
     double& actual_hfov_l, double& actual_hfov_r) {
 
 	// ------------ 步骤1：计算alpha=0时的双目FOV（FOV_min） ------------
     cv::Mat Rl0, Rr0, Pl0, Pr0, Q0;
-    if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
-        cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
-                                   R_rl, t_rl, Rl0, Rr0, Pl0, Pr0, Q0,
-                                   cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), 0.0);
-    } else {
-        cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
-                          R_rl, t_rl, Rl0, Rr0, Pl0, Pr0, Q0,
-                          cv::CALIB_ZERO_DISPARITY, 0.0, cv::Size(out_gdc_width, out_gdc_height));
-    }
+    cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                      R_rl, t_rl, Rl0, Rr0, Pl0, Pr0, Q0,
+                      cv::CALIB_ZERO_DISPARITY, 0.0, cv::Size(out_gdc_width, out_gdc_height));
     // 提取校正后内参（投影矩阵Pl/Pr的前3x3）
     cv::Mat K_l0 = Pl0(cv::Rect(0,0,3,3)).clone();
     cv::Mat K_r0 = Pr0(cv::Rect(0,0,3,3)).clone();
     // 计算alpha=0时的FOV
-    auto [fov_l0, _] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) 
-                        ? calculateFisheyeFOV(K_l0, out_gdc_width, out_gdc_height)
-                        : calculatePinholeFOV(K_l0, out_gdc_width, out_gdc_height);
-    auto [fov_r0, __] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
-                        ? calculateFisheyeFOV(K_r0, out_gdc_width, out_gdc_height)
-                        : calculatePinholeFOV(K_r0, out_gdc_width, out_gdc_height);
+    auto [fov_l0, _] = calculatePinholeFOV(K_l0, out_gdc_width, out_gdc_height);
+    auto [fov_r0, __] = calculatePinholeFOV(K_r0, out_gdc_width, out_gdc_height);
 
 	// ------------ 步骤2：计算alpha=1时的双目FOV（FOV_max） ------------
     cv::Mat Rl1, Rr1, Pl1, Pr1, Q1;
-    if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
-        cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
-                                   R_rl, t_rl, Rl1, Rr1, Pl1, Pr1, Q1,
-                                   cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), 1.0);
-    } else {
-        cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
-                          R_rl, t_rl, Rl1, Rr1, Pl1, Pr1, Q1,
-                          cv::CALIB_ZERO_DISPARITY, 1.0, cv::Size(out_gdc_width, out_gdc_height));
-    }
+    cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                      R_rl, t_rl, Rl1, Rr1, Pl1, Pr1, Q1,
+                      cv::CALIB_ZERO_DISPARITY, 1.0, cv::Size(out_gdc_width, out_gdc_height));
+
     cv::Mat K_l1 = Pl1(cv::Rect(0,0,3,3)).clone();
     cv::Mat K_r1 = Pr1(cv::Rect(0,0,3,3)).clone();
-    auto [fov_l1, ___] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
-                        ? calculateFisheyeFOV(K_l1, out_gdc_width, out_gdc_height)
-                        : calculatePinholeFOV(K_l1, out_gdc_width, out_gdc_height);
-    auto [fov_r1, ____] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
-                        ? calculateFisheyeFOV(K_r1, out_gdc_width, out_gdc_height)
-                        : calculatePinholeFOV(K_r1, out_gdc_width, out_gdc_height);
+    auto [fov_l1, ___] = calculatePinholeFOV(K_l1, out_gdc_width, out_gdc_height);
+    auto [fov_r1, ____] = calculatePinholeFOV(K_r1, out_gdc_width, out_gdc_height);
 
 	// ------------ 步骤3：确定双目FOV的有效交集 ------------
     double fov_min = std::max(fov_l0, fov_r0); // 双目最小FOV（取较大值）
     double fov_max = std::min(fov_l1, fov_r1); // 双目最大FOV（取较小值）
     if (target_hfov < fov_min - 1e-3 || target_hfov > fov_max + 1e-3) {
-        RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+        RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
             "Target FOV %.2f° out of valid range [%.2f°, %.2f°]",
             target_hfov, fov_min, fov_max);
         actual_hfov_l = actual_hfov_r = 0.0;
@@ -2592,23 +2652,13 @@ double HobotMipiCapIml::computeStereoAlphaFromFOV(
     while (iter < max_iter) {
         // 用当前alpha计算校正后FOV
         cv::Mat Rl, Rr, Pl, Pr, Q;
-        if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
-            cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
-                                       R_rl, t_rl, Rl, Rr, Pl, Pr, Q,
-                                       cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), alpha);
-        } else {
-            cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
-                              R_rl, t_rl, Rl, Rr, Pl, Pr, Q,
-                              cv::CALIB_ZERO_DISPARITY, alpha, cv::Size(out_gdc_width, out_gdc_height));
-        }
+        cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                          R_rl, t_rl, Rl, Rr, Pl, Pr, Q,
+                          cv::CALIB_ZERO_DISPARITY, alpha, cv::Size(out_gdc_width, out_gdc_height));
         cv::Mat K_l = Pl(cv::Rect(0,0,3,3)).clone();
         cv::Mat K_r = Pr(cv::Rect(0,0,3,3)).clone();
-        auto [hfov_l, _] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
-                            ? calculateFisheyeFOV(K_l, out_gdc_width, out_gdc_height)
-                            : calculatePinholeFOV(K_l, out_gdc_width, out_gdc_height);
-        auto [hfov_r, __] = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
-                            ? calculateFisheyeFOV(K_r, out_gdc_width, out_gdc_height)
-                            : calculatePinholeFOV(K_r, out_gdc_width, out_gdc_height);
+        auto [hfov_l, _] = calculatePinholeFOV(K_l, out_gdc_width, out_gdc_height);
+        auto [hfov_r, __] = calculatePinholeFOV(K_r, out_gdc_width, out_gdc_height);
         
         // 验证双目FOV是否接近目标
         double avg_hfov = (hfov_l + hfov_r) / 2;
@@ -2630,23 +2680,13 @@ double HobotMipiCapIml::computeStereoAlphaFromFOV(
 
 	// ------------ 步骤5：返回最终alpha并输出实际FOV ------------
     cv::Mat Rl_final, Rr_final, Pl_final, Pr_final, Q_final;
-    if (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
-        cv::fisheye::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
-                                   R_rl, t_rl, Rl_final, Rr_final, Pl_final, Pr_final, Q_final,
-                                   cv::CALIB_ZERO_DISPARITY, cv::Size(out_gdc_width, out_gdc_height), alpha);
-    } else {
-        cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
-                          R_rl, t_rl, Rl_final, Rr_final, Pl_final, Pr_final, Q_final,
-                          cv::CALIB_ZERO_DISPARITY, alpha, cv::Size(out_gdc_width, out_gdc_height));
-    }
+    cv::stereoRectify(Kl, Dl, Kr, Dr, cv::Size(in_gdc_width, in_gdc_height),
+                      R_rl, t_rl, Rl_final, Rr_final, Pl_final, Pr_final, Q_final,
+                      cv::CALIB_ZERO_DISPARITY, alpha, cv::Size(out_gdc_width, out_gdc_height));
     cv::Mat K_l_final = Pl_final(cv::Rect(0,0,3,3)).clone();
     cv::Mat K_r_final = Pr_final(cv::Rect(0,0,3,3)).clone();
-    actual_hfov_l = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
-                    ? calculateFisheyeFOV(K_l_final, out_gdc_width, out_gdc_height).first
-                    : calculatePinholeFOV(K_l_final, out_gdc_width, out_gdc_height).first;
-    actual_hfov_r = (distortion_model == sensor_msgs::distortion_models::EQUIDISTANT)
-                    ? calculateFisheyeFOV(K_r_final, out_gdc_width, out_gdc_height).first
-                    : calculatePinholeFOV(K_r_final, out_gdc_width, out_gdc_height).first;
+    actual_hfov_l = calculatePinholeFOV(K_l_final, out_gdc_width, out_gdc_height).first;
+    actual_hfov_r = calculatePinholeFOV(K_r_final, out_gdc_width, out_gdc_height).first;
 
     return alpha;										
 }
@@ -2668,29 +2708,116 @@ double HobotMipiCapIml::find_best_fov_scale(const cv::Mat& Kl, const cv::Mat& Dl
 		out_size,
 		0.0,
 		fov);
-    cv::Mat mapx, mapy;
-    cv::fisheye::initUndistortRectifyMap(Kl, Dl, Rl, Pl, out_size, CV_32FC1, mapx, mapy);
+    cv::Mat mapx_l, mapy_l;
+    cv::Mat mapx_r, mapy_r;
+    cv::fisheye::initUndistortRectifyMap(Kl, Dl, Rl, Pl, out_size, CV_32FC1, mapx_l, mapy_l);
+    cv::fisheye::initUndistortRectifyMap(Kr, Dr, Rr, Pr, out_size, CV_32FC1, mapx_r, mapy_r);
     int invalid = 0;
-    int total = out_size.area();
-    for (int y = 0; y < mapx.rows; y++) {
-        const float* ptrx = mapx.ptr<float>(y);
-        const float* ptry = mapy.ptr<float>(y);
-        for (int x = 0; x < mapx.cols; x++) {
-            float sx = ptrx[x];
-            float sy = ptry[x];
-			if (sx < 0 || sx >= in_size.width || sy < 0 || sy >= in_size.height) {
+    for (int y = 0; y < mapx_l.rows; y++) {
+        const float* ptrx_l = mapx_l.ptr<float>(y);
+        const float* ptry_l = mapy_l.ptr<float>(y);
+        const float* ptrx_r = mapx_r.ptr<float>(y);
+        const float* ptry_r = mapy_r.ptr<float>(y);
+        for (int x = 0; x < mapx_l.cols; x++) {
+            float sx_l = ptrx_l[x];
+            float sy_l = ptry_l[x];
+            float sx_r = ptrx_r[x];
+            float sy_r = ptry_r[x];
+            if (sx_l < 1 || sx_l >= in_size.width - 2 ||
+                sy_l < 1 || sy_l >= in_size.height - 2 ||
+                sx_r < 1 || sx_r >= in_size.width - 2 ||
+                sy_r < 1 || sy_r >= in_size.height - 2) {
                     invalid++;
                 }
             }
         }
 
-        if (invalid == 0) {
-            best_scale = fov;
-            break;
-        }
-    }
+		if (invalid == 0)
+		{
+			best_scale = fov;
+			break;
+		}
+	}
 
-    return best_scale;
+	return best_scale;
+}
+
+bool HobotMipiCapIml::computeFisheyeStereoParamsFromFOV(
+	 double target_hfov,
+	 const cv::Mat &Kl, const cv::Mat &Dl,
+	 const cv::Mat &Kr, const cv::Mat &Dr,
+	 const cv::Mat &R_rl, const cv::Mat &t_rl,
+	 cv::Size in_size, cv::Size out_size,
+	 double &out_balance, double &out_fov_scale,
+	 double &actual_hfov_l, double &actual_hfov_r,
+	 double tol,	// 默认 3.0°
+	 int max_iter) // 默认 10
+{
+	constexpr double SCALE_LO = 0.05;
+	constexpr double SCALE_HI = 2.0;
+
+	out_balance = 0.0;
+	out_fov_scale = 1.0;
+	actual_hfov_l = 0.0;
+	actual_hfov_r = 0.0;
+
+	if (target_hfov <= 0.0 || in_size.area() <= 0 || out_size.area() <= 0)
+	{
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						"Invalid params: target_hfov=%.1f, in=%dx%d, out=%dx%d",
+						target_hfov, in_size.width, in_size.height, out_size.width, out_size.height);
+		return false;
+	}
+
+	double lo = SCALE_LO, hi = SCALE_HI;
+	double best_diff = std::numeric_limits<double>::max();
+
+	for (int i = 0; i < max_iter; ++i)
+	{
+		double mid = 0.5 * (lo + hi);
+
+		// stereoRectify 拿到 Pl/Pr，从中提取 fx 算 HFOV
+		cv::Mat Rl, Rr, Pl, Pr, Q;
+		cv::fisheye::stereoRectify(
+			 Kl, Dl, Kr, Dr, in_size, R_rl, t_rl,
+			 Rl, Rr, Pl, Pr, Q,
+			 cv::CALIB_ZERO_DISPARITY, out_size, 0.0, mid);
+
+		double hl = 2.0 * std::atan2(out_size.width * 0.5, Pl.at<double>(0, 0)) * 180.0 / CV_PI;
+		double hr = 2.0 * std::atan2(out_size.width * 0.5, Pr.at<double>(0, 0)) * 180.0 / CV_PI;
+		double avg = 0.5 * (hl + hr);
+		double diff = std::abs(avg - target_hfov);
+
+		if (diff < best_diff)
+		{
+			best_diff = diff;
+			out_fov_scale = mid;
+			actual_hfov_l = hl;
+			actual_hfov_r = hr;
+		}
+
+		if (diff < tol)
+		{
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+							"Converged at iter %d: fov_scale=%.6f, HFOV=[%.2f°, %.2f°], target=%.2f°",
+							i, out_fov_scale, hl, hr, target_hfov);
+			return true;
+		}
+
+		// fov_scale ↑ → fx ↓ → HFOV ↑（单调递增）
+		if (avg < target_hfov)
+			lo = mid;
+		else
+			hi = mid;
+
+		if (hi - lo < 1e-7)
+			break;
+	}
+
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+					"Not fully converged: fov_scale=%.6f, HFOV=[%.2f°, %.2f°], target=%.2f°, diff=%.2f°",
+					out_fov_scale, actual_hfov_l, actual_hfov_r, target_hfov, best_diff);
+	return false;
 }
 
 std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin(int in_width, int in_height,int out_width, int out_height,

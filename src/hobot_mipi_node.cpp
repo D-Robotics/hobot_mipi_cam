@@ -62,7 +62,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->cal_alpha_ = 0.0; 
   nodePare_->stream_mode_ = 0; //0: slave stream can gdc; 1: slave stream can't gdc.
   nodePare_->sub_stream_enable_ = false; 
-  frame_id_ = "default_cam";
+  frame_id_ = "camera_link";
   io_method_name_ = "ros"; //shared_mem, ros;
   double framerate = 30.0;
   imu_type_ = "";
@@ -96,6 +96,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
   this->declare_parameter<int>("stream_mode", nodePare_->stream_mode_);
   this->declare_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
+  this->declare_parameter<std::string>("imu_calib_file", "config/imu_calibration.yaml");
 
   this->get_parameter<std::string>("frame_id", frame_id_);
   this->get_parameter<std::string>("io_method", io_method_name_); 
@@ -128,6 +129,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
 
   nodePare_->framerate_ = static_cast<int>(framerate);
+
+  this->get_parameter<std::string>("imu_calib_file", imu_calib_file_path_);
 
   RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
     "\n node params:" \
@@ -184,7 +187,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   );
 
   init();
-
+  std::cout << std::endl;
 }
 
 MipiCamNode::~MipiCamNode() {
@@ -216,6 +219,7 @@ MipiCamNode::~MipiCamNode() {
     timer->join();
   }
   imu_timer_.clear();
+  std::cout << std::endl;
 }
 
 void MipiCamNode::init() {
@@ -257,8 +261,8 @@ void MipiCamNode::init() {
           pub_info1 = std::make_shared<Publisher_info>();
           pub_info2 = std::make_shared<Publisher_info>();
           pub_info3 = std::make_shared<Publisher_info>();
-          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
-          init_DualCalibration(pub_info3.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration_Sub(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration_Sub(pub_info3.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher(pub_info1, "sub_image_left_raw", "sub_left", frame_id_);
           init_publisher(pub_info2, "sub_image_right_raw", "sub_right", frame_id_);
           init_publisher(pub_info3, "sub_image_combine_raw", "sub_combine", frame_id_);
@@ -274,7 +278,7 @@ void MipiCamNode::init() {
         Pub_info_.push_back(pub_info1);
         if (nodePare_->sub_stream_enable_) {
           pub_info1 = std::make_shared<Publisher_info>();
-          init_DualCalibration(pub_info1.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration_Sub(pub_info1.get(), "sub_image_combine_raw/left/camera_info", "sub_image_combine_raw/right/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher(pub_info1, "sub_image_combine_raw", "sub_combine", frame_id_);
           Pub_info_.push_back(pub_info1);
         }
@@ -290,7 +294,7 @@ void MipiCamNode::init() {
         if (nodePare_->sub_stream_enable_) {
           auto pub_info1 = std::make_shared<Publisher_info>();
           auto pub_info2 = std::make_shared<Publisher_info>();
-          init_DualCalibration(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
+          init_DualCalibration_Sub(pub_info1.get(), pub_info2.get(), "sub_image_left_raw/camera_info", "sub_image_right_raw/camera_info", nodePare_->camera_calibration_file_path_);
           init_publisher(pub_info1, "sub_image_left_raw", "sub_left", frame_id_);
           init_publisher(pub_info2, "sub_image_right_raw", "sub_right", frame_id_);      
           Pub_info_.push_back(pub_info1);
@@ -441,8 +445,25 @@ void MipiCamNode::init() {
   imu_manager_ = std::make_shared<imu_sensor::ImuManager>();
   if (0 == imu_manager_->init_sensor(imu_type_)) {
     pub_imu_ = this->create_publisher<sensor_msgs::msg::Imu>("/imu_data", 10);
-    imu_timer_.emplace_back(std::make_shared<std::thread>([this]() { while(rclcpp::ok()) {this->read_imu_data();}}));
+
+    if (imu_manager_->loadCalibrationFromEeprom())
+    {
+      RCLCPP_INFO(this->get_logger(),
+                  "IMU calibration loaded from EEPROM");
+      // 创建外参 topic publisher（transient_local: 后来的订阅者也能收到）
+      auto qos = rclcpp::QoS(1).reliable().transient_local();
+      pub_imu_extrinsic_ = this->create_publisher<geometry_msgs::msg::TransformStamped>(
+          "/imu_extrinsic", 10);
+      static_tf_broadcaster_ =
+          std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
+    }
+    else
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "No IMU calibration in EEPROM, publishing raw IMU data");
+    }
     is_imu_running_ = true;
+    imu_timer_.emplace_back(std::make_shared<std::thread>([this]() { while(rclcpp::ok()) {this->read_imu_data();}}));
   }
 
 }
@@ -516,6 +537,48 @@ void MipiCamNode::init_DualCalibration(Publisher_info_base*  Pub_info, Publisher
   return;
 }
 
+void MipiCamNode::init_DualCalibration_Sub(Publisher_info_base *Pub_info,
+                                       std::string info_topic, std::string info_topic2, std::string info_file)
+{
+  Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  Pub_info->camera_calibration_info2_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  if (!mipiCam_ptr_ || !mipiCam_ptr_->getDualCamCalibrationSub(*Pub_info->camera_calibration_info_,
+                                                            *Pub_info->camera_calibration_info2_, info_file))
+  {
+    Pub_info->camera_calibration_info_ = nullptr;
+    Pub_info->camera_calibration_info2_ = nullptr;
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                "get camera calibration parameters failed");
+    return;
+  }
+
+  Pub_info->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+      info_topic, PUB_BUF_NUM);
+  Pub_info->info_pub2_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+      info_topic2, PUB_BUF_NUM);
+  return;
+}
+
+void MipiCamNode::init_DualCalibration_Sub(Publisher_info_base *Pub_info, Publisher_info_base *Pub_info2,
+                                       std::string info_topic, std::string info_topic2, std::string info_file)
+{
+  Pub_info->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  Pub_info2->camera_calibration_info_ = std::make_unique<sensor_msgs::msg::CameraInfo>();
+  if (!mipiCam_ptr_ || !mipiCam_ptr_->getDualCamCalibrationSub(*Pub_info->camera_calibration_info_,
+                                                            *Pub_info2->camera_calibration_info_, info_file))
+  {
+    Pub_info->camera_calibration_info_ = nullptr;
+    Pub_info2->camera_calibration_info_ = nullptr;
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                "get camera calibration parameters failed");
+    return;
+  }
+  Pub_info->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+      info_topic, PUB_BUF_NUM);
+  Pub_info2->info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+      info_topic2, PUB_BUF_NUM);
+  return;
+}
 
 void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
   if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing() && (pub_info->image_pub_->get_subscription_count() > 0)) {
@@ -600,6 +663,36 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
 }
 
 void MipiCamNode::read_imu_data() {
+  geometry_msgs::msg::TransformStamped tf_msg;
+  bool publish_extrinsic = false;
+  if (imu_manager_->hasValidCalibration())
+  {
+    const auto &rt = imu_manager_->getCalibParams().r_t_info_;
+
+    // 构造 TransformStamped（TF 和 Topic 共用同一份数据）
+    tf_msg.header.frame_id = frame_id_; // 与图像 frame_id 一致
+    tf_msg.child_frame_id = "imu_link";
+
+    tf_msg.transform.translation.x = static_cast<double>(rt.tx);
+    tf_msg.transform.translation.y = static_cast<double>(rt.ty);
+    tf_msg.transform.translation.z = static_cast<double>(rt.tz);
+
+    // R 矩阵 → 四元数
+    tf2::Matrix3x3 rot(
+        rt.r11, rt.r12, rt.r13,
+        rt.r21, rt.r22, rt.r23,
+        rt.r31, rt.r32, rt.r33);
+    tf2::Quaternion q;
+    rot.getRotation(q);
+    q.normalize();
+
+    tf_msg.transform.rotation.x = q.x();
+    tf_msg.transform.rotation.y = q.y();
+    tf_msg.transform.rotation.z = q.z();
+    tf_msg.transform.rotation.w = q.w();
+    publish_extrinsic = true;
+    //saveImuCalibration(imu_calib_file_path_);
+  }
   sensor_msgs::msg::Imu imu_msg;
   imu_msg.header.frame_id = "imu_link";
   imu_sensor::ImuData_T imu_data;
@@ -608,8 +701,12 @@ void MipiCamNode::read_imu_data() {
     size_t subscriber_count = pub_imu_->get_subscription_count();
     if (subscriber_count > 0) {
       imu_manager_->read_sensor_data(&imu_data);
-      imu_msg.header.stamp.set__sec(imu_data.timestamp / 1e9);
-      imu_msg.header.stamp.set__nanosec(imu_data.timestamp - imu_msg.header.stamp.sec * 1e9);
+      // ---- IMU 时间戳 ----
+      auto sec = static_cast<int32_t>(imu_data.timestamp / 1e9);
+      auto nanosec = static_cast<uint32_t>(
+          imu_data.timestamp - sec * 1e9);
+      imu_msg.header.stamp.set__sec(sec);
+      imu_msg.header.stamp.set__nanosec(nanosec);
       imu_msg.linear_acceleration.x = imu_data.ax;
       imu_msg.linear_acceleration.y = imu_data.ay;
       imu_msg.linear_acceleration.z = imu_data.az;
@@ -617,6 +714,22 @@ void MipiCamNode::read_imu_data() {
       imu_msg.angular_velocity.y = imu_data.gy;
       imu_msg.angular_velocity.z = imu_data.gz;
       pub_imu_->publish(imu_msg);
+
+      // ---- 发布外参（与 IMU 同频，时间戳同步） ----
+      if (publish_extrinsic)
+      {
+        tf_msg.header.stamp.set__sec(sec);
+        tf_msg.header.stamp.set__nanosec(nanosec);
+
+        if (static_tf_broadcaster_)
+        {
+          static_tf_broadcaster_->sendTransform(tf_msg);
+        }
+        if (pub_imu_extrinsic_)
+        {
+          pub_imu_extrinsic_->publish(tf_msg);
+        }
+      }
     } else {
       usleep(1000*1000);
     }
@@ -658,6 +771,116 @@ void MipiCamNode::save_jpg(const builtin_interfaces::msg::Time stamp, std::strin
       cv::imwrite(jpg_file, img_bgr);
     }
   }
+}
+
+void MipiCamNode::saveImuCalibration(const std::string &file_path)
+{
+  // 确保目录存在
+  std::string dir = file_path.substr(0, file_path.find_last_of('/'));
+  if (!dir.empty())
+  {
+    mkdir(dir.c_str(), 0755);
+  }
+  std::ofstream ofs(file_path);
+  if (!ofs.is_open())
+  {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Failed to open IMU calibration file for writing: %s",
+                 file_path.c_str());
+    return;
+  }
+
+  ofs << std::fixed << std::setprecision(9);
+
+  const auto &imu_calib_params_ = imu_manager_->getCalibParams();
+  const auto &acc_m = imu_calib_params_.acc_mislign_;
+  const auto &gyro_m = imu_calib_params_.gyro_mislign_;
+  const auto &acc_s = imu_calib_params_.acc_scale_;
+  const auto &gyro_s = imu_calib_params_.gyro_scale_;
+  const auto &acc_b = imu_calib_params_.acc_bias_;
+  const auto &gyro_b = imu_calib_params_.gyro_bias_;
+  const auto &acc_nw = imu_calib_params_.acc_n_w_;
+  const auto &gyro_nw = imu_calib_params_.gyro_n_w_;
+  const auto &rt = imu_calib_params_.r_t_info_;
+
+  ofs << "# IMU Calibration Parameters" << std::endl;
+  ofs << "# Read from camera module EEPROM" << std::endl;
+  ofs << "# Generated by hobot_mipi_cam" << std::endl;
+  ofs << std::endl;
+
+  ofs << "accelerometer:" << std::endl;
+
+  ofs << "  misalignment:" << std::endl;
+  ofs << "    rows: 3" << std::endl;
+  ofs << "    cols: 3" << std::endl;
+  ofs << "    data: ["
+      << acc_m.m00 << ", " << acc_m.m01 << ", " << acc_m.m02 << ", "
+      << acc_m.m10 << ", " << acc_m.m11 << ", " << acc_m.m12 << ", "
+      << acc_m.m20 << ", " << acc_m.m21 << ", " << acc_m.m22
+      << "]" << std::endl;
+
+  ofs << "  scale:" << std::endl;
+  ofs << "    data: ["
+      << acc_s.s0 << ", " << acc_s.s1 << ", " << acc_s.s2
+      << "]" << std::endl;
+
+  ofs << "  bias:" << std::endl;
+  ofs << "    data: ["
+      << acc_b.b0 << ", " << acc_b.b1 << ", " << acc_b.b2
+      << "]" << std::endl;
+
+  ofs << "  noise_density: " << acc_nw.n << std::endl;
+  ofs << "  random_walk: " << acc_nw.w << std::endl;
+  ofs << std::endl;
+
+  ofs << "gyroscope:" << std::endl;
+
+  ofs << "  misalignment:" << std::endl;
+  ofs << "    rows: 3" << std::endl;
+  ofs << "    cols: 3" << std::endl;
+  ofs << "    data: ["
+      << gyro_m.m00 << ", " << gyro_m.m01 << ", " << gyro_m.m02 << ", "
+      << gyro_m.m10 << ", " << gyro_m.m11 << ", " << gyro_m.m12 << ", "
+      << gyro_m.m20 << ", " << gyro_m.m21 << ", " << gyro_m.m22
+      << "]" << std::endl;
+
+  ofs << "  scale:" << std::endl;
+  ofs << "    data: ["
+      << gyro_s.s0 << ", " << gyro_s.s1 << ", " << gyro_s.s2
+      << "]" << std::endl;
+
+  ofs << "  bias:" << std::endl;
+  ofs << "    data: ["
+      << gyro_b.b0 << ", " << gyro_b.b1 << ", " << gyro_b.b2
+      << "]" << std::endl;
+
+  ofs << "  noise_density: " << gyro_nw.n << std::endl;
+  ofs << "  random_walk: " << gyro_nw.w << std::endl;
+  ofs << std::endl;
+
+  ofs << "imu_camera_extrinsic:" << std::endl;
+
+  ofs << "  rotation:" << std::endl;
+  ofs << "    rows: 3" << std::endl;
+  ofs << "    cols: 3" << std::endl;
+  ofs << "    data: ["
+      << rt.r11 << ", " << rt.r12 << ", " << rt.r13 << ", "
+      << rt.r21 << ", " << rt.r22 << ", " << rt.r23 << ", "
+      << rt.r31 << ", " << rt.r32 << ", " << rt.r33
+      << "]" << std::endl;
+
+  ofs << "  translation:" << std::endl;
+  ofs << "    data: ["
+      << rt.tx << ", " << rt.ty << ", " << rt.tz
+      << "]" << std::endl;
+
+  ofs << "  timeshift: " << rt.timeshift << std::endl;
+  ofs << "  reproject_error: " << rt.reporject << std::endl;
+
+  ofs.close();
+
+  RCLCPP_INFO(this->get_logger(),
+              "IMU calibration saved to: %s", file_path.c_str());
 }
 
 }  // namespace mipi_cam

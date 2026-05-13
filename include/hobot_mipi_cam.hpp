@@ -24,6 +24,7 @@
 
 #include "hobot_mipi_comm.hpp"
 #include "hobot_mipi_cap.hpp"
+#include "hobot_mipi_calibration.hpp"
 
 namespace mipi_cam
 {
@@ -72,6 +73,9 @@ class MipiCam
                const std::string &file_path) = 0;
   virtual bool getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,
                 sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path) = 0;
+
+  virtual bool getDualCamCalibrationSub(sensor_msgs::msg::CameraInfo &cam_info_l,
+                                     sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path) = 0;
 
   virtual bool isCapturing() = 0;
 };

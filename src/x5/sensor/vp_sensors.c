@@ -294,6 +294,10 @@ static void read_vcon_info_from_device_tree(const int device, struct vcon_proper
 					fread(&properties->gpio_oth, sizeof(int32_t), sizeof(properties->gpio_oth) / sizeof(int32_t), fp);
 					for (int i = 0; i < sizeof(properties->gpio_oth) / sizeof(int32_t); ++i)
 						properties->gpio_oth[i] = convert_endianness_int32(properties->gpio_oth[i]);
+				} else if (strcmp(entry->d_name, "lpwm_chn") == 0) {
+					fread(&properties->lpwm_chn, sizeof(int32_t), sizeof(properties->lpwm_chn) / sizeof(int32_t), fp);
+					for (int i = 0; i < sizeof(properties->lpwm_chn) / sizeof(int32_t); ++i)
+						properties->lpwm_chn[i] = convert_endianness_int32(properties->lpwm_chn[i]);
 				}
 
 				// Close the file
@@ -462,6 +466,7 @@ int32_t check_sensor_reg_value(vcon_propertie_t vcon_props,
 			// 修正配置中的 sensor 使用的 mipi rx phy
 			// 此处的修改并不一定是最终修改，在vpp 的impl 的 param 设置中会根据具体情况再次修改
 			sensor_config->vin_node_attr->cim_attr.mipi_rx = vcon_props.rx_phy[1];
+			sensor_config->vin_node_attr->cim_attr.func.ts_src = vcon_props.lpwm_chn[0] + 1;
 			return 0;
 		} else {
 			printf("WARN: Sensor Name: %s, Expected Chip ID: 0x%02X, Actual Chip ID Read: 0x%02X\n",
