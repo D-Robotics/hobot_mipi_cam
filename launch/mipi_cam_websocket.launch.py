@@ -64,7 +64,6 @@ def generate_launch_description():
         launch_arguments={
             'mipi_image_width': LaunchConfiguration('mipi_image_width'),
             'mipi_image_height': LaunchConfiguration('mipi_image_height'),
-            'mipi_image_framerate': '30.0',
             'mipi_io_method': 'ros',
             'mipi_channel': LaunchConfiguration('mipi_channel'),
             'mipi_camera_calibration_file_path': LaunchConfiguration('mipi_camera_calibration_file_path'),

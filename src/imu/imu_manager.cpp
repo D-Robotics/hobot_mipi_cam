@@ -26,6 +26,7 @@
 #include "imu_manager.hpp"
 #include "icm42688.hpp"
 
+using mipi_cam::mipi_calibration;
 namespace imu_sensor
 {
 
@@ -134,6 +135,27 @@ std::shared_ptr<imu_base> ImuManager::createImuDevice(const std::string &dev_nam
         dev_ptr = std::make_shared<icm42688>();
     }
     return dev_ptr;
+}
+
+
+bool ImuManager::loadCalibrationFromEeprom() {
+    //从 mipi_calibration 单例拿 CalibrationParams 引用（零拷贝）
+    auto &cal_params =
+        mipi_calibration::GetInstance().getCalibrationParams();
+
+    if (cal_params.size() >= 1)
+    {
+        const auto &imu_info = cal_params[0].imu_info_;
+        if (!imu_info.empty()) {
+            // 5. 取第一组 IMU 标定参数（值拷贝到自己的成员）
+            imu_calib_params_ = imu_info[0];
+            has_valid_calibration_ = true;
+            return true;
+        }
+    }
+    fprintf(stderr,
+            "[ImuManager] CalibrationParams is empty.\n ");
+    return false;
 }
 
 }

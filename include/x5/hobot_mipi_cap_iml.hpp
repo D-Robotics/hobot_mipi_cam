@@ -112,6 +112,11 @@ class HobotMipiCapIml : public HobotMipiCap {
     return &cal_cam_info_;
   }
 
+  std::vector<sensor_msgs::msg::CameraInfo>* getCalCamInfoSub()
+  {
+    return &cal_cam_info_sub_;
+  }
+
   int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
     cam_info_ = info;
     return 0;
@@ -144,7 +149,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int creat_gdc_node_r(pipe_contex_t *pipe_contex);
   int creat_camera_node(camera_config_t* camera_config,int64_t* cam_fd);
   std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
-  std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height,
+  std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height, int final_width, int final_height, 
 		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
     double rotation = 0.0, double cal_rotate = 0.0, double cla_alpha = 0.0, bool pre_rotation = false);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin(int gdc_width, int gdc_height,int out_width, int out_height,
@@ -207,6 +212,7 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
+  std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_sub_;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
   std::vector<Imu_params> imu_info_;
   std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;

@@ -93,7 +93,7 @@ def generate_launch_description():
             description='type(sensor/realtime) of timestamp for publishing messages'),
         DeclareLaunchArgument(
             'frame_id',
-            default_value='default_cam',
+            default_value='camera_link',
             description=''),
         DeclareLaunchArgument(
             'mipi_gdc_bin_file',

@@ -43,6 +43,7 @@ typedef struct vcon_properties {
 	char pinctrl_names[VP_MAX_BUF_SIZE];
 	int32_t pinctrl_0[8];
 	int32_t gpio_oth[8];
+	int32_t lpwm_chn[8];
 } vcon_propertie_t;
 
 typedef struct mipi_properties {

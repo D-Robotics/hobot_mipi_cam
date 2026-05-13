@@ -10,6 +10,7 @@
 
 #include "hobot_mipi_comm.hpp"
 #include "hobot_mipi_cap.hpp"
+#include "hobot_mipi_cam.hpp"
 
 
 namespace mipi_cam {
