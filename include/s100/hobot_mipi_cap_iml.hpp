@@ -21,6 +21,7 @@
 #include <queue>
 #include <thread>
 #include <mutex>
+#include "opencv2/opencv.hpp"
 #include <stdint.h>
 #include "hobot_mipi_cap.hpp"
 #include "hobot_mipi_comm.hpp"
@@ -30,6 +31,7 @@
 #include "hb_gdc_cfg.h"
 #include "gdc_cfg.h"
 #include "codec_cfg.h"
+#include "hobot_mipi_calibration.hpp"
 
 namespace mipi_cam {
 
@@ -101,135 +103,6 @@ typedef struct pipe_contex_s {
   pipeline_usage_scene_type_t sensor_type_;
 }pipe_contex_t;
 
-typedef struct eeprom_id {
-  int i2c_bus;           // sensor挂在哪条总线上
-  int i2c_dev_addr;      // sensor i2c设备地址
-  int i2c_addr_width;    // 总线地址宽（1/2字节）
-  int det_reg;           // 读取的寄存器地址
-  int check_value;           // 读取的寄存器地址
-  char device_name[25];  // sensor名字
-} EEPROM_ID_T;
-
-
-typedef struct eeprom_detect {
-  int i2c_bus;           // sensor挂在哪条总线上
-  int i2c_dev_addr;      // sensor i2c设备地址
-  int i2c_addr_width;    // 总线地址宽（1/2字节）
-  int det_reg;           // 读取的寄存器地址
-  char check_str[10];           // 读取的寄存器地址
-  char device_name[25];  // sensor名字
-} EEPROM_DETECT_T;
-
-#pragma pack(4)
-typedef struct eeprom_drobot_head_st {
-  char flag[8];
-  char camType; //0x00:单目；0x01:双目
-  char cal_tpye; //0x00:针孔标定；0x01:鱼眼标定
-  char ver_main;
-  char ver_min;
-  char angle; //描述标定时是否旋转后再标定，旋转角度。0x00:表示不旋转，0x01:表示顺时针旋转90度,0x02:表示顺时针旋转180度,0x03:表示顺时针旋转270度,其他的数值无效，表示不旋转。
-  char d_num; //D畸变参数的个数，鱼眼标定：k1,k2,k3,k4;针孔标定:k1,k2,p1,p2,k3,k4,k5,k6
-  char res2;
-  char check;
-} EepromDrobotHead_ST;
-#pragma pack()
-
-#pragma pack(4)
-typedef struct cal_dualcam_info_st {
-  double fxl;        
-  double fyl;    
-  double cxl;    
-  double cyl;        
-  double k1l;        
-  double k2l;
-  double k3l;
-  double k4l;
-  double k5l;
-  double k6l;
-  double p1l;
-  double p2l;
-  double rmsl;
-  double fxr;
-  double fyr;
-  double cxr;
-  double cyr;
-  double k1r;
-  double k2r;
-  double k3r;
-  double k4r;
-  double k5r;
-  double k6r;
-  double p1r;
-  double p2r;
-  double rmsr;
-  double r11;
-  double r12;
-  double r13;
-  double r21;
-  double r22;
-  double r23;
-  double r31;
-  double r32;
-  double r33;
-  double tx;
-  double ty;
-  double tz;
-  double epilines;
-  char h_v[4];
-} CalDualCamInfo_ST;
-#pragma pack()
-
-
-#if 0
-#pragma pack(4)
-typedef struct cal_dual_M_D_st {
-  int height;
-  int width;
-  float fx;
-  float fy;
-  float cx;
-  float cy;
-  float k1;
-  float k2;
-  float p1;
-  float p2;
-  float k3;
-  float k4;
-  float k5;
-  float k6;
-} CalDualMDInfo_ST;
-#pragma pack()
-#endif
-
-#pragma pack(4)
-typedef struct cal_dual_M_D_st {
-  int width;
-  int height;
-  float fx;
-  float fy;
-  float cx;
-  float cy;
-  float d[8];//鱼眼:k1,k2,k3,k4;针孔:k1,k2,p1,p2,k3,k4,k5,k6
-} CalDualMDInfo_ST;
-#pragma pack()
-
-#pragma pack(4)
-typedef struct cal_dual_R_T_info_st {
-  float r11;
-  float r12;
-  float r13;
-  float r21;
-  float r22;
-  float r23;
-  float r31;
-  float r32;
-  float r33;
-  float tx;
-  float ty;
-  float tz;
-} CalDualRTInfo_ST;
-#pragma pack()
-
 class HobotMipiCapIml : public HobotMipiCap {
  public:
   HobotMipiCapIml() {}
@@ -283,13 +156,6 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   int selectSensor(std::string &sensor, int &host, int &i2c_bus);
 
-  int detectEeprom_lianhe(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
-  int detectEeprom_drobot(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
-  bool readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize);
-  bool getDualCamCalibrationFromEeprom();
-  bool getDualCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr);
-  bool getDualCamCalibrationFromEeprom_230ai();
-
   void multiFrameTask();
   void sync_task();
   void sub_sync_task();
@@ -310,7 +176,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height,
 		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
-    double rotation = 0.0, double cal_rotate = 0.0);
+    double rotation = 0.0, double cal_rotate = 0.0, double cal_alpha = 0.0);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin(int gdc_width, int gdc_height,int out_width, int out_height,
        sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info,
        double rotation = 0.0, double cal_rotate = 0.0);
@@ -318,6 +184,36 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
 
   void pipeline_connect_param_init(pipe_contex_t *pipe_contex);
+
+  // 计算针孔模型下校正后内参对应的FOV（角度） K_rect 校正后的相机内参矩阵，校正后的图像高度和宽度
+  std::pair<double, double> calculatePinholeFOV(const cv::Mat &K_rect, int width, int height);
+  // 基于目标FOV和有效FOV范围，计算初始alpha，目标水平FOV，双目交集的最小FOV和最大FOV，返回初始alpha
+  double computeInitAlpha(double target_hfov, double fov_min, double fov_max);
+
+  // 根据目标水平FOV，计算双目立体校正的alpha参数（保证双目FOV一致性）
+  double computeStereoAlphaFromFOV(double target_hfov, const cv::Mat &kl, const cv::Mat &Dl,
+                                   const cv::Mat &Kr, const cv::Mat &Dr,
+                                   const cv::Mat &R_rl, const cv::Mat &t_rl,
+                                   int in_gdc_width, int in_gdc_height,
+                                   int out_gdc_width, int out_gdc_height,
+                                   double &actual_hfov_l, double &actual_hfov_r);
+  double find_best_fov_scale(const cv::Mat &Kl, const cv::Mat &Dl,
+                             const cv::Mat &Kr, const cv::Mat &Dr,
+                             const cv::Mat &R_rl, const cv::Mat &t_rl,
+                             cv::Size in_size,
+                             cv::Size out_size);
+
+  bool computeFisheyeStereoParamsFromFOV(
+      double target_hfov,
+      const cv::Mat &Kl, const cv::Mat &Dl,
+      const cv::Mat &Kr, const cv::Mat &Dr,
+      const cv::Mat &R_rl, const cv::Mat &t_rl,
+      cv::Size in_size, cv::Size out_size,
+      double &out_balance, double &out_fov_scale,
+      double &actual_hfov_l, double &actual_hfov_r,
+      double tol = 3.0,
+      int max_iter = 10);
+  // -----------------------------------------------------------------------------------------------------
 
   bool m_inited_ = false;
   bool started_ = false;
@@ -343,6 +239,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
+  std::vector<Imu_params> imu_info_;
+  std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;
 
   std::mutex queue_mtx_;
 
