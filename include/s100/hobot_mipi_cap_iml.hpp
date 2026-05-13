@@ -255,6 +255,7 @@ typedef struct {
 
 typedef struct {
   deserial_config_t deserial_attr;
+  deserial_handle_t des_fd;
   std::vector<std::shared_ptr<pipe_contex_t>> pipe;
 } DESERIAL_CONTEX_ST;
 
@@ -369,10 +370,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int isp_online_ynr = 1;
   std::map<int, BOARD_CONFIG_ST> board_config_m_;
   std::map<int, std::vector<std::string>> host_sensor_m_;
-  std::shared_ptr<std::thread> multi_frame_task_ = nullptr;
-  std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
-  std::shared_ptr<std::thread> sync_task_ = nullptr;
-  std::shared_ptr<std::thread> sub_sync_task_ = nullptr;
+  std::vector<std::shared_ptr<std::thread>> task_;
   std::vector<GSML_CONFIG_ST> gsml_config_;
   int isp0_next_slot_id = 4;
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;

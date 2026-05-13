@@ -541,8 +541,12 @@ int HobotMipiCapIml::deInit() {
   if (m_inited_) {
 	m_inited_ = false;
 	
-	for(auto contex : pipe_contex){
+	for(auto contex : pipe_contex) {
+		hbn_camera_destroy(contex->cam_fd);
 		hbn_vflow_destroy(contex->vflow_fd);
+	}
+    for (auto deserial : deserial_contex) {
+		hbn_deserial_destroy(deserial->des_fd);
 	}
 
 	hb_mem_module_close();
@@ -570,14 +574,12 @@ int HobotMipiCapIml::start() {
 	}
 	combine_buff_que_manger_ = std::make_shared<BuffQueueManage>();
 	combine_buff_que_manger_->creat_buff(5);
-	multi_frame_task_ = std::make_shared<std::thread>(
-	std::bind(&HobotMipiCapIml::multiFrameTask, this));
+	task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::multiFrameTask, this)));
 	if (combine_flag_) {
 		for(auto contex : pipe_contex) {
 			v_frame_que_.push_back(std::make_shared<FrameQueue>());
 		}
-		sync_task_ = std::make_shared<std::thread>(
-				std::bind(&HobotMipiCapIml::sync_task, this));
+		task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::sync_task, this)));
 	}
 #if 0
 	if (cap_info_.sub_stream_enable_ == true) {
@@ -588,14 +590,12 @@ int HobotMipiCapIml::start() {
 		}
 		sub_combine_buff_que_manger_ = std::make_shared<BuffQueueManage>();
 		sub_combine_buff_que_manger_->creat_buff(5);
-		sub_multi_frame_task_ = std::make_shared<std::thread>(
-		std::bind(&HobotMipiCapIml::subMultiFrameTask, this));
+		task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::subMultiFrameTask, this)));
 		if (combine_flag_) {
 			for(auto contex : pipe_contex) {
 				v_sub_frame_que_.push_back(std::make_shared<FrameQueue>());
 			}
-			sub_sync_task_ = std::make_shared<std::thread>(
-					std::bind(&HobotMipiCapIml::sub_sync_task, this));
+			task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::sub_sync_task, this)));
 		}
 	}
 #endif
@@ -611,9 +611,40 @@ int HobotMipiCapIml::stop() {
     return -1;
   }
   started_ = false;
+  for (auto task : task_) {
+    task->join();
+  }
+  task_.clear();
+  started_ = false;
   for(auto contex : pipe_contex){
     ret = hbn_vflow_stop(contex->vflow_fd);
     ERR_CON_EQ(ret, 0);
+    if(contex->sensor_config.sensor_type != SENSOR_TYPE_NORMAL) {
+		if (contex->camera_bind_) {
+			hbn_deserial_detach_from_vin(contex->des_fd, (camera_des_link_t)contex->gsml_link_port_);
+			hbn_camera_detach_from_deserial(contex->cam_fd);
+		} else {
+			hbn_camera_detach_from_vin(contex->cam_fd);
+		}
+	}
+	if (contex->gdc_node_handle != 0) {
+		hbn_vnode_close(contex->gdc_node_handle);
+	}
+	if (contex->gdc_node_handle_r != 0) {
+		hbn_vnode_close(contex->gdc_node_handle_r);
+	}
+	if (contex->pym_node_handle != 0) {
+		hbn_vnode_close(contex->pym_node_handle);
+	}
+	if (contex->ynr_node_handle != 0) {
+		hbn_vnode_close(contex->ynr_node_handle);
+	}
+	if (contex->isp_node_handle != 0) {
+		hbn_vnode_close(contex->isp_node_handle);
+	}
+	if (contex->vin_node_handle != 0) {
+		hbn_vnode_close(contex->vin_node_handle);
+	}
   }
   RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "x5_mipi_cam_stop end.\n");
   return 0;

@@ -346,9 +346,34 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 			}
 			auto des_contex = std::make_shared<DESERIAL_CONTEX_ST>();
 			copy_deserial_config(&des_contex->deserial_attr, deserial_cfg->deserial_attr);
-            ret = create_deserial_node(&des_contex->deserial_attr, des_contex->des_fd);
-			ERR_CON_EQ(ret, 0);
 			deserial_contex.push_back(des_contex);
+
+			for (auto link : gsml_cfg.link) {
+				int num = 0;
+				num = vp_get_gmsl_list_number();
+				vp_sensor_config_t *sensor_cfg = nullptr;
+				for (int i = 0; i < num; i++) {
+					printf("index: %d  sensor_name: %-16s \tconfig_file:%s\n", i, vp_gmsl_config_list[i]->sensor_name, vp_gmsl_config_list[i]->config_file);
+					if (strcasecmp(vp_gmsl_config_list[i]->sensor_name, link.sensor_type.c_str()) == 0) {
+						sensor_cfg = vp_gmsl_config_list[i];
+						break;
+					}
+				}
+				if (sensor_cfg == nullptr) {
+					return -1;
+				}
+				if (link.camera_mode == "dual") {
+					vp_deserial_config_update(&des_contex->deserial_attr, sensor_cfg->camera_config, link.link_port);
+					if (link.valid_port2) {
+						vp_deserial_config_update(&des_contex->deserial_attr, sensor_cfg->camera_config, link.link_port2);
+					}
+				} else {
+					vp_deserial_config_update(&des_contex->deserial_attr, sensor_cfg->camera_config, link.link_port);
+				}
+			}
+			deserial_handle_t des_fd = 0;
+			ret = create_deserial_node(&des_contex->deserial_attr, des_fd);
+			ERR_CON_EQ(ret, 0);
 
 
 			for (auto link : gsml_cfg.link) {
@@ -369,8 +394,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					auto pipe_contex_tmp = std::make_shared<pipe_contex_t>();
 					pipe_contex_tmp->cap_info_ = &cap_info_;
 					copy_config(&pipe_contex_tmp->sensor_config, sensor_cfg);
-					pipe_contex_tmp->des_fd = des_contex->des_fd;
-					//vp_deserial_config_update(&des_contex->deserial_attr, pipe_contex_tmp->sensor_config.camera_config, link.link_id);
+					pipe_contex_tmp->des_fd = des_fd;
 					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx;
 					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;
 					if (link.valid_phy && pipe_contex_tmp->sensor_config.camera_config->mipi_cfg) {
@@ -380,78 +404,41 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					pipe_contex_tmp->sensor_config.camera_config->eeprom_addr += pipeline_num;
 					pipe_contex_tmp->sensor_config.camera_config->serial_addr += pipeline_num;
 
-					//pipe_contex_tmp->sensor_config.isp_cfg->isp_attr.channel.slot_id = pipeline_num + 4;
-
-					pipe_contex_tmp->gsml_link_port_ = link.link_id;
+					pipe_contex_tmp->gsml_link_port_ = link.link_port;
 					pipe_contex_tmp->camera_bind_ = true;
-					#if 1
-					if (cap_info_.gdc_enable_) {
-						if (cam_info_.size() > 0 && gdc_bin_buf_.empty()) {
-							sensor_msgs::msg::CameraInfo cal_cam_info;
-							if (cal_tpye_ == 0) {
-								auto gdc_bin = gen_gdc_bin(pipe_contex_tmp->sensor_config.isp_cfg->isp_attr.size.width, pipe_contex_tmp->sensor_config.isp_cfg->isp_attr.size.height,
-										cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_);
-								//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
-								if (gdc_bin) {
-									gdc_bin_buf_.push_back(gdc_bin);
-									pipe_contex_tmp->gdc_bin = gdc_bin;
-									cal_cam_info_.push_back(cal_cam_info);
-								}
-							}
-						} else if (!gdc_bin_buf_.empty()) {
-							pipe_contex_tmp->gdc_bin = gdc_bin_buf_[0];
-						}
-					}
-					if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0) && (gdc_bin_buf_r_.empty())) {
-						int width;
-						int height;
-						if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
-							width = cap_info_.height;
-							height = cap_info_.width;
-						} else {
-							width = cap_info_.width;
-							height = cap_info_.height;
-						}
-						auto gdc_bin = gen_gdc_bin_rotation(width, height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
-						if (gdc_bin) {
-							gdc_bin_buf_r_.push_back(gdc_bin);
-							pipe_contex_tmp->gdc_bin_r = gdc_bin;
-						}
-					} else if (!gdc_bin_buf_r_.empty()) {
-						pipe_contex_tmp->gdc_bin_r = gdc_bin_buf_r_[0];
-					}
-					#endif
 					pipeline_connect_param_init(pipe_contex_tmp);
-					ret = create_and_run_vflow(pipe_contex_tmp);
+					ret = create_and_run_vflow_step1(pipe_contex_tmp);
+					ERR_CON_EQ(ret, 0);
+					#if 1
+					create_gsml_gdc_bin(pipe_contex_tmp);
+					#endif
+					ret = create_and_run_vflow_step2(pipe_contex_tmp);
 					ERR_CON_EQ(ret, 0);		
-					//pipe_contex.push_back(pipe_contex_tmp);
-					//des_contex->pipe.push_back(pipe_contex_tmp);
 					pipeline_num++;
 	
 					auto pipe_contex_tmp_2 = std::make_shared<pipe_contex_t>();
 					pipe_contex_tmp_2->cap_info_ = &cap_info_;
-					//memcpy(&pipe_contex_tmp_2->sensor_config, sensor_cfg, sizeof(vp_sensor_config_t));
 					copy_config(&pipe_contex_tmp_2->sensor_config, sensor_cfg);
-					pipe_contex_tmp_2->des_fd = des_contex->des_fd;
-					pipe_contex_tmp_2->sensor_config.camera_config = pipe_contex_tmp_2->sensor_config.camera_slave_config;
-					auto link_id = link.link_id >= 4 ? 4 : link.link_id + 1;
-					//vp_deserial_config_update(&des_contex->deserial_attr, pipe_contex_tmp_2->sensor_config.camera_config, link_id);
-					pipe_contex_tmp_2->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx;
+					pipe_contex_tmp_2->des_fd = des_fd;
+					//pipe_contex_tmp_2->sensor_config.camera_config = pipe_contex_tmp_2->sensor_config.camera_slave_config;
+					pipe_contex_tmp_2->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx2;
 					pipe_contex_tmp_2->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;
-					if (link.valid_phy && pipe_contex_tmp_2->sensor_config.camera_config->mipi_cfg) {
-						pipe_contex_tmp_2->sensor_config.camera_config->mipi_cfg->rx_attr.phy = link.phy;
+					if (link.valid_phy2 && pipe_contex_tmp_2->sensor_config.camera_config->mipi_cfg) {
+						pipe_contex_tmp_2->sensor_config.camera_config->mipi_cfg->rx_attr.phy = link.phy2;
 					}
 					pipe_contex_tmp_2->gsml_link_port_ = -1;
 					pipe_contex_tmp_2->camera_bind_ = false;
-					if (!gdc_bin_buf_.empty()) {
-						pipe_contex_tmp_2->gdc_bin = gdc_bin_buf_[0];
-					} else if (!gdc_bin_buf_r_.empty()) {
-						pipe_contex_tmp_2->gdc_bin_r = gdc_bin_buf_r_[0];
-					}
-					pipeline_connect_param_init(pipe_contex_tmp_2);
-					ret = create_and_run_vflow(pipe_contex_tmp_2);
+					ret = create_and_run_vflow_step1(pipe_contex_tmp_2);
 					ERR_CON_EQ(ret, 0);
-					if (link.dual_mode == 1) {
+
+					if (pipe_contex_tmp->gdc_bin) {
+						pipe_contex_tmp_2->gdc_bin = pipe_contex_tmp->gdc_bin;
+					} else if (pipe_contex_tmp->gdc_bin_r) {
+						pipe_contex_tmp_2->gdc_bin_r = pipe_contex_tmp->gdc_bin_r;
+					}
+					ret = create_and_run_vflow_step2(pipe_contex_tmp_2);
+					ERR_CON_EQ(ret, 0);
+					if (link.dual_seq == 1) {
 						pipe_contex.push_back(pipe_contex_tmp_2);
 						des_contex->pipe.push_back(pipe_contex_tmp_2);
 					pipe_contex.push_back(pipe_contex_tmp);
@@ -467,7 +454,6 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					auto pipe_contex_tmp = std::make_shared<pipe_contex_t>();
 					pipe_contex_tmp->cap_info_ = &cap_info_;
 					copy_config(&pipe_contex_tmp->sensor_config, sensor_cfg);
-					vp_deserial_config_update(&des_contex->deserial_attr, pipe_contex_tmp->sensor_config.camera_config, link.link_id);
 					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx;
 					pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;
 					if (link.valid_phy && pipe_contex_tmp->sensor_config.camera_config->mipi_cfg) {
@@ -477,50 +463,16 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					pipe_contex_tmp->sensor_config.camera_config->eeprom_addr += pipeline_num;
 					pipe_contex_tmp->sensor_config.camera_config->serial_addr += pipeline_num;
 
-					//pipe_contex_tmp->sensor_config.isp_cfg->isp_attr.channel.slot_id = pipeline_num + 4;
-
 					pipe_contex_tmp->gsml_link_port_ = pipeline_num % 4;
 					pipe_contex_tmp->camera_bind_ = true;
-					#if 1
-					if (cap_info_.gdc_enable_) {
-						if (cam_info_.size() > 0 && gdc_bin_buf_.empty()) {
-							sensor_msgs::msg::CameraInfo cal_cam_info;
-							if (cal_tpye_ == 0) {
-								auto gdc_bin = gen_gdc_bin(pipe_contex_tmp->sensor_config.isp_cfg->isp_attr.size.width, pipe_contex_tmp->sensor_config.isp_cfg->isp_attr.size.height,
-										cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_);
-								//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
-								if (gdc_bin) {
-									gdc_bin_buf_.push_back(gdc_bin);
-									pipe_contex_tmp->gdc_bin = gdc_bin;
-									cal_cam_info_.push_back(cal_cam_info);
-								}
-							}
-						} else if (!gdc_bin_buf_.empty()) {
-							pipe_contex_tmp->gdc_bin = gdc_bin_buf_[0];
-						}
-					}
-					if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0) && (gdc_bin_buf_r_.empty())) {
-						int width;
-						int height;
-						if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
-							width = cap_info_.height;
-							height = cap_info_.width;
-						} else {
-							width = cap_info_.width;
-							height = cap_info_.height;
-						}
-						auto gdc_bin = gen_gdc_bin_rotation(width, height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
-						if (gdc_bin) {
-							gdc_bin_buf_r_.push_back(gdc_bin);
-							pipe_contex_tmp->gdc_bin_r = gdc_bin;
-						}
-					} else if (!gdc_bin_buf_r_.empty()) {
-						pipe_contex_tmp->gdc_bin_r = gdc_bin_buf_r_[0];
-					}
-					#endif
 					pipeline_connect_param_init(pipe_contex_tmp);
-					// ret = create_and_run_vflow(pipe_contex_tmp);
-					// ERR_CON_EQ(ret, 0);		
+					ret = create_and_run_vflow_step1(pipe_contex_tmp);
+					ERR_CON_EQ(ret, 0);
+					#if 1
+					create_gsml_gdc_bin(pipe_contex_tmp);
+					#endif
+					ret = create_and_run_vflow_step2(pipe_contex_tmp);
+					ERR_CON_EQ(ret, 0);
 					pipe_contex.push_back(pipe_contex_tmp);
 					des_contex->pipe.push_back(pipe_contex_tmp);
 					pipeline_num++;					
@@ -533,28 +485,9 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 
 	} else {
 		deserial_handle_t des_fd;
-		int des_num = vp_get_deserial_list_number();
-		vp_deserial_config_t *deserial_cfg = nullptr;
-		for (int i = 0; i < des_num; i++) {
-			if (strcasecmp(vp_deserial_config_list[i]->sensor_name, "max96712") == 0) {
-				deserial_cfg = vp_deserial_config_list[i];
-				break;
-			}
-		}
-		if (deserial_cfg == nullptr) {
-			return -1;
-		}
-		
-		auto des_contex = std::make_shared<DESERIAL_CONTEX_ST>();
-		copy_deserial_config(&des_contex->deserial_attr, deserial_cfg->deserial_attr);
-		ret = create_deserial_node(&des_contex->deserial_attr, des_contex->des_fd);
-		ERR_CON_EQ(ret, 0);
-        deserial_contex.push_back(des_contex);
-
 		auto contex_tmp = std::make_shared<pipe_contex_t>();
 		pipe_contex.push_back(contex_tmp);
 		pipe_contex[0]->cap_info_ = &cap_info_;
-		pipe_contex[0]->des_fd = des_contex->des_fd;
 
 		int num = 0;
 		num = vp_get_gmsl_list_number();
@@ -572,6 +505,11 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 
 		pipe_contex[0]->camera_bind_ = true;
 		copy_config(&pipe_contex[0]->sensor_config, sensor_cfg);
+
+		ret = create_deserial_node(pipe_contex[0]->sensor_config.deserial_attr, des_fd);
+		ERR_CON_EQ(ret, 0);
+
+		pipe_contex[0]->des_fd = des_fd;
 		pipe_contex[0]->gsml_link_port_ = cap_info_.link_port_;
 		pipe_contex[0]->sensor_config.camera_config->addr += (uint8_t)(1 + cap_info_.link_port_);
 		pipe_contex[0]->sensor_config.camera_config->serial_addr += (uint8_t)(1  + cap_info_.link_port_);
@@ -579,23 +517,12 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 		pipe_contex[0]->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = cap_info_.link_port_;
 
 		pipeline_connect_param_init(pipe_contex[0]);
-		//ret = create_and_run_vflow(pipe_contex[0]);
-		//ERR_CON_EQ(ret, 0);		
+		ret = create_and_run_vflow_step1(pipe_contex[0]);
+		ERR_CON_EQ(ret, 0);
+		create_gsml_gdc_bin(pipe_contex[0]);
+		ret = create_and_run_vflow_step2(pipe_contex[0]);
+		ERR_CON_EQ(ret, 0);
 	}
-
-	// for (auto deserial : deserial_contex) {
-		// 	ret = create_deserial_node(&deserial->deserial_attr, deserial->des_fd);
-		// 	ERR_CON_EQ(ret, 0);
-		// 	for (auto contex : deserial->pipe) {
-			// 		contex->des_fd = deserial->des_fd;
-	// 	}
-	// }
-	// sleep(1);
-
-	// for (auto contex : pipe_contex) {
-		// 	ret = create_and_run_vflow(contex);
-		// 	ERR_CON_EQ(ret, 0);		
-	// }
 	if (!pipe_contex.empty()) {
 		cap_info_.sensor_type = pipe_contex[0]->sensor_config.sensor_name;
 	} else {
@@ -682,7 +609,7 @@ int HobotMipiCapIml::stop() {
       "x5 camera isn't started");
     return -1;
   }
-started_ = false;
+  started_ = false;
   for (auto task : task_) {
     task->join();
   }
@@ -691,7 +618,7 @@ started_ = false;
   for(auto contex : pipe_contex){
     ret = hbn_vflow_stop(contex->vflow_fd);
     ERR_CON_EQ(ret, 0);
-if(contex->sensor_config.sensor_type != SENSOR_TYPE_NORMAL) {
+    if(contex->sensor_config.sensor_type != SENSOR_TYPE_NORMAL) {
 		if (contex->camera_bind_) {
 			hbn_deserial_detach_from_vin(contex->des_fd, (camera_des_link_t)contex->gsml_link_port_);
 			hbn_camera_detach_from_deserial(contex->cam_fd);
@@ -2027,6 +1954,262 @@ int HobotMipiCapIml::create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_co
 	return 0;
 }
 
+int HobotMipiCapIml::create_and_run_vflow_step1(std::shared_ptr<pipe_contex_t> pipe_contex) {
+	if (pipe_contex == nullptr) {
+		return -1;
+	}
+	pipe_contex->stream_group = 0;
+	int32_t ret = 0;
+
+    if (pipe_contex->sensor_config.sensor_type == SENSOR_TYPE_NORMAL) {
+		//pipe_contex->sensor_config.isp_attr->input_mode = 2;
+		if (pipe_contex->cap_info_->lpwm_enable_) {
+			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+			int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
+			pipe_contex->sensor_config.camera_config->sensor_mode = 6;
+			//pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.enable = 1;
+			for (auto& attr : pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.lpwm_chn_attr) {
+				attr.period = fps_rate;
+				attr.enable = 1;
+			}
+		} else {
+			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+			pipe_contex->sensor_config.camera_config->sensor_mode = 1;
+			for (auto& attr : pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.lpwm_chn_attr) {
+				attr.enable = 0;
+			}
+		}
+	} else {
+		//	pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
+		//	pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+	}
+	// 创建pipeline中的每个node
+	ret = create_camera_node(pipe_contex, pipe_contex->gsml_link_port_);
+	ERR_CON_EQ(ret, 0);
+
+	int scene_type = pipe_contex->sensor_type_;
+	pipeline_channel_info_t *ch_info = &pipe_contex->pipe_info_;
+
+	if(scene_type == PIPELINE_SCENE_ISP_ONLY){
+		ret = create_vin_node(pipe_contex, ch_info->is_online_vin_isp, pipe_contex->gsml_link_port_);
+		ERR_CON_EQ(ret, 0);
+	}else if(scene_type == PIPELINE_SCENE_ISP_YNR){
+		ret = create_vin_node(pipe_contex, ch_info->is_online_vin_isp, pipe_contex->gsml_link_port_);
+		ERR_CON_EQ(ret, 0);
+	}else{
+		ret = create_vin_node(pipe_contex, ch_info->is_online_vin_pym, pipe_contex->gsml_link_port_);
+		ERR_CON_EQ(ret, 0);
+	}
+
+	// 2. 添加node 到 flow
+	ret = hbn_vflow_create(&pipe_contex->vflow_fd);
+	ERR_CON_EQ(ret, 0);
+
+	ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+							pipe_contex->vin_node_handle);
+	ERR_CON_EQ(ret, 0);
+
+	if(pipe_contex->sensor_config.sensor_type != SENSOR_TYPE_NORMAL) {
+		//ret = create_deserial_node(pipe_contex);
+		//ERR_CON_EQ(ret, 0);
+		if (pipe_contex->camera_bind_) {
+			ret = hbn_camera_attach_to_deserial(pipe_contex->cam_fd, pipe_contex->des_fd, (camera_des_link_t)pipe_contex->gsml_link_port_);
+			ERR_CON_EQ(ret, 0);
+			ret = hbn_deserial_attach_to_vin(pipe_contex->des_fd, (camera_des_link_t)pipe_contex->gsml_link_port_, pipe_contex->vin_node_handle);
+			ERR_CON_EQ(ret, 0);
+		} else {
+			//ret = hbn_camera_attach_to_vin(pipe_contex->cam_fd, pipe_contex->vin_node_handle);
+			//ERR_CON_EQ(ret, 0);
+		}
+	}else {
+		ret = hbn_camera_attach_to_vin(pipe_contex->cam_fd,
+							pipe_contex->vin_node_handle);
+		ERR_CON_EQ(ret, 0);
+	}
+
+	return 0;
+}
+
+
+int HobotMipiCapIml::create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> pipe_contex) {
+	if (pipe_contex == nullptr) {
+		return -1;
+	}
+	pipe_contex->stream_group = 0;
+	int32_t ret = 0;
+
+	int scene_type = pipe_contex->sensor_type_;
+	pipeline_channel_info_t *ch_info = &pipe_contex->pipe_info_;
+
+	if(scene_type == PIPELINE_SCENE_ISP_ONLY){
+		ret = create_isp_node(pipe_contex, ch_info->isp_hw_id, ch_info->isp_slot_id, ch_info->isp_mode, ch_info->is_online_isp_pym);
+		ERR_CON_EQ(ret, 0);
+	}else if(scene_type == PIPELINE_SCENE_ISP_YNR){
+		ret = create_isp_node(pipe_contex, ch_info->isp_hw_id, ch_info->isp_slot_id, ch_info->isp_mode, ch_info->is_online_isp_ynr);
+		ERR_CON_EQ(ret, 0);
+
+		ret = create_ynr_node(pipe_contex, ch_info->ynr_slot_id, ch_info->ynr_mode); //1: Manaul 模式  2: 全 online模式
+		ERR_CON_EQ(ret, 0);
+	}else{
+		//do nothing
+	}
+
+	if (pipe_contex->sensor_config.pym_cfg) {
+		if (cap_info_.gdc_enable_) {
+			create_gdc_node(pipe_contex);
+		}
+		create_gdc_node_r(pipe_contex);
+		ret = create_pym_node(pipe_contex, ch_info->pym_hw_id, ch_info->pym_slot_id, ch_info->pym_mode);
+		ERR_CON_EQ(ret, 0);
+	}
+	if(scene_type == PIPELINE_SCENE_ISP_ONLY){
+		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+							pipe_contex->isp_node_handle);
+		ERR_CON_EQ(ret, 0);
+	}else if(scene_type == PIPELINE_SCENE_ISP_YNR){
+		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+							pipe_contex->isp_node_handle);
+		ERR_CON_EQ(ret, 0);
+		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+								pipe_contex->ynr_node_handle);
+		ERR_CON_EQ(ret, 0);
+	}else{
+		//do nothing
+	}
+
+	if (pipe_contex->sensor_config.pym_cfg) {
+		if (pipe_contex->gdc_init_valid_r == 1) {
+			ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+								pipe_contex->gdc_node_handle_r);
+			ERR_CON_EQ(ret, 0);
+		}
+		if (pipe_contex->gdc_init_valid == 1) {
+			ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+								pipe_contex->gdc_node_handle);
+			ERR_CON_EQ(ret, 0);
+		}
+
+		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+								pipe_contex->pym_node_handle);
+		ERR_CON_EQ(ret, 0);
+		// 3. 绑定 Flow 中的Node
+		if(scene_type == PIPELINE_SCENE_ISP_BYPASS){
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+									pipe_contex->vin_node_handle,
+									ch_info->is_online_vin_pym,
+									pipe_contex->pym_node_handle,
+									0);
+			ERR_CON_EQ(ret, 0);
+
+		}else if(scene_type == PIPELINE_SCENE_ISP_ONLY){
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+									pipe_contex->vin_node_handle,
+									ch_info->is_online_vin_isp,
+									pipe_contex->isp_node_handle,
+									0);
+			ERR_CON_EQ(ret, 0);
+
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->isp_node_handle,
+							ch_info->is_online_isp_pym,
+							pipe_contex->pym_node_handle,
+							0);
+			ERR_CON_EQ(ret, 0);
+
+		}else if(scene_type == PIPELINE_SCENE_ISP_YNR){
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+									pipe_contex->vin_node_handle,
+									ch_info->is_online_vin_isp,
+									pipe_contex->isp_node_handle,
+									0);
+			ERR_CON_EQ(ret, 0);
+
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->isp_node_handle,
+							ch_info->is_online_isp_ynr,
+							pipe_contex->ynr_node_handle,
+							0);
+			ERR_CON_EQ(ret, 0);
+
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->ynr_node_handle,
+							ch_info->is_online_ynr_pym,
+							pipe_contex->pym_node_handle,
+							0);
+			ERR_CON_EQ(ret, 0);
+
+		}else{
+			//error
+		}
+		pipe_contex->stream_handle = pipe_contex->pym_node_handle;
+		pipe_contex->stream_group = 1;
+
+
+		if (pipe_contex->gdc_init_valid_r == 1) {
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc rotation.\n");
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+								pipe_contex->pym_node_handle,
+								0,
+								pipe_contex->gdc_node_handle_r,
+								0);
+			ERR_CON_EQ(ret, 0);
+			pipe_contex->stream_handle = pipe_contex->gdc_node_handle_r;
+			pipe_contex->stream_group = 0;
+		} else if (pipe_contex->gdc_init_valid == 1) {
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc cal.\n");
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+								pipe_contex->pym_node_handle,
+								0,
+								pipe_contex->gdc_node_handle,
+								0);
+			ERR_CON_EQ(ret, 0);
+			pipe_contex->stream_handle = pipe_contex->gdc_node_handle;
+			pipe_contex->stream_group = 0;
+		} else {
+		
+		}	
+	} else {
+		// 3. 绑定 Flow 中的Node
+		if(scene_type == PIPELINE_SCENE_ISP_BYPASS){
+			pipe_contex->stream_handle = pipe_contex->vin_node_handle;
+			pipe_contex->stream_group = 0;
+
+		}else if(scene_type == PIPELINE_SCENE_ISP_ONLY){
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+									pipe_contex->vin_node_handle,
+									ch_info->is_online_vin_isp,
+									pipe_contex->isp_node_handle,
+									0);
+			ERR_CON_EQ(ret, 0);
+			pipe_contex->stream_handle = pipe_contex->isp_node_handle;
+			pipe_contex->stream_group = 1;
+		}else if(scene_type == PIPELINE_SCENE_ISP_YNR){
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+									pipe_contex->vin_node_handle,
+									ch_info->is_online_vin_isp,
+									pipe_contex->isp_node_handle,
+									0);
+			ERR_CON_EQ(ret, 0);
+
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->isp_node_handle,
+							ch_info->is_online_isp_ynr,
+							pipe_contex->ynr_node_handle,
+							0);
+			ERR_CON_EQ(ret, 0);
+			pipe_contex->stream_handle = pipe_contex->ynr_node_handle;
+			pipe_contex->stream_group = 0;
+		}else{
+			//error
+		}		
+	}	
+
+	return 0;
+}
+
+
 void HobotMipiCapIml::listMipiHost(std::vector<int> &mipi_hosts, 
     std::vector<int> &started, std::vector<int> &stoped) {
   std::vector<int> host;
@@ -2103,13 +2286,39 @@ bool HobotMipiCapIml::read_gsml_config(std::string gsml_cfg_file) {
 		for (unsigned int j = 0; j < links.size(); j++) {
 			const Json::Value& link = links[j];
 			LINK_CONFIG_ST link_config;
-			link_config.link_id = link["link_port"].asInt();
 			link_config.sensor_type = link["sensor"].asString();
 			link_config.camera_mode = link["camera_mode"].asString();
 			link_config.dual_mode = link["dual_mode"].asInt();
+			link_config.link_port = link["link_port"].asInt();
 			link_config.mipi_rx = link["mipi_rx"].asInt();
-			link_config.valid_phy = link["valid_phy"].asBool();
+			if (link.isMember("dual_seq")) {
+				link_config.dual_seq = link["dual_seq"].asInt();
+			} else {
+				link_config.dual_seq = 0;
+			}
+			if (link.isMember("link_port2")) {
+				link_config.link_port2 = link["link_port2"].asInt();
+				link_config.valid_port2 = true;
+			} else {
+				link_config.valid_port2 = false;
+			}
+			if (link.isMember("mipi_rx2")) {
+				link_config.mipi_rx2 = link["mipi_rx2"].asInt();
+			} else {
+				link_config.mipi_rx2 = 0;
+			}
+			if (link.isMember("phy")) {
 			link_config.phy = link["phy"].asInt();
+				link_config.valid_phy = true;
+			} else {
+				link_config.valid_phy = false;
+			}
+			if (link.isMember("phy2")) {
+				link_config.phy2 = link["phy2"].asInt();
+				link_config.valid_phy2 = true;
+			} else {
+				link_config.valid_phy2 = false;
+			}
 			gsml_config.link.push_back(link_config);
 		}
 		gsml_config_.push_back(gsml_config);
@@ -3189,6 +3398,49 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::gen_gdc_bin_json(std::string file
 #else
 	return nullptr;
 #endif
+}
+
+int HobotMipiCapIml::create_gsml_gdc_bin(std::shared_ptr<pipe_contex_t> pipe_contex) {
+	if (pipe_contex == nullptr) {
+		return -1;
+	}
+	if (cap_info_.gdc_enable_) {
+		if (cam_info_.size() > 0 && gdc_bin_buf_.empty()) {
+			sensor_msgs::msg::CameraInfo cal_cam_info;
+			if (cal_tpye_ == 0) {
+				auto gdc_bin = gen_gdc_bin(pipe_contex->sensor_config.isp_cfg->isp_attr.size.width, pipe_contex->sensor_config.isp_cfg->isp_attr.size.height,
+						cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_);
+				//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
+				if (gdc_bin) {
+					gdc_bin_buf_.push_back(gdc_bin);
+					pipe_contex->gdc_bin = gdc_bin;
+					cal_cam_info_.push_back(cal_cam_info);
+				}
+			}
+		} else if (!gdc_bin_buf_.empty()) {
+			pipe_contex->gdc_bin = gdc_bin_buf_[0];
+		}
+	}
+	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0) && (gdc_bin_buf_r_.empty())) {
+		int width;
+		int height;
+		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+			width = cap_info_.height;
+			height = cap_info_.width;
+		} else {
+			width = cap_info_.width;
+			height = cap_info_.height;
+		}
+		auto gdc_bin = gen_gdc_bin_rotation(width, height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+		if (gdc_bin) {
+			gdc_bin_buf_r_.push_back(gdc_bin);
+			pipe_contex->gdc_bin_r = gdc_bin;
+		}
+	} else if (!gdc_bin_buf_r_.empty()) {
+		pipe_contex->gdc_bin_r = gdc_bin_buf_r_[0];
+	}
+
+	return 0;
 }
 
 bool HobotMipiCapIml::readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize) {
