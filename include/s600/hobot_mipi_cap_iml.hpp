@@ -101,7 +101,36 @@ typedef struct pipe_contex_s {
   MIPI_CAP_INFO_ST *cap_info_;
   pipeline_channel_info_t pipe_info_;
   pipeline_usage_scene_type_t sensor_type_;
+  int gsml_link_port_; // 0~3
+  bool camera_bind_ = true;
 }pipe_contex_t;
+
+typedef struct {
+  std::string sensor_type; //must
+  std::string camera_mode; //must,"single"： 每个连接输出一个sensor的数据； "dual":每个连接输出两个sensor的数据。
+  int dual_mode; //must
+  int link_port; //must
+  int mipi_rx;//must
+  int dual_seq; //option
+  bool valid_phy; //option
+  int phy; //option
+  bool valid_port2; //option
+  int link_port2; //when dual mode is must
+  int mipi_rx2; //when dual mode is must
+  bool valid_phy2; //option
+  int phy2; //option
+} LINK_CONFIG_ST;
+
+typedef struct {
+  std::string deserial_name;
+  std::vector<LINK_CONFIG_ST> link;
+} GSML_CONFIG_ST;
+
+typedef struct {
+  deserial_config_t deserial_attr;
+  deserial_handle_t des_fd;
+  std::vector<std::shared_ptr<pipe_contex_t>> pipe;
+} DESERIAL_CONTEX_ST;
 
 class HobotMipiCapIml : public HobotMipiCap {
  public:
@@ -116,6 +145,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   // 输入参数：info--sensor的配置参数。
   // 返回值：0，初始化成功；-1，初始化失败。
   int init(MIPI_CAP_INFO_ST &info);
+  int mipi_init(MIPI_CAP_INFO_ST &info);
+  int gsml_init(MIPI_CAP_INFO_ST &info);
 
   // 反初始化相关sensor的VIO pipeline ；
   // 返回值：0，反初始化成功；-1，反初始化失败。
@@ -162,15 +193,18 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
   int getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
-  int create_and_run_vflow(pipe_contex_t *pipe_contex);
-  int create_pym_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int pym_mode);
-  int create_isp_node(pipe_contex_t *pipe_contex, int hw_id, int slot_id, int mode, int is_online);
-  int create_ynr_node(pipe_contex_t *pipe_contex, int slot_id, int work_mode);
-  int create_vin_node(pipe_contex_t *pipe_contex, int is_online, int link_port);
-  int create_gdc_node(pipe_contex_t *pipe_contex);
-  int create_gdc_node_r(pipe_contex_t *pipe_contex);
-  int create_deserial_node(pipe_contex_t *pipe_contex);
-  int create_camera_node(pipe_contex_t *pipe_contex, int link_port);
+  int create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_contex);
+  int create_and_run_vflow_step1(std::shared_ptr<pipe_contex_t> pipe_contex);
+  int create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> pipe_contex);
+  int create_pym_node(std::shared_ptr<pipe_contex_t> pipe_contex, int hw_id, int slot_id, int pym_mode);
+  int create_isp_node(std::shared_ptr<pipe_contex_t> pipe_contex, int hw_id, int slot_id, int mode, int is_online);
+  int create_ynr_node(std::shared_ptr<pipe_contex_t> pipe_contex, int slot_id, int work_mode);
+  int create_vin_node(std::shared_ptr<pipe_contex_t> pipe_contex, int is_online, int link_port);
+  int create_gdc_node(std::shared_ptr<pipe_contex_t> pipe_contex);
+  int create_gdc_node_r(std::shared_ptr<pipe_contex_t> pipe_contex);
+  int create_deserial_node(std::shared_ptr<pipe_contex_t> pipe_contex);
+  int create_deserial_node(deserial_config_t *deserial_attr, deserial_handle_t &des_fd);
+  int create_camera_node(std::shared_ptr<pipe_contex_t> pipe_contex, int link_port);
   std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height,
 		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
@@ -181,7 +215,10 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
   std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
 
-  void pipeline_connect_param_init(pipe_contex_t *pipe_contex);
+  int create_gsml_gdc_bin(std::shared_ptr<pipe_contex_t> pipe_contex);
+  bool read_gsml_config(std::string gsml_cfg_file);
+
+  void pipeline_connect_param_init(std::shared_ptr<pipe_contex_t> pipe_contex);
 
   // 计算针孔模型下校正后内参对应的FOV（角度） K_rect 校正后的相机内参矩阵，校正后的图像高度和宽度
   std::pair<double, double> calculatePinholeFOV(const cv::Mat &K_rect, int width, int height);
@@ -216,8 +253,6 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool m_inited_ = false;
   bool started_ = false;
   bool combine_flag_ = false;
-  //x3_vin_info_t vin_info_;
-  //x3_vps_infos_t vps_infos_;  // vps的配置，支持多个vps group
   int vin_enable_ = true;
   int vps_enable_ = true;
   MIPI_CAP_INFO_ST cap_info_;
@@ -232,18 +267,13 @@ class HobotMipiCapIml : public HobotMipiCap {
   int isp_online_ynr = 1;
     std::map<int, BOARD_CONFIG_ST> board_config_m_;
   std::map<int, std::vector<std::string>> host_sensor_m_;
-  std::shared_ptr<std::thread> multi_frame_task_ = nullptr;
-  std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
-
-  std::shared_ptr<std::thread> sync_task_ = nullptr;
-  std::shared_ptr<std::thread> sub_sync_task_ = nullptr;
-
+  std::vector<std::shared_ptr<std::thread>> task_;
+  std::vector<GSML_CONFIG_ST> gsml_config_;
   int isp0_next_slot_id = 4;
-
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
-  std::vector<Imu_params> imu_info_;
+  std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_r_;
   std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;
 
   std::mutex queue_mtx_;
@@ -263,13 +293,11 @@ class HobotMipiCapIml : public HobotMipiCap {
   hbn_vflow_handle_t g_vflow_fd[PIPES_TOTAL] = {0};
   int64_t g_cam_fd[PIPES_TOTAL] = {-1};
   hbn_vnode_handle_t pym_node_handle[PIPES_TOTAL] = {0};
-
-  std::vector<pipe_contex_t> pipe_contex;
-
+  std::vector<std::shared_ptr<pipe_contex_t>> pipe_contex;
+  std::vector<std::shared_ptr<DESERIAL_CONTEX_ST>> deserial_contex;
   std::vector<std::shared_ptr<BuffQueueManage>> v_buff_que_manger_;
   std::shared_ptr<BuffQueueManage> combine_buff_que_manger_;
   std::vector<std::shared_ptr<FrameQueue>> v_frame_que_;
-
   std::vector<std::shared_ptr<BuffQueueManage>> v_sub_buff_que_manger_;
   std::shared_ptr<BuffQueueManage> sub_combine_buff_que_manger_;
   std::vector<std::shared_ptr<FrameQueue>> v_sub_frame_que_;

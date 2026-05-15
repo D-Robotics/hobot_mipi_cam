@@ -211,6 +211,7 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   cap_info_.frame_ts_type_ = nodePare_->frame_ts_type_;
   cap_info_.link_type_ = nodePare_->link_type_;
   cap_info_.link_port_ = nodePare_->link_port_;
+  cap_info_.gsml_cfg_file_ = nodePare_->gsml_cfg_file_;
   cap_info_.cal_alpha_ = nodePare_->cal_alpha_;
   cap_info_.stream_mode_ = nodePare_->stream_mode_;
   cap_info_.sub_stream_enable_ = nodePare_->sub_stream_enable_;
@@ -245,6 +246,7 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   nodePare_->image_height_ = cap_info_.height;
   nodePare_->video_device_name_ = cap_info_.sensor_type;
   nodePare_->sub_stream_enable_ = cap_info_.sub_stream_enable_;
+  nodePare_->device_mode_ = cap_info_.device_mode_;
 
   RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
     "[%s]->cap %s init success.\r\n", __func__, cap_info_.sensor_type.c_str());

@@ -1,0 +1,19 @@
+{
+  "deserial": [
+    {
+      "name": "max96712",
+      "camera_num": 2,
+      "link": [
+        {
+          "link_port": 0,
+          "sensor": "gsml_sc132gs",
+          "camera_mode": "dual",
+          "dual_mode": 0,
+          "mipi_rx": 4,
+          "valid_phy": true,
+          "phy": 0
+        }
+      ]
+    }
+  ]
+}
