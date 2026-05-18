@@ -248,6 +248,7 @@ class HobotMipiCapIml : public HobotMipiCap {
       double &actual_hfov_l, double &actual_hfov_r,
       double tol = 3.0,
       int max_iter = 10);
+  void deserial_config_update(deserial_config_t *deserial, const camera_config_t *camera_config, int link_port);
   // -----------------------------------------------------------------------------------------------------
 
   bool m_inited_ = false;

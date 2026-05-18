@@ -368,12 +368,12 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					return -1;
 				}
 				if (link.camera_mode == "dual") {
-					vp_deserial_config_update(&des_contex->deserial_attr, sensor_cfg->camera_config, link.link_port);
+					deserial_config_update(&des_contex->deserial_attr, sensor_cfg->camera_config, link.link_port);
 					if (link.valid_port2) {
-						vp_deserial_config_update(&des_contex->deserial_attr, sensor_cfg->camera_config, link.link_port2);
+						deserial_config_update(&des_contex->deserial_attr, sensor_cfg->camera_config, link.link_port2);
 					}
 				} else {
-					vp_deserial_config_update(&des_contex->deserial_attr, sensor_cfg->camera_config, link.link_port);
+					deserial_config_update(&des_contex->deserial_attr, sensor_cfg->camera_config, link.link_port);
 				}
 			}
 			deserial_handle_t des_fd = 0;
@@ -3755,6 +3755,21 @@ bool HobotMipiCapIml::computeFisheyeStereoParamsFromFOV(
 					"Not fully converged: fov_scale=%.6f, HFOV=[%.2f°, %.2f°], target=%.2f°, diff=%.2f°",
 					out_fov_scale, actual_hfov_l, actual_hfov_r, target_hfov, best_diff);
 	return false;
+}
+
+void HobotMipiCapIml::deserial_config_update(deserial_config_t *deserial, const camera_config_t *camera_config, int link_port) {
+	if (!deserial || !camera_config) {
+		return;
+	}
+	snprintf(deserial->link_desp[link_port],
+			sizeof(deserial->link_desp[link_port]),
+			"%.32s:%d@%d",
+			camera_config->name, camera_config->extra_mode, camera_config->config_index);
+
+	if(camera_config->sensor_mode == 6){
+		deserial->gpio_mfp[link_port] = 0x05;
+	}
+	return;
 }
 
 }  // namespace mipi_cam
