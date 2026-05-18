@@ -205,12 +205,12 @@ int icm42688::read_data(ImuData_T *data) {
         return -1;
     }
 
-    data->ax = sample.accel_x * accel_scale_ * gravity;
-    data->ay = sample.accel_y * accel_scale_ * gravity;
-    data->az = sample.accel_z * accel_scale_ * gravity;
-    data->gx = sample.gyro_x * gyro_scale_ * M_PI / 180.0;
-    data->gy = sample.gyro_y * gyro_scale_ * M_PI / 180.0;
-    data->gz = sample.gyro_z * gyro_scale_ * M_PI / 180.0;
+    data->ax = sample.accel_x * accel_scale_;
+    data->ay = sample.accel_y * accel_scale_;
+    data->az = sample.accel_z * accel_scale_;
+    data->gx = sample.gyro_x * gyro_scale_;
+    data->gy = sample.gyro_y * gyro_scale_;
+    data->gz = sample.gyro_z * gyro_scale_;
     data->timestamp = sample.timestamp;
 
     // ICM42688没有磁力计
