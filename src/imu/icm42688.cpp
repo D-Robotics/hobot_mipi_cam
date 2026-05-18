@@ -133,6 +133,10 @@ int icm42688::deinit() {
 
 // 配置 IIO 设备：写入 ODR，使能通道，设置缓冲区长度，启动缓冲区
 bool icm42688::configure_device(double odr) {
+    if (!write_sysfs_int(sysfs_root_ + "/buffer/enable", 0)) {
+        return false;
+    }
+    usleep(100*1000);
     // 1. 设置采样频率（ODR）
     std::string freq_path = sysfs_root_ + "/sampling_frequency";
     if (!write_sysfs_double(freq_path, odr)) {
