@@ -17,6 +17,11 @@
 
 #include <vector>
 #include <string>
+#include <map>
+#include <memory>
+#include <queue>
+#include <thread>
+#include <mutex>
 #if defined(PLATFORM_S100) || defined(PLATFORM_S600)
 #include "hb_gdc_cfg.h"
 #include "gdc_cfg.h"
@@ -76,23 +81,35 @@ class HobotMipiCap {
   // 获取cap的info信息；
   // 输入输出参数：MIPI_CAP_INFO_ST的结构信息。
   // 返回值：0，初始化成功；-1，初始化失败。
-  virtual int getCapInfo(MIPI_CAP_INFO_ST &info) = 0;
+  virtual int getCapInfo(MIPI_CAP_INFO_ST &info) {
+    info = cap_info_;
+    return 0;
+  }
+
+  virtual int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
+    cam_info_ = info;
+    return 0;
+  }
 
   virtual std::vector<sensor_msgs::msg::CameraInfo>* getCalCamInfo() {
-    return nullptr;
+    return &cal_cam_info_;
   }
 
   virtual std::vector<sensor_msgs::msg::CameraInfo>* getCalCamInfoSub()
   {
-    return nullptr;
+    return &cal_cam_info_sub_;
   }
 
-  virtual int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
-    return -1;
-  }
 #if 1
  protected:
   MIPI_CAP_INFO_ST cap_info_;
+  std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
+  std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
+  std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_sub_;
+
+  std::shared_ptr<std::thread> sync_task_ = nullptr;
+  std::shared_ptr<std::thread> sub_sync_task_ = nullptr;
+
   std::vector<std::shared_ptr<BuffQueueManage>> v_buff_que_manger_;
   std::shared_ptr<BuffQueueManage> combine_buff_que_manger_;
   std::vector<std::shared_ptr<FrameQueue>> v_frame_que_;
@@ -106,15 +123,15 @@ class HobotMipiCap {
   virtual void sub_sync_task();
   virtual bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
 
-  std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
-  std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height, int final_width, int final_height, 
+  virtual std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
+  virtual std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height, 
 		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
     double rotation = 0.0, double cal_rotate = 0.0, double cla_alpha = 0.0, bool pre_rotation = false);
-  std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin(int gdc_width, int gdc_height,int out_width, int out_height,
+  virtual std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin(int gdc_width, int gdc_height,int out_width, int out_height,
        sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info,
        double rotation = 0.0, double cal_rotate = 0.0, double cla_alpha = 0.0, bool pre_rotation = false);
-  std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
-  std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
+  virtual std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
+  virtual std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
 
   virtual std::pair<double, double> calculatePinholeFOV(const cv::Mat& K_rect, int width, int hight);
   virtual double computeInitAlpha(double target_hfov, double fov_min, double fov_max);
