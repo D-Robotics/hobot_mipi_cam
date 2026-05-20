@@ -152,20 +152,6 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   std::shared_ptr<VideoBuffer> getFrame(std::string channel);
 
-  // 获取cap的info信息；
-  // 输入输出参数：MIPI_CAP_INFO_ST的结构信息。
-  // 返回值：0，初始化成功；-1，初始化失败。
-  int getCapInfo(MIPI_CAP_INFO_ST &info);
-
-  std::vector<sensor_msgs::msg::CameraInfo>* getCalCamInfo() {
-    return &cal_cam_info_;
-  }
-
-  int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
-    cam_info_ = info;
-    return 0;
-  }
-
  protected:
   //遍历初始话的mipi host.
   void listMipiHost(std::vector<int> &mipi_hosts, std::vector<int> &started,
@@ -178,9 +164,6 @@ class HobotMipiCapIml : public HobotMipiCap {
   int selectSensor(std::string &sensor, int &host, int &i2c_bus);
 
   void multiFrameTask();
-  void sync_task();
-  void sub_sync_task();
-  bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
   int getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
   int create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_contex);
@@ -223,8 +206,6 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<std::shared_ptr<std::thread>> task_;
   std::vector<GSML_CONFIG_ST> gsml_config_;
   int isp0_next_slot_id = 4;
-  std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
-  std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
 
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_r_;

@@ -178,7 +178,7 @@ int HobotMipiCapIml::mipi_init(MIPI_CAP_INFO_ST &info) {
 			}
 		}
 			auto gdc_bin = gen_gdc_bin_stereo(sensor_cfg->isp_cfg->isp_attr.size.width, sensor_cfg->isp_cfg->isp_attr.size.height,
-					cap_info_.width, cap_info_.height, cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_);
+					cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_);
 
 			if (gdc_bin.size() == 2) {
 				gdc_bin_buf_.push_back(gdc_bin[0]);
@@ -929,11 +929,6 @@ void HobotMipiCapIml::multiFrameTask() {
 	}
 	return;
   }
-
-int HobotMipiCapIml::getCapInfo(MIPI_CAP_INFO_ST &info) {
-  info = cap_info_;
-  return 0;
-}
 
 int HobotMipiCapIml::create_camera_node(std::shared_ptr<pipe_contex_t> pipe_contex, int link_port) {
 	int32_t ret = 0;
