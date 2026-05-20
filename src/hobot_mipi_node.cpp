@@ -653,6 +653,40 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
   }
 }
 
+namespace {
+
+// EEPROM / Kalibr store T_cam_imu in camera RDF (X right, Y down, Z forward).
+// frame_id (camera_link) is FLU (X forward, Y left, Z up): p_flu = R_flu_rdf * p_rdf.
+void fill_camera_flu_imu_transform(const ImuRTTimeInfo_d_ST &rt, geometry_msgs::msg::Transform &out) {
+  const double tx = static_cast<double>(rt.tx);
+  const double ty = static_cast<double>(rt.ty);
+  const double tz = static_cast<double>(rt.tz);
+  out.translation.x = tz;
+  out.translation.y = -tx;
+  out.translation.z = -ty;
+
+  const double r11 = static_cast<double>(rt.r13);
+  const double r12 = static_cast<double>(rt.r23);
+  const double r13 = static_cast<double>(rt.r33);
+  const double r21 = -static_cast<double>(rt.r11);
+  const double r22 = -static_cast<double>(rt.r21);
+  const double r23 = -static_cast<double>(rt.r31);
+  const double r31 = -static_cast<double>(rt.r12);
+  const double r32 = -static_cast<double>(rt.r22);
+  const double r33 = -static_cast<double>(rt.r32);
+
+  tf2::Matrix3x3 rot(r11, r12, r13, r21, r22, r23, r31, r32, r33);
+  tf2::Quaternion q;
+  rot.getRotation(q);
+  q.normalize();
+  out.rotation.x = q.x();
+  out.rotation.y = q.y();
+  out.rotation.z = q.z();
+  out.rotation.w = q.w();
+}
+
+}  // namespace
+
 void MipiCamNode::read_imu_data() {
   geometry_msgs::msg::TransformStamped tf_msg;
   bool publish_extrinsic = false;
@@ -664,23 +698,7 @@ void MipiCamNode::read_imu_data() {
     tf_msg.header.frame_id = frame_id_; // 与图像 frame_id 一致
     tf_msg.child_frame_id = "imu_link";
 
-    tf_msg.transform.translation.x = static_cast<double>(rt.tx);
-    tf_msg.transform.translation.y = static_cast<double>(rt.ty);
-    tf_msg.transform.translation.z = static_cast<double>(rt.tz);
-
-    // R 矩阵 → 四元数
-    tf2::Matrix3x3 rot(
-        rt.r11, rt.r12, rt.r13,
-        rt.r21, rt.r22, rt.r23,
-        rt.r31, rt.r32, rt.r33);
-    tf2::Quaternion q;
-    rot.getRotation(q);
-    q.normalize();
-
-    tf_msg.transform.rotation.x = q.x();
-    tf_msg.transform.rotation.y = q.y();
-    tf_msg.transform.rotation.z = q.z();
-    tf_msg.transform.rotation.w = q.w();
+    fill_camera_flu_imu_transform(rt, tf_msg.transform);
     publish_extrinsic = true;
     //saveImuCalibration(imu_calib_file_path_);
   }
