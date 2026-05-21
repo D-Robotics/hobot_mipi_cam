@@ -56,12 +56,15 @@ extern vp_sensor_config_t ovx3cstd_linear_1920x1080_raw12_30fps_1lane;
 extern vp_sensor_config_t ar0820std_linear_1920x1080_yuv_30fps_1lane;
 extern vp_sensor_config_t gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane;
 extern vp_sensor_config_t gsml_ov02b10std_linear_1600x13000_yuv_30fps_4lane;
+extern vp_sensor_config_t gsml_isx031std_linear_1920x1536_yuv_30fps_1lane;
+
 
 vp_sensor_config_t *vp_gmsl_config_list[] = {
 	&ovx3cstd_linear_1920x1080_raw12_30fps_1lane,
 	&ar0820std_linear_1920x1080_yuv_30fps_1lane,
 	&gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane,
-	&gsml_ov02b10std_linear_1600x13000_yuv_30fps_4lane
+	&gsml_ov02b10std_linear_1600x13000_yuv_30fps_4lane,
+	&gsml_isx031std_linear_1920x1536_yuv_30fps_1lane
 };
 
 uint32_t vp_get_gmsl_list_number() {

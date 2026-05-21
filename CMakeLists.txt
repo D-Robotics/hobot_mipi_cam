@@ -114,6 +114,7 @@ elseif(PLATFORM_S100)
     src/s100/sensor/ar0820c_linear_1920x1080_yuv_30fps_1lane.c
     src/s100/sensor/ovx3c_linear_1920x1080_raw12_30fps_1lane.c
     src/s100/sensor/gsml_ov02b10_linear_1600x1300_yuv_30fps_4lane.c
+    src/s100/sensor/gsml_isx031std_linear_1920x1536_yuv_30fps_1lane.c
     src/s100/sensor/deserial_max96712_4link.c
     src/s100/sensor/vp_sensors.c
   )
