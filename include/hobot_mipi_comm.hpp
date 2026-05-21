@@ -55,8 +55,12 @@ struct NodePara {
   std::string frame_ts_type_ {"sensor"};
   int link_type_; // 0:表示mipi接口，1：表示解串器接口。
   int link_port_; // 0~3
+  std::string gsml_cfg_file_;
   double cal_alpha_;
   bool sub_stream_enable_;
+  bool sync_awb_;
+  bool sync_ae_;
+  bool print_isp_log_;
 };
 
 typedef struct {
@@ -81,8 +85,12 @@ typedef struct {
   std::string frame_ts_type_ {"sensor"};
   int link_type_; // 0:表示mipi接口，1：表示解串器接口。
   int link_port_; // 0~3
+  std::string gsml_cfg_file_;
   double cal_alpha_;
   bool sub_stream_enable_;
+  bool sync_awb_;
+  bool sync_ae_;
+  bool print_isp_log_;
 } MIPI_CAP_INFO_ST;
 
 typedef struct sensor_id {
@@ -124,37 +132,37 @@ class BuffQueueManage : public std::enable_shared_from_this<BuffQueueManage>{
   std::shared_ptr<VideoBuffer> get_empty_buff() {
     std::unique_lock<std::mutex> lk(queue_mtx_);
     std::shared_ptr<VideoBuffer> buff_ptr = nullptr;
-		if (q_buff_.size() >= 3) {
-			buff_ptr = q_buff_.front();
-			q_buff_.pop();
-		} else if (!q_empty_.empty()) {
-			buff_ptr = q_empty_.front();
-			q_empty_.pop();
-		}
+    if (q_buff_.size() >= 3) {
+      buff_ptr = q_buff_.front();
+      q_buff_.pop();
+    } else if (!q_empty_.empty()) {
+      buff_ptr = q_empty_.front();
+      q_empty_.pop();
+    }
     return buff_ptr;
-	}
+  }
   std::shared_ptr<VideoBuffer> get_data_buff() {
     std::unique_lock<std::mutex> lk(queue_mtx_);
     std::shared_ptr<VideoBuffer> buff_ptr = nullptr;
-		if (!q_buff_.empty()) {
-			buff_ptr = q_buff_.front();
-			q_buff_.pop();
-		}
+    if (!q_buff_.empty()) {
+      buff_ptr = q_buff_.front();
+      q_buff_.pop();
+    }
     return buff_ptr;
-	}
+  }
   void push_empty_que(std::shared_ptr<VideoBuffer> buff_ptr) {
     if (buff_ptr) {
       std::unique_lock<std::mutex> lk(queue_mtx_);
       q_empty_.push(buff_ptr);
     }
-	}
+  }
 
   void push_data_que(std::shared_ptr<VideoBuffer> buff_ptr) {
     if (buff_ptr) {
       std::unique_lock<std::mutex> lk(queue_mtx_);
       q_buff_.push(buff_ptr);
     }
-	}
+  }
   virtual ~BuffQueueManage() {};
 };
 
@@ -174,6 +182,7 @@ class VideoBuffer : public std::enable_shared_from_this<VideoBuffer> {
     buff_size = other.buff_size;
     data_size = other.data_size;
     buff = other.buff;
+    raw_buff = other.raw_buff;
     encode = other.encode;
   }
   uint64_t timestamp;
@@ -184,6 +193,7 @@ class VideoBuffer : public std::enable_shared_from_this<VideoBuffer> {
   uint32_t buff_size;
   uint32_t data_size;
   std::vector<char> buff;
+  std::vector<char> raw_buff;
   std::string encode;
   std::weak_ptr<BuffQueueManage> w_manager = {};
   void return_empty_que() {
@@ -197,7 +207,7 @@ class VideoBuffer : public std::enable_shared_from_this<VideoBuffer> {
       std::unique_lock<std::mutex> lk(manager_ptr->queue_mtx_);
       manager_ptr->q_buff_.push(shared_from_this());
     }
-  } 
+  }
   void setManager(std::shared_ptr<BuffQueueManage>& manager) {
     w_manager = manager;  // 直接赋值shared_ptr
   }
@@ -207,7 +217,7 @@ class VideoBuffer : public std::enable_shared_from_this<VideoBuffer> {
 /**
  * @brief frame
  */
- struct Frame {
+struct Frame {
   unsigned long long timestamp_ns; // ns
   long long timestamp_ms; // ms
   uint32_t frame_id;
@@ -219,45 +229,45 @@ class VideoBuffer : public std::enable_shared_from_this<VideoBuffer> {
 };
 
 class FrameQueue {
-  public:
-    FrameQueue(size_t max_size = 5) : max_size_(max_size) {
-    }
-  
-    void push(std::shared_ptr<VideoBuffer> frame_ptr) {
-      std::lock_guard<std::mutex> lock(mtx_);
-      if (queue_.size() >= max_size_) {
-        // drop old frame
-        queue_.pop_front();
-      }
-      queue_.push_back(frame_ptr);
-    }
-  
-    std::shared_ptr<VideoBuffer> pop() {
-      std::lock_guard<std::mutex> lock(mtx_);
-      if (queue_.empty()) return nullptr;
-      auto frame_ptr = queue_.front();
+ public:
+  FrameQueue(size_t max_size = 5) : max_size_(max_size) {
+  }
+
+  void push(std::shared_ptr<VideoBuffer> frame_ptr) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (queue_.size() >= max_size_) {
+      // drop old frame
       queue_.pop_front();
-      return frame_ptr;
     }
-  
-    std::shared_ptr<VideoBuffer> peek() {
-      std::lock_guard<std::mutex> lock(mtx_);
-      if (queue_.empty()) return nullptr;
-      return queue_.front();
+    queue_.push_back(frame_ptr);
+  }
+
+  std::shared_ptr<VideoBuffer> pop() {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (queue_.empty()) return nullptr;
+    auto frame_ptr = queue_.front();
+    queue_.pop_front();
+    return frame_ptr;
+  }
+
+  std::shared_ptr<VideoBuffer> peek() {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (queue_.empty()) return nullptr;
+    return queue_.front();
+  }
+
+  void popUntil(long long ts) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    while (!queue_.empty() && queue_.front()->timestamp < ts) {
+      queue_.pop_front();
     }
-  
-    void popUntil(long long ts) {
-      std::lock_guard<std::mutex> lock(mtx_);
-      while (!queue_.empty() && queue_.front()->timestamp < ts) {
-        queue_.pop_front();
-      }
-    }
-  
-  private:
-    std::deque<std::shared_ptr<VideoBuffer>> queue_;
-    std::mutex mtx_;
-    size_t max_size_;
-  };
+  }
+
+ private:
+  std::deque<std::shared_ptr<VideoBuffer>> queue_;
+  std::mutex mtx_;
+  size_t max_size_;
+};
 
 // popen运行cmd，并获取cmd返回结果
 int exec_cmd_ex(const char *cmd, char *res, int max);

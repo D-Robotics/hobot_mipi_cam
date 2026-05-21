@@ -140,6 +140,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   void sub_sync_task();
   bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
+  void sync_awb_ae_task();
 
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
   int creat_vse_node(pipe_contex_t *pipe_contex);
@@ -200,6 +201,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::shared_ptr<std::thread> sync_task_ = nullptr;
   std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
   std::shared_ptr<std::thread> sub_sync_task_ = nullptr;
+  std::shared_ptr<std::thread> awb_ae_sync_task_ = nullptr;
 
   std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
   std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
