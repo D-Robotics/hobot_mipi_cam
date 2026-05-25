@@ -305,33 +305,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 	bool sensor_flag2 = false;
 	mipi_host_info_t host_info;
 	read_gsml_config(cap_info_.gsml_cfg_file_);
-#if 0
-	gsml_config_.resize(1);
-	LINK_CONFIG_ST g_link;
-	g_link.link_port = 0;
-	g_link.sensor_type = "gsml_sc132gs";
-	g_link.camera_mode = "dual";
-	g_link.mipi_rx = 4;
-	gsml_config_[0].link.push_back(g_link);
-#endif
-#if 0
-	g_link.link_port = 1;
-	g_link.sensor_type = "ov02b10-1300p25";
-	g_link.camera_mode = "dual";
-	gsml_config_[0].link.push_back(g_link);
-#endif
 
-#if 0
-	g_link.link_port = 0;
-	g_link.sensor_type = "ov02b10-1300p25";
-	g_link.camera_mode = "dual";
-	gsml_config_[0].link.push_back(g_link);
-
-	g_link.link_port = 1;
-	g_link.sensor_type = "ov02b10-1300p25";
-	g_link.camera_mode = "dual";
-	gsml_config_[0].link.push_back(g_link);
-#endif
 	int pipeline_num = 0, pipeline_count = 0;
 	hb_mem_module_open();
 	int text_flag = 0;
@@ -432,8 +406,14 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					if (link.valid_phy2 && pipe_contex_tmp_2->sensor_config.camera_config->mipi_cfg) {
 						pipe_contex_tmp_2->sensor_config.camera_config->mipi_cfg->rx_attr.phy = link.phy2;
 					}
-					pipe_contex_tmp_2->gsml_link_port_ = -1;
-					pipe_contex_tmp_2->camera_bind_ = false;
+					if (link.dual_mode == 1) {
+						pipe_contex_tmp_2->gsml_link_port_ = link.link_port2;
+						pipe_contex_tmp_2->camera_bind_ = true;
+					} else {
+						pipe_contex_tmp_2->gsml_link_port_ = -1;
+						pipe_contex_tmp_2->camera_bind_ = false;
+					}
+					pipeline_connect_param_init(pipe_contex_tmp_2);
 					ret = create_and_run_vflow_step1(pipe_contex_tmp_2);
 					ERR_CON_EQ(ret, 0);
 
@@ -469,7 +449,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					pipe_contex_tmp->sensor_config.camera_config->eeprom_addr += pipeline_num;
 					pipe_contex_tmp->sensor_config.camera_config->serial_addr += pipeline_num;
 
-					pipe_contex_tmp->gsml_link_port_ = pipeline_num % 4;
+					pipe_contex_tmp->gsml_link_port_ = link.link_port;
 					pipe_contex_tmp->camera_bind_ = true;
 					pipeline_connect_param_init(pipe_contex_tmp);
 					ret = create_and_run_vflow_step1(pipe_contex_tmp);
@@ -1139,25 +1119,15 @@ void HobotMipiCapIml::pipeline_connect_param_init(std::shared_ptr<pipe_contex_t>
 	// 情景1(不需要ISP): 尽量online
 	if(pipe_contex->sensor_type_ == PIPELINE_SCENE_ISP_BYPASS){
 		ch_info->pym_hw_id = sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx;
-		if(sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx == 4){
-			ch_info->pym_mode = PYM_M2M_MODE; //offline
-			ch_info->pym_slot_id = 0; 		  //offline的情况可以不用设置
-			ch_info->is_online_vin_pym = 0;
-		}else{
-			ch_info->pym_mode = PYM_MANUAL_MODE; //online
-			ch_info->pym_slot_id = 0;
-			if (sensor_config->pym_cfg == nullptr) {
-				ch_info->is_online_vin_pym = 0;
-			} else {
-				ch_info->is_online_vin_pym = 1;
-			}	
-		}
+		ch_info->pym_mode = PYM_M2M_MODE;
+		ch_info->pym_slot_id = isp0_next_slot_id++; 
+		ch_info->is_online_vin_pym = 0;
 
 		//printf("	[%d] [not use isp].\n", pipeline_index);
-		printf("		vin [hw:%d]\n", sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx);
-		printf("		pym [hw:%d] [slot_id:%d] [mode:%d]\n",
-			ch_info->pym_slot_id, ch_info->pym_hw_id, ch_info->pym_mode);
-		printf("		vin ->%s-> pym \n",
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		vin [hw:%d]\n", sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		pym [hw:%d] [slot_id:%d] [mode:%d]\n",
+			ch_info->pym_hw_id, ch_info->pym_slot_id, ch_info->pym_mode);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		vin ->%s-> pym \n",
 			get_link_mode_string(ch_info->is_online_vin_pym));
 	// 情景2(需要ISP， 不需要YNR): 固定使用ISP0
 	}else if(pipe_contex->sensor_type_ == PIPELINE_SCENE_ISP_ONLY){
@@ -1177,12 +1147,12 @@ void HobotMipiCapIml::pipeline_connect_param_init(std::shared_ptr<pipe_contex_t>
 		}
 
 		//printf("	[%d] only use [isp only].\n", pipeline_index);
-		printf("		vin [hw:%d]\n", sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx);
-		printf("		isp [hw:%d] [slot_id:%d] [mode:%d]\n",
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		vin [hw:%d]\n", sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		isp [hw:%d] [slot_id:%d] [mode:%d]\n",
 			ch_info->isp_hw_id, ch_info->isp_slot_id, ch_info->isp_mode);
-		printf("		pym [hw:%d] [slot_id:%d] [mode:%d]\n",
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		pym [hw:%d] [slot_id:%d] [mode:%d]\n",
 			ch_info->pym_hw_id, ch_info->pym_slot_id, ch_info->pym_mode);
-		printf("		vin ->%s-> isp ->%s-> pym \n",
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		vin ->%s-> isp ->%s-> pym \n",
 			get_link_mode_string(ch_info->is_online_vin_isp),
 			get_link_mode_string(ch_info->is_online_isp_pym));
 
@@ -1203,15 +1173,15 @@ void HobotMipiCapIml::pipeline_connect_param_init(std::shared_ptr<pipe_contex_t>
 		ch_info->is_online_ynr_pym = 1;
 
 		//printf("	[%d] use [isp + ynr].\n", pipeline_index);
-		printf("		vin [hw:%d]\n", sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx);
-		printf("		isp [hw:%d] [slot_id:%d] [mode:%d]\n",
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		vin [hw:%d]\n", sensor_config->vin_attr->vin_node_attr.cim_attr.mipi_rx);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		isp [hw:%d] [slot_id:%d] [mode:%d]\n",
 			ch_info->isp_hw_id, ch_info->isp_slot_id, ch_info->isp_mode);
-		printf("		ynr [hw:%d] [slot_id:%d] [mode:%d]\n",
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		ynr [hw:%d] [slot_id:%d] [mode:%d]\n",
 			1, ch_info->ynr_slot_id, ch_info->ynr_mode);
-		printf("		pym [hw:%d] [slot_id:%d] [mode:%d]\n",
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		pym [hw:%d] [slot_id:%d] [mode:%d]\n",
 			ch_info->pym_hw_id, ch_info->pym_slot_id, ch_info->pym_mode);
 
-		printf("		vin ->%s-> isp ->%s-> ynr ->%s-> pym\n",
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"		vin ->%s-> isp ->%s-> ynr ->%s-> pym\n",
 			get_link_mode_string(ch_info->is_online_vin_isp),
 			get_link_mode_string(ch_info->is_online_isp_ynr),
 			get_link_mode_string(ch_info->is_online_ynr_pym));

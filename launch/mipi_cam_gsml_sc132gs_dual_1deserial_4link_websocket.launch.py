@@ -40,7 +40,7 @@ def generate_launch_description():
         'mipi_gsml_cfg_file',
         default_value=[
             TextSubstitution(text=str(config_file_path)),
-            "gmsl_2deserial_4link_sc132gs_dual_config.json"
+            "gmsl_sc132gs_dual_1deserial_4link_config.json"
         ],
         description='gsml camera config file'
     )

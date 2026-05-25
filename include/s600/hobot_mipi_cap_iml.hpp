@@ -26,12 +26,11 @@
 #include "hobot_mipi_cap.hpp"
 #include "hobot_mipi_comm.hpp"
 #include "hb_camera_interface.h"
-#include "hobot_mipi_calibration.hpp"
 #include "hbn_vpf_interface.h"
 #include "vp_sensors.h"
 #include "hb_gdc_cfg.h"
 #include "gdc_cfg.h"
-//#include "codec_cfg.h"
+#include "hobot_mipi_calibration.hpp"
 
 namespace mipi_cam {
 

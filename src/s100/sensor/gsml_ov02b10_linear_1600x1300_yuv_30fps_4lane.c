@@ -405,5 +405,5 @@ vp_sensor_config_t gsml_ov02b10std_linear_1600x13000_yuv_30fps_4lane = {
 	.vin_attr = &gsml_ov02b10std_vin_attr,
 	.isp_cfg  = NULL,
     .ynr_attr = NULL,
-	.pym_cfg = NULL,
+	.pym_cfg = &gsml_ov02b10std_pym_common_config,
 };

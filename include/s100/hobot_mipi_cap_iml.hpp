@@ -30,7 +30,6 @@
 #include "vp_sensors.h"
 #include "hb_gdc_cfg.h"
 #include "gdc_cfg.h"
-
 #include "hobot_mipi_calibration.hpp"
 
 namespace mipi_cam {
@@ -207,7 +206,6 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::vector<GSML_CONFIG_ST> gsml_config_;
   int isp0_next_slot_id = 4;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
-
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_r_;
   std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;
 

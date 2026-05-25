@@ -1,0 +1,20 @@
+{
+  "deserial": [
+    {
+      "name": "max96712",
+      "camera_num": 2,
+      "link": [
+        {
+          "link_port": 0,
+          "sensor": "isx031std",
+          "camera_mode": "dual",
+          "dual_mode": 1,
+          "mipi_rx": 4,
+          "dual_seq": 0,
+          "link_port2": 3,
+          "mipi_rx2": 4
+        }
+      ]
+    }
+  ]
+}
