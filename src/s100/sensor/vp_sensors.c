@@ -97,10 +97,13 @@ vp_sensor_config_t *vp_get_gmsl_config_by_name(char *sensor_name)
 
 extern vp_deserial_config_t deserial_max96712_4link;
 extern vp_deserial_config_t deserial_max96712_4link_slave;
+extern vp_deserial_config_t deserial_max96712_4link_slave2;
+
 
 vp_deserial_config_t *vp_deserial_config_list[] = {
 	&deserial_max96712_4link,
-	&deserial_max96712_4link_slave
+	&deserial_max96712_4link_slave,
+	&deserial_max96712_4link_slave2
 };
 
 uint32_t vp_get_deserial_list_number() {

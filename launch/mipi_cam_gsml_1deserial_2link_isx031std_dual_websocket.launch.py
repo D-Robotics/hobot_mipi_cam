@@ -22,11 +22,28 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python import get_package_share_directory
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
+from launch.substitutions import TextSubstitution
+from ament_index_python.packages import get_package_prefix
+from launch.substitutions import PathJoinSubstitution
 
 
 def generate_launch_description():
     camera_type = os.getenv('CAM_TYPE')
     print("camera_type is ", camera_type)
+
+    config_file_path = os.path.join(
+        get_package_prefix('mipi_cam'),
+        "lib/mipi_cam/config/")
+    print("config_file_path is ", config_file_path)
+
+    mipi_gsml_cfg_file_arg = DeclareLaunchArgument(
+        'mipi_gsml_cfg_file',
+        default_value=[
+            TextSubstitution(text=str(config_file_path)),
+            "gmsl_1deserial_2link_isx031std_dual_config.json"
+        ],
+        description='gsml camera config file'
+    )
 
     mipi_lpwm_enable_arg = DeclareLaunchArgument(
         'mipi_lpwm_enable',
@@ -64,7 +81,7 @@ def generate_launch_description():
         description='mipi gdc enable')
     mipi_image_framerate_arg = DeclareLaunchArgument(
         'mipi_image_framerate',
-        default_value='10.0',
+        default_value='30.0',
         description='mipi camera out image framerate')
     mipi_frame_ts_type_arg = DeclareLaunchArgument(
         'mipi_frame_ts_type',
@@ -76,12 +93,13 @@ def generate_launch_description():
                 get_package_share_directory('mipi_cam'),
                 'launch/mipi_cam_gsml.launch.py')),
         launch_arguments={
+            'mipi_gsml_cfg_file': LaunchConfiguration('mipi_gsml_cfg_file'),
             'mipi_image_width': LaunchConfiguration('mipi_image_width'),
             'mipi_image_height': LaunchConfiguration('mipi_image_height'),
             'mipi_image_framerate': LaunchConfiguration('mipi_image_framerate'),
             'mipi_io_method': 'ros',
-            'mipi_video_device': 'isx031std',
-            'dual_combine': '0',
+            'device_mode': 'multi',
+            'dual_combine': '2',
             'mipi_link_type': '1',
             'mipi_lpwm_enable': LaunchConfiguration('mipi_lpwm_enable'),
             'mipi_camera_calibration_file_path':  LaunchConfiguration('mipi_camera_calibration_file_path'),
@@ -103,7 +121,7 @@ def generate_launch_description():
             'codec_in_mode': 'ros',
             'codec_out_mode': 'ros',
             'codec_jpg_quality': '85.0',
-            'codec_sub_topic': '/image_raw',
+            'codec_sub_topic': '/image_combine_raw',
             'codec_pub_topic': '/image_combine_jpeg'
         }.items()
     )
@@ -127,6 +145,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         # 启动零拷贝环境配置node
+        mipi_gsml_cfg_file_arg,
         mipi_lpwm_enable_arg,
         mipi_camera_calibration_file_path_arg,
         mipi_image_width_arg,
