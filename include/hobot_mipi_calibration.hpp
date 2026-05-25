@@ -343,6 +343,9 @@ class mipi_calibration {
 
   bool getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_msgs::msg::CameraInfo> &cam_info);  
 
+  bool getCamCalibrationIml_single(sensor_msgs::msg::CameraInfo& cam_info, const std::string &file_path);
+  bool getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info_l, sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
+  
   // ===== 禁止拷贝/赋值（单例核心，单例唯一性）=====
   mipi_calibration(const mipi_calibration&) = delete;
   mipi_calibration & operator = (const mipi_calibration&) = delete;

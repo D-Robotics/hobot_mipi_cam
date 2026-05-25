@@ -390,7 +390,56 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					ret = create_and_run_vflow_step1(pipe_contex_tmp);
 					ERR_CON_EQ(ret, 0);
 					#if 1
-					create_gsml_gdc_bin(pipe_contex_tmp);
+					std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bins;
+					if (!link.calibration_file.empty())
+					{
+						std::string cal_file_path;
+						if (link.calibration_file[0] == '/') {
+							// 绝对路径直接用
+							cal_file_path = link.calibration_file;
+						} else {
+							cal_file_path = cap_info_.config_path + link.calibration_file;
+						}
+						RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+										"  Dual cal_file_path: %s",  cal_file_path.c_str());
+						sensor_msgs::msg::CameraInfo cam_l, cam_r;
+						bool cal_ok = mipi_calibration::GetInstance().getDualCamCalibrationIml(cam_l, cam_r, cal_file_path);
+						if(cal_ok) {
+							std::vector<sensor_msgs::msg::CameraInfo> local_cam_info = {cam_l, cam_r};
+							gdc_bins = create_gsml_gdc_bin_stereo(pipe_contex_tmp, &local_cam_info);
+							cam_info_.push_back(cam_l);
+							cam_info_.push_back(cam_r);
+						}
+					}
+					if (gdc_bins.size() == 2)
+					{
+						gdc_bin_buf_.push_back(gdc_bins[0]);
+						gdc_bin_buf_.push_back(gdc_bins[1]);
+						pipe_contex_tmp->gdc_bin = gdc_bins[0];
+					}
+					if ((cap_info_.rotation_ != 0) && gdc_bins.empty())
+					{
+						if (gdc_bin_buf_r_.empty())
+						{
+							int w = (cap_info_.rotation_ == 90.0 || cap_info_.rotation_ == 270.0)
+											? cap_info_.height
+											: cap_info_.width;
+							int h = (cap_info_.rotation_ == 90.0 || cap_info_.rotation_ == 270.0)
+											? cap_info_.width
+											: cap_info_.height;
+							auto rot_bin = gen_gdc_bin_rotation(
+								 w, h, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+							if (rot_bin)
+							{
+								gdc_bin_buf_r_.push_back(rot_bin);
+								pipe_contex_tmp->gdc_bin_r = rot_bin;
+							}
+						}
+						else
+						{
+							pipe_contex_tmp->gdc_bin_r = gdc_bin_buf_r_[0];
+						}
+					}
 					#endif
 					ret = create_and_run_vflow_step2(pipe_contex_tmp);
 					ERR_CON_EQ(ret, 0);
@@ -417,8 +466,8 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					ret = create_and_run_vflow_step1(pipe_contex_tmp_2);
 					ERR_CON_EQ(ret, 0);
 
-					if (pipe_contex_tmp->gdc_bin) {
-						pipe_contex_tmp_2->gdc_bin = pipe_contex_tmp->gdc_bin;
+					if (gdc_bins.size() == 2) {
+						pipe_contex_tmp_2->gdc_bin = gdc_bins[1];
 					} else if (pipe_contex_tmp->gdc_bin_r) {
 						pipe_contex_tmp_2->gdc_bin_r = pipe_contex_tmp->gdc_bin_r;
 					}
@@ -2085,6 +2134,11 @@ bool HobotMipiCapIml::read_gsml_config(std::string gsml_cfg_file) {
 			} else {
 				link_config.valid_phy2 = false;
 			}
+			if (link.isMember("calibration_file")) {
+          	link_config.calibration_file = link["calibration_file"].asString();
+        	} else {
+          	link_config.calibration_file = "";
+        	}
 			gsml_config.link.push_back(link_config);
 		}
 		gsml_config_.push_back(gsml_config);
@@ -2289,5 +2343,84 @@ int HobotMipiCapIml::create_gsml_gdc_bin(std::shared_ptr<pipe_contex_t> pipe_con
 }
 
 
+std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::create_gsml_gdc_bin_stereo(
+	 std::shared_ptr<pipe_contex_t> pipe_contex,
+	 std::vector<sensor_msgs::msg::CameraInfo> *cam_pair)
+{
+	std::vector<std::shared_ptr<GdcBinBuf_ST>> result;
+
+	if (pipe_contex == nullptr || cam_pair == nullptr || cam_pair->size() < 2)
+	{
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+						 ">>> create_gsml_gdc_bin_stereo: invalid input, cam_pair=%p, size=%zu",
+						 (void *)cam_pair, cam_pair ? cam_pair->size() : 0);
+		return result;
+	}
+
+	if (!cap_info_.gdc_enable_ || cal_tpye_ != 0)
+	{
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						">>> create_gsml_gdc_bin_stereo: gdc_enable=%d, cal_type=%d, skip",
+						cap_info_.gdc_enable_, cal_tpye_);
+		return result;
+	}
+
+	int src_width = 0, src_height = 0;
+
+	if (pipe_contex->sensor_config.pym_cfg != nullptr)
+	{
+		src_width = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_width;
+		src_height = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height;
+	}
+	else if (pipe_contex->sensor_config.isp_cfg != nullptr)
+	{
+		src_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+		src_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+	}
+	else if (pipe_contex->sensor_config.camera_config != nullptr)
+	{
+		src_width = pipe_contex->sensor_config.camera_config->width;
+		src_height = pipe_contex->sensor_config.camera_config->height;
+	}
+	else if (pipe_contex->sensor_config.vin_attr != nullptr)
+	{
+		src_width = pipe_contex->sensor_config.vin_attr->vin_ichn_attr.width;
+		src_height = pipe_contex->sensor_config.vin_attr->vin_ichn_attr.height;
+	}
+	if (src_width <= 0 || src_height <= 0)
+	{
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+						 ">>> create_gsml_gdc_bin_stereo: cannot determine src resolution!");
+		return result;
+	}
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					">>> create_gsml_gdc_bin_stereo: src=%dx%d, dst=%dx%d, rotation=%.1f, cal_rotation=%.1f",
+					src_width, src_height, cap_info_.width, cap_info_.height,
+					cap_info_.rotation_, cap_info_.cal_rotation_);
+	std::vector<sensor_msgs::msg::CameraInfo> cal_pair;
+	auto gdc_bins = gen_gdc_bin_stereo(
+		 src_width, src_height,
+		 cap_info_.width, cap_info_.height,
+		 *cam_pair,
+		 cal_pair,
+		 cap_info_.rotation_,
+		 cap_info_.cal_rotation_);
+	if (gdc_bins.size() == 2)
+	{
+		for (auto &ci : cal_pair)
+		{
+			cal_cam_info_.push_back(ci);
+		}
+		result = gdc_bins;
+	}
+	else
+	{
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						">>> create_gsml_gdc_bin_stereo: gen returned %zu bins (expected 2)",
+						gdc_bins.size());
+	}
+
+	return result;
+}
 
 }  // namespace mipi_cam

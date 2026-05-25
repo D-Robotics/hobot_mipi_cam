@@ -12,7 +12,8 @@
           "mipi_rx": 4,
           "dual_seq": 0,
           "link_port2": 3,
-          "mipi_rx2": 4
+          "mipi_rx2": 4,
+          "calibration_file": "isx031std_dual_calibration.yaml"
         }
       ]
     }
