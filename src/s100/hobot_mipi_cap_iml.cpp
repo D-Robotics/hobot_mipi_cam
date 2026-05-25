@@ -305,33 +305,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 	bool sensor_flag2 = false;
 	mipi_host_info_t host_info;
 	read_gsml_config(cap_info_.gsml_cfg_file_);
-#if 0
-	gsml_config_.resize(1);
-	LINK_CONFIG_ST g_link;
-	g_link.link_port = 0;
-	g_link.sensor_type = "gsml_sc132gs";
-	g_link.camera_mode = "dual";
-	g_link.mipi_rx = 4;
-	gsml_config_[0].link.push_back(g_link);
-#endif
-#if 0
-	g_link.link_port = 1;
-	g_link.sensor_type = "ov02b10-1300p25";
-	g_link.camera_mode = "dual";
-	gsml_config_[0].link.push_back(g_link);
-#endif
 
-#if 0
-	g_link.link_port = 0;
-	g_link.sensor_type = "ov02b10-1300p25";
-	g_link.camera_mode = "dual";
-	gsml_config_[0].link.push_back(g_link);
-
-	g_link.link_port = 1;
-	g_link.sensor_type = "ov02b10-1300p25";
-	g_link.camera_mode = "dual";
-	gsml_config_[0].link.push_back(g_link);
-#endif
 	int pipeline_num = 0, pipeline_count = 0;
 	hb_mem_module_open();
 	int text_flag = 0;

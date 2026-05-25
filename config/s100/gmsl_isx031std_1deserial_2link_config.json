@@ -1,7 +1,7 @@
 {
   "deserial": [
     {
-      "name": "max96712_slave2",
+      "name": "max96712",
       "camera_num": 2,
       "link": [
         {

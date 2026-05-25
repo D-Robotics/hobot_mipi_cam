@@ -40,7 +40,7 @@ def generate_launch_description():
         'mipi_gsml_cfg_file',
         default_value=[
             TextSubstitution(text=str(config_file_path)),
-            "gmsl_1deserial_2link_isx031std_dual_config.json"
+            "gmsl_sc132gs_dual_1deserial_1link_config.json"
         ],
         description='gsml camera config file'
     )
@@ -57,12 +57,12 @@ def generate_launch_description():
     
     mipi_image_width_arg = DeclareLaunchArgument(
         'mipi_image_width',
-        default_value='1920',
+        default_value='1600',
         description='mipi width')
 
     mipi_image_height_arg = DeclareLaunchArgument(
         'mipi_image_height',
-        default_value='1536',
+        default_value='1300',
         description='mipi height')
 
     mipi_rotation_arg = DeclareLaunchArgument(

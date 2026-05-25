@@ -3,7 +3,7 @@
 static poc_config_t g_poc_cfg[] = {
 	[0] = {
 		/* 0 */
-		.addr = 0xff,
+		.addr = 0x28,
 		.poc_map = 0x1320,
 		.end_flag = POC_CONFIG_END_FLAG,
 	},
@@ -15,7 +15,7 @@ static poc_config_t g_poc_cfg[] = {
 	},
     [2] = {
 		/* 0 */
-		.addr = 0x28,
+		.addr = 0xff,
 		.poc_map = 0x1320,
 		.end_flag = POC_CONFIG_END_FLAG,
 	},
@@ -38,9 +38,9 @@ static deserial_config_t gsml_deserial_config = {
 
 static deserial_config_t gsml_deserial_config_slave = {
     .name = "max96712",
-    .link_desp[0] = "ov02b10std:0@512",
+    .link_desp[0] = "",
     .link_desp[1] = "",
-    .link_desp[2] = "ov02b10std:0@512",
+    .link_desp[2] = "",
     .link_desp[3] = "",
     .gpio_mfp[CAMERA_DES_GPIO_TRIG0] = 0x5,
     .gpio_mfp[CAMERA_DES_GPIO_TRIG1] = 0x5,
