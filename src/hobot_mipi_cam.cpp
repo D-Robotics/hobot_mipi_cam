@@ -60,8 +60,8 @@ int exec_cmd_ex(const char *cmd, char* res, int max) {
     return -1;
   FILE *pp = popen(cmd, "r");
   if (!pp) {
-   RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-     "error, cannot popen cmd: %s\n", cmd);
+    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
+                 "error, cannot popen cmd: %s\n", cmd);
     return -1;
   }
   int length;
@@ -70,7 +70,7 @@ int exec_cmd_ex(const char *cmd, char* res, int max) {
   if (max > 1024)
     length = 1024;
   RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-    "[%s]->cmd %s, fp=0x%x, len=%d.\n", __func__, cmd, pp, max);
+              "[%s]->cmd %s, fp=0x%x, len=%d.\n", __func__, cmd, pp, max);
   while (fgets(tmp, length, pp) != NULL) {
     // printf("exec_cmd_ex -- tmp:%s\n", tmp);
     sscanf(tmp, "%s", res);
@@ -103,27 +103,27 @@ class MipiCamIml : public MipiCam {
 
   // grabs a new image from the camera
   bool getImage(
-    builtin_interfaces::msg::Time & stamp,
-    std::string & encoding,
-    uint32_t & height, uint32_t & width,
-    uint32_t & step, std::vector<uint8_t> & data, std::string channel);
+      builtin_interfaces::msg::Time & stamp,
+      std::string & encoding,
+      uint32_t & height, uint32_t & width,
+      uint32_t & step, std::vector<uint8_t> & data, std::string channel);
 
   // grabs a new hbmem's image hbmem from the camera
   bool getImageMem(
-    builtin_interfaces::msg::Time & stamp,
-    std::array<uint8_t, 12> & encoding,
-    uint32_t & height, uint32_t & width, uint32_t & step,
-    std::array<uint8_t, 6220800> & data, uint32_t & data_size, std::string channel);
+      builtin_interfaces::msg::Time & stamp,
+      std::array<uint8_t, 12> & encoding,
+      uint32_t & height, uint32_t & width, uint32_t & step,
+      std::array<uint8_t, 6220800> & data, uint32_t & data_size, std::string channel);
 
   // gen camera calibration
   bool getCamCalibration(sensor_msgs::msg::CameraInfo& cam_info,
-                           const std::string &file_path);
-  
+                         const std::string &file_path);
+
   bool getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,
-                sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
+                             sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
 
   bool getDualCamCalibrationSub(sensor_msgs::msg::CameraInfo &cam_info_l,
-                                        sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
+                                sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
 
   bool isCapturing();
 
@@ -132,10 +132,10 @@ class MipiCamIml : public MipiCam {
 
   // gen camera calibration
   bool getCamCalibrationIml(sensor_msgs::msg::CameraInfo& cam_info,
-                           const std::string &file_path);
-  
+                            const std::string &file_path);
+
   bool getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info_l,
-                sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
+                                sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
 
   void scaleSubStreamCamInfo(sensor_msgs::msg::CameraInfo &cam_info, int target_w, int target_h);
 
@@ -178,7 +178,7 @@ MipiCamIml::~MipiCamIml() {
 
 
 int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
-  
+
   if (lsInit_) {
     return 0;
   }
@@ -188,8 +188,8 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   mipiCap_ptr_ = createMipiCap(board_type);
   if (!mipiCap_ptr_) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-      "[%s]->cap %s create capture failture.\r\n",
-      __func__, board_type.c_str());
+                 "[%s]->cap %s create capture failture.\r\n",
+                 __func__, board_type.c_str());
     return -1;
   }
   cap_info_.config_path = nodePare_->config_path_;
@@ -215,10 +215,12 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   cap_info_.cal_alpha_ = nodePare_->cal_alpha_;
   cap_info_.stream_mode_ = nodePare_->stream_mode_;
   cap_info_.sub_stream_enable_ = nodePare_->sub_stream_enable_;
-
+  cap_info_.sync_awb_ = nodePare_->sync_awb_;
+  cap_info_.sync_ae_ = nodePare_->sync_ae_;
+  cap_info_.print_isp_log_ = nodePare_->print_isp_log_;
   if (mipiCap_ptr_->initEnv() < 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-    "[%s]->init %s's mipi host and gpio failure: %s\r\n", __func__, board_type.c_str());
+                 "[%s]->init %s's mipi host and gpio failure: %s\r\n", __func__, board_type.c_str());
     return -1;
   }
   if ( cap_info_.device_mode_ == "dual") {
@@ -234,10 +236,10 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
       mipiCap_ptr_->setCamInfo(cam_info_v);
     }
   }
-  
+
   if (mipiCap_ptr_->init(cap_info_) != 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-      "[%s]->cap capture init failture.\r\n", __func__);
+                 "[%s]->cap capture init failture.\r\n", __func__);
     return -5;
   }
 
@@ -249,7 +251,7 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   nodePare_->device_mode_ = cap_info_.device_mode_;
 
   RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
-    "[%s]->cap %s init success.\r\n", __func__, cap_info_.sensor_type.c_str());
+              "[%s]->cap %s init success.\r\n", __func__, cap_info_.sensor_type.c_str());
   lsInit_ = true;
   return 0;
 }
@@ -257,7 +259,7 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
 int MipiCamIml::deInit() {
   int ret = 0;
   RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
-    "mipi_cam deInit start");
+              "mipi_cam deInit start");
   if (lsInit_) {
     lsInit_ = false;
     if (true == is_capturing_) {
@@ -271,7 +273,7 @@ int MipiCamIml::deInit() {
     mipiCap_ptr_ = nullptr;
   }
   RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
-    "mipi_cam deInit end");
+              "mipi_cam deInit end");
   return ret;
 }
 
@@ -282,7 +284,7 @@ int MipiCamIml::start() {
   int ret = 0;
   if (mipiCap_ptr_->start()) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-      "[%s]->cap capture start failture.\r\n", __func__);
+                 "[%s]->cap capture start failture.\r\n", __func__);
     return -1;
   }
   RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
@@ -309,82 +311,82 @@ int MipiCamIml::stop() {
   }
   is_capturing_ = false;
   RCLCPP_WARN(rclcpp::get_logger("mipi_cam"),
-    "mipi_cam is stoped");
+              "mipi_cam is stoped");
   return ret;
 }
 
 bool MipiCamIml::isCapturing() { return is_capturing_; }
 
 bool MipiCamIml::getImage(builtin_interfaces::msg::Time &stamp,
-                        std::string &encoding,
-                        uint32_t &height,
-                        uint32_t &width,
-                        uint32_t &step,
-                        std::vector<uint8_t> &data, std::string channel) {
-    if (!is_capturing_) {
-      RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-        "[%s][%-%d] Camera isn't captureing", __FILE__, __func__, __LINE__);
-      return false;
-    }
-    struct timespec time_start = {0, 0};
-    int64_t msStart = 0, msEnd = 0;
-    {
-      struct timespec ts;
-      clock_gettime(CLOCK_MONOTONIC, &ts);
-      msStart = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
-    }
-    auto video_ptr = mipiCap_ptr_->getFrame(channel);
-    if (video_ptr == nullptr) {
-      return false;
-    }
-    width = video_ptr->width;
-    height = video_ptr->height;
-    step = video_ptr->stride;
-    stamp.sec = video_ptr->timestamp / 1e9;
-    stamp.nanosec = video_ptr->timestamp - stamp.sec * 1e9;
-    if (nodePare_->out_format_name_ == "bgr8") {
-      data.resize(width * height * 3);
-      NV12_TO_BGR24((unsigned char *)video_ptr->buff.data(),
+                          std::string &encoding,
+                          uint32_t &height,
+                          uint32_t &width,
+                          uint32_t &step,
+                          std::vector<uint8_t> &data, std::string channel) {
+  if (!is_capturing_) {
+    RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
+                 "[%s][%-%d] Camera isn't captureing", __FILE__, __func__, __LINE__);
+    return false;
+  }
+  struct timespec time_start = {0, 0};
+  int64_t msStart = 0, msEnd = 0;
+  {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    msStart = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+  }
+  auto video_ptr = mipiCap_ptr_->getFrame(channel);
+  if (video_ptr == nullptr) {
+    return false;
+  }
+  width = video_ptr->width;
+  height = video_ptr->height;
+  step = video_ptr->stride;
+  stamp.sec = video_ptr->timestamp / 1e9;
+  stamp.nanosec = video_ptr->timestamp - stamp.sec * 1e9;
+  if (nodePare_->out_format_name_ == "bgr8") {
+    data.resize(width * height * 3);
+    NV12_TO_BGR24((unsigned char *)video_ptr->buff.data(),
                   (unsigned char *)&data[0], width, height);
-      encoding = "bgr8";
-      step = width * 3;
-    } else if (nodePare_->out_format_name_ == "gray") {
-      data.resize(width * height);
-      memcpy((unsigned char *)&data[0], video_ptr->buff.data(),  width * height);
-      encoding = "mono8";
-    } else {
-      data.resize(video_ptr->buff.size());
-      memcpy((unsigned char *)&data[0], video_ptr->buff.data(),  video_ptr->buff.size());
-      encoding = "nv12";
-    }
-    video_ptr->return_empty_que();
+    encoding = "bgr8";
+    step = width * 3;
+  } else if (nodePare_->out_format_name_ == "gray") {
+    data.resize(width * height);
+    memcpy((unsigned char *)&data[0], video_ptr->buff.data(),  width * height);
+    encoding = "mono8";
+  } else {
+    data.resize(video_ptr->buff.size());
+    memcpy((unsigned char *)&data[0], video_ptr->buff.data(),  video_ptr->buff.size());
+    encoding = "nv12";
+  }
+  video_ptr->return_empty_que();
 
-    uint64_t timestamp_sys;
-    {
-      struct timeval tv;
-      gettimeofday(&tv, NULL);
-      timestamp_sys = (tv.tv_sec * 1000 + tv.tv_usec/1000);
-    }
-  
-    RCLCPP_INFO(rclcpp::get_logger("mipi_cam"), "publish laps ms= %lu", (timestamp_sys - video_ptr->timestamp/1000000));
+  uint64_t timestamp_sys;
+  {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    timestamp_sys = (tv.tv_sec * 1000 + tv.tv_usec/1000);
+  }
 
-    {
-      struct timespec ts;
-      clock_gettime(CLOCK_MONOTONIC, &ts);
-      msEnd = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
-    }
-  
-    RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cam"),
-               "getImage channel=" << channel.data()
-               << ", enc=" << encoding.data()
-               << ", width=" << width
-               << ", height=" << height
-               << ", step=" << step
-               << std::fixed
-               << ", ts=" << stamp.sec + stamp.nanosec * 1e-9
-               << ", laps ms=" << msEnd - msStart);
-  
-    return true;
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cam"), "publish laps ms= %lu", (timestamp_sys - video_ptr->timestamp/1000000));
+
+  {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    msEnd = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+  }
+
+  RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cam"),
+                     "getImage channel=" << channel.data()
+                                         << ", enc=" << encoding.data()
+                                         << ", width=" << width
+                                         << ", height=" << height
+                                         << ", step=" << step
+                                         << std::fixed
+                                         << ", ts=" << stamp.sec + stamp.nanosec * 1e-9
+                                         << ", laps ms=" << msEnd - msStart);
+
+  return true;
 }
 
 
@@ -398,7 +400,7 @@ bool MipiCamIml::getImageMem(
     uint32_t &data_size, std::string channel) {
   if (!is_capturing_) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-      "[%s][%-%d] Camera isn't captureing", __FILE__, __func__, __LINE__);
+                 "[%s][%-%d] Camera isn't captureing", __FILE__, __func__, __LINE__);
     return false;
   }
   // get the image
@@ -427,7 +429,7 @@ bool MipiCamIml::getImageMem(
       return false;
     }
     NV12_TO_BGR24((unsigned char *)video_ptr->buff.data(),
-                (unsigned char *)&data[0], width, height);
+                  (unsigned char *)&data[0], width, height);
     memcpy(encoding.data(), "bgr8", strlen("bgr8"));
   } else if (nodePare_->out_format_name_ == "gray") {
     data_size = width * height;
@@ -465,25 +467,25 @@ bool MipiCamIml::getImageMem(
   }
 
   RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cam"),
-              "getImageMem channel=" << channel.data()
-              << ", enc=" << encoding.data()
-              << ", width=" << width
-              << ", height=" << height
-              << ", step=" << step
-              << ", sz=" << data_size
-              << ", ts=" << stamp.sec << "." << stamp.nanosec
-              << ", laps ms=" << msEnd - msStart);
+                     "getImageMem channel=" << channel.data()
+                                            << ", enc=" << encoding.data()
+                                            << ", width=" << width
+                                            << ", height=" << height
+                                            << ", step=" << step
+                                            << ", sz=" << data_size
+                                            << ", ts=" << stamp.sec << "." << stamp.nanosec
+                                            << ", laps ms=" << msEnd - msStart);
 
   return true;
 }
 
 
 bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
-                                  const std::string &file_path) {
+                                   const std::string &file_path) {
   if (!mipiCap_ptr_) {
     return false;
   }
-  auto cal_v_ptr = mipiCap_ptr_->getCalCamInfo(); 
+  auto cal_v_ptr = mipiCap_ptr_->getCalCamInfo();
   if (cal_v_ptr != nullptr && (cal_v_ptr->size() > 0)){
     RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
     const sensor_msgs::msg::CameraInfo& cameraInfo = cal_v_ptr->at(0);
@@ -491,11 +493,11 @@ bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
     return true;
   } else {
     return getCamCalibrationIml(cam_info, file_path);
-  }                     
+  }
 }
 
 bool MipiCamIml::getCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info,
-                                  const std::string &file_path) {
+                                      const std::string &file_path) {
   try {
     std::string cal_file;
     if ((file_path.length() == 0) || (file_path == "default")) {
@@ -513,9 +515,9 @@ bool MipiCamIml::getCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info,
     std::ifstream fin(cal_file.c_str());
     if (!fin) {
       RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-          "Camera calibration file: %s is not exist!"
-          "\nIf you need calibration msg, please make sure the calibration file path is correct and the calibration file exists!",
-          cal_file.c_str());
+                  "Camera calibration file: %s is not exist!"
+                  "\nIf you need calibration msg, please make sure the calibration file path is correct and the calibration file exists!",
+                  cal_file.c_str());
       return false;
     }
     YAML::Node calibration_doc = YAML::Load(fin);
@@ -550,7 +552,7 @@ bool MipiCamIml::getCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info,
     } else {
       cam_info.distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
       RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-                 "Camera calibration file did not specify distortion model, "
+                  "Camera calibration file did not specify distortion model, "
                   "assuming plumb bob");
     }
     const YAML::Node &distortion_coefficients =
@@ -565,22 +567,22 @@ bool MipiCamIml::getCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info,
       cam_info.d[i] = distortion_coefficients_data[i].as<double>();
     }
     RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-      "[getCamCalibration]->parse calibration file successfully");
+                "[getCamCalibration]->parse calibration file successfully");
     return true;
   } catch (YAML::Exception &e) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-      "Unable to parse camera calibration file normally:%s",
-      e.what());
+                 "Unable to parse camera calibration file normally:%s",
+                 e.what());
     return false;
   }
 }
 
 bool MipiCamIml::getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,sensor_msgs::msg::CameraInfo &cam_info_r,
-                                  const std::string &file_path) {
+                                       const std::string &file_path) {
   if (!mipiCap_ptr_) {
     return false;
   }
-  auto cal_v_ptr = mipiCap_ptr_->getCalCamInfo(); 
+  auto cal_v_ptr = mipiCap_ptr_->getCalCamInfo();
   if (cal_v_ptr != nullptr && (cal_v_ptr->size() == 2)){
     RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
     const sensor_msgs::msg::CameraInfo& cal_l = cal_v_ptr->at(0);
@@ -597,11 +599,11 @@ bool MipiCamIml::getDualCamCalibration(sensor_msgs::msg::CameraInfo &cam_info_l,
       scaleSubStreamCamInfo(cam_info_r, cap_info_.width, cap_info_.height);
     }
     return result;
-  }                     
+  }
 }
 
 bool MipiCamIml::getDualCamCalibrationSub(sensor_msgs::msg::CameraInfo &cam_info_l, sensor_msgs::msg::CameraInfo &cam_info_r,
-                                       const std::string &file_path)
+                                          const std::string &file_path)
 {
   if (!mipiCap_ptr_)
   {
@@ -631,8 +633,8 @@ bool MipiCamIml::getDualCamCalibrationSub(sensor_msgs::msg::CameraInfo &cam_info
 }
 
 bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info_l,sensor_msgs::msg::CameraInfo &cam_info_r,
-                                  const std::string &file_path) {
-  RCLCPP_INFO(rclcpp::get_logger("mipi_cam"), "cal_file:%s", file_path.c_str());     
+                                          const std::string &file_path) {
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cam"), "cal_file:%s", file_path.c_str());
   try {
     if ((file_path.length() == 0) || (file_path == "default")) {
       return false;
@@ -640,13 +642,13 @@ bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info
     cv::FileStorage fs(file_path.c_str(), cv::FileStorage::READ);
     if (!fs.isOpened()) {
       RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-      "Camera calibration file: %s is not exist!"
-      "\nIf you need calibration msg, please make sure the calibration file path is correct and the calibration file exists!",
-      file_path.c_str());
-        return false;
+                  "Camera calibration file: %s is not exist!"
+                  "\nIf you need calibration msg, please make sure the calibration file path is correct and the calibration file exists!",
+                  file_path.c_str());
+      return false;
     }
     cv::Mat l_k, l_d, r_k, r_d, R, T;
-    
+
     int width = fs["image_width"];
     int height = fs["image_height"];
     std::string dist_model;
@@ -707,7 +709,7 @@ bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info
     } else {
       cam_info_l.distortion_model = cam_info_r.distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
       RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
-                 "Camera calibration file did not specify distortion model, "
+                  "Camera calibration file did not specify distortion model, "
                   "assuming plumb bob");
     }
 
@@ -715,8 +717,8 @@ bool MipiCamIml::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info
     return true;
   } catch (cv::Exception &e) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
-      "Unable to parse camera calibration file normally:%s",
-      e.what());
+                 "Unable to parse camera calibration file normally:%s",
+                 e.what());
     return false;
   }
 }

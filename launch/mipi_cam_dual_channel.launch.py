@@ -32,7 +32,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument(
-            "mipi_config_path", 
+            "mipi_config_path",
             default_value=TextSubstitution(text=str(config_file_path)),
             description='mipi camera calibration file path'),
         DeclareLaunchArgument(
@@ -128,6 +128,18 @@ def generate_launch_description():
             default_value='False',
             description='mipi sub stream enable'),
         DeclareLaunchArgument(
+            'sync_awb',
+            default_value='False',
+            description='set the slave awb parameters from the master'),
+        DeclareLaunchArgument(
+            'sync_ae',
+            default_value='False',
+            description='set the slave ae parameters from the master'),
+        DeclareLaunchArgument(
+            'print_isp_log',
+            default_value='False',
+            description='print isp parameters log'),
+        DeclareLaunchArgument(
             'log_level',
             default_value='warn',
             description='log level'),
@@ -170,6 +182,9 @@ def generate_launch_description():
                 {"cal_alpha": LaunchConfiguration('mipi_cal_alpha')},
                 {"stream_mode": LaunchConfiguration('mipi_stream_mode')},
                 {"sub_stream_enable": LaunchConfiguration('mipi_sub_stream_enable')},
+                {"sync_awb": LaunchConfiguration('sync_awb')},
+                {"sync_ae": LaunchConfiguration('sync_ae')},
+                {"print_isp_log": LaunchConfiguration('print_isp_log')},
             ],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         )

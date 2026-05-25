@@ -40,6 +40,7 @@
 
 #include "hb_media_codec.h"
 #include "hb_media_error.h"
+#include "hbn_isp_api.h"
 
 #include <rclcpp/rclcpp.hpp>
 #include <json/json.h>
@@ -476,6 +477,13 @@ int HobotMipiCapIml::start() {
 		  }
 	  }
   }
+  if (pipe_contex.size() > 1 &&
+      (pipe_contex[0].cap_info_->sync_awb_
+          || pipe_contex[0].cap_info_->sync_ae_
+          || pipe_contex[0].cap_info_->print_isp_log_)) {
+    awb_ae_sync_task_ = std::make_shared<std::thread>(
+        std::bind(&HobotMipiCapIml::sync_awb_ae_task, this));
+  }
   return 0;
 }
 
@@ -499,6 +507,9 @@ int HobotMipiCapIml::stop() {
   }
   if (sub_sync_task_ && sub_sync_task_->joinable()) {
     sub_sync_task_->join();
+  }
+  if (awb_ae_sync_task_ && awb_ae_sync_task_->joinable()) {
+    awb_ae_sync_task_->join();
   }
   for(auto contex : pipe_contex){
     ret = hbn_vflow_stop(contex.vflow_fd);
@@ -1729,4 +1740,292 @@ int HobotMipiCapIml::selectSensor(std::string &sensor, int &host, int &i2c_bus) 
   return -1;
 }
 
+void HobotMipiCapIml::sync_awb_ae_task() {
+  int ret;
+  int vin_fd = -1;
+  int isp_fd = -1;
+  fd_set read_fds;
+  bool sync_awb; bool sync_ae; bool print_isp_log;
+  hbn_vnode_handle_t master_isp_handle, slave_isp_handle, slave_vin_handle;
+  hbn_isp_exposure_attr_t master_exp_attr, slave_exp_attr;
+  hbn_isp_awb_attr_t master_awb_attr, slave_awb_attr;
+  hbn_isp_ccm_attr_t master_ccm_attr, slave_ccm_attr;
+  hbn_isp_2dnr_attr_t master_2dnr_attr, slave_2dnr_attr;
+
+  if (pipe_contex.size() < 2) return;
+
+  sync_awb = pipe_contex[0].cap_info_->sync_awb_;
+  sync_ae = pipe_contex[0].cap_info_->sync_ae_;
+  print_isp_log = pipe_contex[0].cap_info_->print_isp_log_;
+
+  if (!sync_awb && !sync_ae && !print_isp_log) return;
+
+  master_isp_handle = pipe_contex[0].isp_node_handle;
+  slave_isp_handle  = pipe_contex[1].isp_node_handle;
+  slave_vin_handle  = pipe_contex[1].vin_node_handle;
+
+  ret = hbn_vnode_get_fd(slave_vin_handle, 0, &vin_fd);
+  if (ret != 0) {
+    std::cout << "vin hbn_vnode_get_fd chn: 0, failed: " << ret << std::endl;
+  }
+
+  ret = hbn_vnode_get_fd(slave_isp_handle, 0, &isp_fd);
+  if (ret != 0) {
+    std::cout << "isp hbn_vnode_get_fd chn: 0, failed: " << ret << std::endl;
+  }
+  // 先等isp出流第一帧再开始AE同步，以免出现异常打印
+  //  start to sync awb or ae after we get the first frame from ISP module, in odrder to avoid inormal cases.
+  {
+    FD_ZERO(&read_fds);
+    FD_SET(vin_fd, &read_fds);
+    struct timeval timeout;
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+    select(vin_fd + 1, &read_fds, NULL, NULL, &timeout);
+  }
+
+  while(rclcpp::ok()) {
+    FD_ZERO(&read_fds);
+    FD_SET(vin_fd, &read_fds);
+    struct timeval timeout;
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+    int activity = select(vin_fd + 1, &read_fds, NULL, NULL, &timeout);
+    if (activity < 0) {
+      std::cout << "select fail" << std::endl;
+      break;
+    } else if (activity == 0) {
+      std::cout << "select fail over 1s." << std::endl;
+      continue;
+    }
+
+    auto rt0 = std::chrono::high_resolution_clock::now();
+    ret = hbn_isp_get_exposure_attr(master_isp_handle, &master_exp_attr);
+    if (ret != 0) {
+      std::cout << "hbn_isp_get_exposure_attr failed: " << ret <<  ",  for master_isp_handle" << std::endl;
+      std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+      continue;
+    }
+    auto rt1 = std::chrono::high_resolution_clock::now();
+
+    ret = hbn_isp_get_awb_attr(master_isp_handle, &master_awb_attr);
+    if (ret != 0) {
+      std::cout << "hbn_isp_get_awb_attr failed: " << ret <<  ",  for master_isp_handle" << std::endl;
+      std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+      continue;
+    }
+    auto rt2 = std::chrono::high_resolution_clock::now();
+
+    auto dt1 = std::chrono::duration_cast<std::chrono::microseconds>(rt1 - rt0).count() * 1e-3;
+    auto dt2 = std::chrono::duration_cast<std::chrono::microseconds>(rt2 - rt1).count() * 1e-3;
+    if (print_isp_log) {
+      printf("======== master awb==========\n");
+      printf("AWB[version: %u, mode: %d, manual_attr_gain: rgain: %f, grgain: %f, gbgain: %f, bgain: %f, consume: %.1fms], "
+             "EXP[version: %u, mode: %d, manual_attr_gain: exp_time: %f, again: %f, dgain: %f, ispgain: %f, ae_exp: %f, cur_lux: %u, consume: %.1fms]\n",
+             master_awb_attr.version, master_awb_attr.mode, master_awb_attr.manual_attr.gain.rgain, master_awb_attr.manual_attr.gain.grgain, master_awb_attr.manual_attr.gain.gbgain, master_awb_attr.manual_attr.gain.bgain, dt1,
+             master_exp_attr.version, master_exp_attr.mode, master_exp_attr.manual_attr.exp_time, master_exp_attr.manual_attr.again, master_exp_attr.manual_attr.dgain, master_exp_attr.manual_attr.ispgain, master_exp_attr.manual_attr.ae_exp, master_exp_attr.manual_attr.cur_lux, dt2);
+      printf("======== master awb==========\n");
+    }
+    ret = hbn_isp_get_exposure_attr(slave_isp_handle, &slave_exp_attr);
+    auto rt3 = std::chrono::high_resolution_clock::now();
+    if (ret != 0) {
+      std::cout << "hbn_isp_get_exposure_attr failed: " << ret <<  ",  for master_isp_handle" << std::endl;
+      std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+      continue;
+    }
+    ret = hbn_isp_get_awb_attr(slave_isp_handle, &slave_awb_attr);
+    auto rt4 = std::chrono::high_resolution_clock::now();
+    if (ret != 0) {
+      std::cout << "hbn_isp_get_awb_attr failed: " << ret <<  ",  for master_isp_handle" << std::endl;
+      std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+      continue;
+    }
+    auto dt3 = std::chrono::duration_cast<std::chrono::microseconds>(rt3 - rt2).count() * 1e-3;
+    auto dt4 = std::chrono::duration_cast<std::chrono::microseconds>(rt4 - rt3).count() * 1e-3;
+    if (print_isp_log) {
+      printf("======== slave awb before sync==========\n");
+      printf(
+          "AWB[version: %u, mode: %d, manual_attr_gain: rgain: %f, grgain: %f, gbgain: %f, bgain: %f, consume: %.1fms], "
+          "EXP[version: %u, mode: %d, manual_attr_gain: exp_time: %f, again: %f, dgain: %f, ispgain: %f, ae_exp: %f, cur_lux: %u, consume: %.1fms]\n",
+          slave_awb_attr.version,
+          slave_awb_attr.mode,
+          slave_awb_attr.manual_attr.gain.rgain,
+          slave_awb_attr.manual_attr.gain.grgain,
+          slave_awb_attr.manual_attr.gain.gbgain,
+          slave_awb_attr.manual_attr.gain.bgain,
+          dt3,
+          slave_exp_attr.version,
+          slave_exp_attr.mode,
+          slave_exp_attr.manual_attr.exp_time,
+          slave_exp_attr.manual_attr.again,
+          slave_exp_attr.manual_attr.dgain,
+          slave_exp_attr.manual_attr.ispgain,
+          slave_exp_attr.manual_attr.ae_exp,
+          slave_exp_attr.manual_attr.cur_lux,
+          dt4);
+      printf("======== slave awb before sync==========\n");
+    }
+    if (!sync_awb && !sync_ae) {
+      continue;
+    }
+
+    if (sync_ae) {
+      master_exp_attr.mode = HBN_ISP_MODE_MANUAL;
+      ret = hbn_isp_set_exposure_attr(slave_isp_handle, &master_exp_attr);
+      if (ret != 0) {
+        std::cout << "hbn_isp_set_exposure_attr failed: " << ret <<  ",  for slave_isp_handel" << std::endl;
+        std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+        continue;
+      }
+    }
+    auto rt5 = std::chrono::high_resolution_clock::now();
+    if (sync_awb) {
+      master_awb_attr.mode = HBN_ISP_MODE_MANUAL;
+      ret = hbn_isp_set_awb_attr(slave_isp_handle, &master_awb_attr);
+      if (ret != 0) {
+        std::cout << "hbn_isp_set_awb_attr failed: " << ret <<  ",  for slave_isp_handel" << std::endl;
+        std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+        continue;
+      }
+    }
+    auto rt6 = std::chrono::high_resolution_clock::now();
+
+    ret = hbn_isp_get_exposure_attr(slave_isp_handle, &slave_exp_attr);
+    if (ret != 0) {
+      std::cout << "hbn_isp_get_exposure_attr failed: " << ret <<  ",  for master_isp_handle" << std::endl;
+      std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+      continue;
+    }
+    auto rt7 = std::chrono::high_resolution_clock::now();
+
+    ret = hbn_isp_get_awb_attr(slave_isp_handle, &slave_awb_attr);
+    if (ret != 0) {
+      std::cout << "hbn_isp_get_awb_attr failed: " << ret <<  ",  for master_isp_handle" << std::endl;
+      std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+      continue;
+    }
+    auto dt5 = std::chrono::duration_cast<std::chrono::microseconds>(rt5 - rt4).count() * 1e-3;
+    auto dt6 = std::chrono::duration_cast<std::chrono::microseconds>(rt6 - rt5).count() * 1e-3;
+    if (print_isp_log) {
+      printf("======== slave awb after sync==========\n");
+      printf(
+          "AWB[version: %u, mode: %d, manual_attr_gain: rgain: %f, grgain: %f, gbgain: %f, bgain: %f, set consume: %.1fms], "
+          "EXP[version: %u, mode: %d, manual_attr_gain: exp_time: %f, again: %f, dgain: %f, ispgain: %f, ae_exp: %f, cur_lux: %u, set consume: %.1fms]\n",
+          slave_awb_attr.version,
+          slave_awb_attr.mode,
+          slave_awb_attr.manual_attr.gain.rgain,
+          slave_awb_attr.manual_attr.gain.grgain,
+          slave_awb_attr.manual_attr.gain.gbgain,
+          slave_awb_attr.manual_attr.gain.bgain,
+          dt5,
+          slave_exp_attr.version,
+          slave_exp_attr.mode,
+          slave_exp_attr.manual_attr.exp_time,
+          slave_exp_attr.manual_attr.again,
+          slave_exp_attr.manual_attr.dgain,
+          slave_exp_attr.manual_attr.ispgain,
+          slave_exp_attr.manual_attr.ae_exp,
+          slave_exp_attr.manual_attr.cur_lux,
+          dt6);
+      printf("======== slave awb after sync==========\n");
+    }
+    auto rt8 = std::chrono::high_resolution_clock::now();
+    ret = hbn_isp_get_ccm_attr(master_isp_handle, &master_ccm_attr);
+    if (ret != 0) {
+      std::cout << "hbn_isp_get_ccm_attr failed: " << ret <<  ",  for master_isp_handle" << std::endl;
+      std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+      continue;
+    }
+    auto rt9 = std::chrono::high_resolution_clock::now();
+    ret = hbn_isp_get_ccm_attr(slave_isp_handle, &slave_ccm_attr);
+    if (ret != 0) {
+      std::cout << "hbn_isp_get_ccm_attr failed: " << ret <<  ",  for slave_isp_handle" << std::endl;
+      std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+      continue;
+    }
+    auto rt10 = std::chrono::high_resolution_clock::now();
+
+    auto dt7 = std::chrono::duration_cast<std::chrono::microseconds>(rt9 - rt8).count() * 1e-3;
+    auto dt8 = std::chrono::duration_cast<std::chrono::microseconds>(rt10 - rt9).count() * 1e-3;
+    if (print_isp_log) {
+      printf("======== ccm after sync==========\n");
+      printf("master ccm configmode: %d\n"
+             "consume: %.1fms\n"
+             "cc_matrix:\n"
+             "[%f, %f, %f]\n"
+             "[%f, %f, %f]\n"
+             "[%f, %f, %f]\n"
+             "cc_offset:\n"
+             "[%f, %f, %f]\n",
+             master_ccm_attr.configMode,
+             dt7,
+             master_ccm_attr.manual_attr.cc_matrix[0],
+             master_ccm_attr.manual_attr.cc_matrix[1],
+             master_ccm_attr.manual_attr.cc_matrix[2],
+             master_ccm_attr.manual_attr.cc_matrix[3],
+             master_ccm_attr.manual_attr.cc_matrix[4],
+             master_ccm_attr.manual_attr.cc_matrix[5],
+             master_ccm_attr.manual_attr.cc_matrix[6],
+             master_ccm_attr.manual_attr.cc_matrix[7],
+             master_ccm_attr.manual_attr.cc_matrix[8],
+             master_ccm_attr.manual_attr.cc_offset[0],
+             master_ccm_attr.manual_attr.cc_offset[1],
+             master_ccm_attr.manual_attr.cc_offset[2]);
+      printf("slave ccm configmode: %d\n"
+             "consume: %.1fms\n"
+             "cc_matrix:\n"
+             "[%f, %f, %f]\n"
+             "[%f, %f, %f]\n"
+             "[%f, %f, %f]\n"
+             "cc_offset:\n"
+             "[%f, %f, %f]\n",
+             slave_ccm_attr.configMode,
+             dt8,
+             slave_ccm_attr.manual_attr.cc_matrix[0],
+             slave_ccm_attr.manual_attr.cc_matrix[1],
+             slave_ccm_attr.manual_attr.cc_matrix[2],
+             slave_ccm_attr.manual_attr.cc_matrix[3],
+             slave_ccm_attr.manual_attr.cc_matrix[4],
+             slave_ccm_attr.manual_attr.cc_matrix[5],
+             slave_ccm_attr.manual_attr.cc_matrix[6],
+             slave_ccm_attr.manual_attr.cc_matrix[7],
+             slave_ccm_attr.manual_attr.cc_matrix[8],
+             slave_ccm_attr.manual_attr.cc_offset[0],
+             slave_ccm_attr.manual_attr.cc_offset[1],
+             slave_ccm_attr.manual_attr.cc_offset[2]);
+      printf("======== ccm after sync==========\n");
+    }
+    ret = hbn_isp_get_2dnr_attr(master_isp_handle, &master_2dnr_attr);
+    auto rt11 = std::chrono::high_resolution_clock::now();
+    if (ret != 0) {
+      std::cout << "hbn_isp_get_2dnr_attr failed: " << ret <<  ", for master_isp_handle" << std::endl;
+      std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+      continue;
+    }
+    ret = hbn_isp_get_2dnr_attr(slave_isp_handle, &slave_2dnr_attr);
+    auto rt12 = std::chrono::high_resolution_clock::now();
+    if (ret != 0) {
+      std::cout << "hbn_isp_get_2dnr_attr failed: " << ret <<  ",  for slave_isp_handle" << std::endl;
+      std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+      continue;
+    }
+    auto dt9 = std::chrono::duration_cast<std::chrono::microseconds>(rt11 - rt10).count() * 1e-3;
+    auto dt10 = std::chrono::duration_cast<std::chrono::microseconds>(rt12 - rt11).count() * 1e-3;
+    if (print_isp_log) {
+      printf("======== 2dnr after sync==========\n");
+      printf("master blend static: %f, motion: %f, vst_factor: %f, consume: %.1fms\n",
+             master_2dnr_attr.manual_attr.blend_static,
+             master_2dnr_attr.manual_attr.blend_motion,
+             master_2dnr_attr.manual_attr.vst_factor,
+             dt9);
+      printf("slave blend static: %f, motion: %f, vst_factor: %f, consume: %.1fms\n",
+             slave_2dnr_attr.manual_attr.blend_static,
+             slave_2dnr_attr.manual_attr.blend_motion,
+             slave_2dnr_attr.manual_attr.vst_factor,
+             dt10);
+      printf("======== 2dnr after sync==========\n");
+      std::cout << std::flush;
+    }
+  }
+}
 }  // namespace mipi_cam

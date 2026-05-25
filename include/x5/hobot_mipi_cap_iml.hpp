@@ -107,6 +107,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   void subMultiFrameTask();
   void singleFrameTask();
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
+  void sync_awb_ae_task();
 
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
   int creat_vse_node(pipe_contex_t *pipe_contex);
@@ -134,7 +135,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::map<int, std::vector<std::string>> host_sensor_m_;
   std::shared_ptr<std::thread> multi_frame_task_ = nullptr;
   std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
-  
+  std::shared_ptr<std::thread> awb_ae_sync_task_ = nullptr;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
   std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;
 
