@@ -56,10 +56,10 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->lpwm_enable_ = false;
   nodePare_->gdc_enable_ = true;
   nodePare_->frame_ts_type_ = "sensor"; //sensor,realtime;
-  nodePare_->link_type_ = 0;
-  nodePare_->link_port_ = 0;
+  nodePare_->link_type_ = 0; 
+  nodePare_->link_port_ = 0; 
   nodePare_->gsml_cfg_file_ = ""; //sensor,realtime;
-  nodePare_->cal_alpha_ = 0.0;
+  nodePare_->cal_alpha_ = 0.0; 
   nodePare_->stream_mode_ = 0; //0: slave stream can gdc; 1: slave stream can't gdc.
   nodePare_->sub_stream_enable_ = false;
   frame_id_ = "camera_link";

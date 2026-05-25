@@ -54,10 +54,12 @@ vp_sensor_config_t *vp_get_sensor_config_by_name(char *sensor_name)
 
 extern vp_sensor_config_t ovx3cstd_linear_1920x1080_raw12_30fps_1lane;
 extern vp_sensor_config_t ar0820std_linear_1920x1080_yuv_30fps_1lane;
+extern vp_sensor_config_t gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane;
 
 vp_sensor_config_t *vp_gmsl_config_list[] = {
 	&ovx3cstd_linear_1920x1080_raw12_30fps_1lane,
-	&ar0820std_linear_1920x1080_yuv_30fps_1lane
+	&ar0820std_linear_1920x1080_yuv_30fps_1lane,
+	&gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane
 };
 
 uint32_t vp_get_gmsl_list_number() {
@@ -85,6 +87,21 @@ vp_sensor_config_t *vp_get_gmsl_config_by_name(char *sensor_name)
 	}
 	return NULL;
 }
+
+
+
+extern vp_deserial_config_t deserial_max96712_4link;
+extern vp_deserial_config_t deserial_max96712_4link_slave;
+
+vp_deserial_config_t *vp_deserial_config_list[] = {
+	&deserial_max96712_4link,
+	&deserial_max96712_4link_slave
+};
+
+uint32_t vp_get_deserial_list_number() {
+	return sizeof(vp_deserial_config_list) / sizeof(vp_deserial_config_list[0]);
+}
+
 
 // Check system endianness
 static int is_little_endian() {
@@ -651,6 +668,20 @@ static int32_t vp_sensor_mipi_host_mclk_is_not_configed(int csi_index){
 	return mclk_is_not_configed;
 }
 
+void vp_deserial_config_update(deserial_config_t *deserial, const camera_config_t *camera_config, int link_port){
+	if (!deserial || !camera_config) {
+		return;
+	}
+	snprintf(deserial->link_desp[link_port],
+			sizeof(deserial->link_desp[link_port]),
+			"%.32s:%d@%d",
+			camera_config->name, camera_config->extra_mode, camera_config->config_index);
+
+	if(camera_config->sensor_mode == 6){
+		deserial->gpio_mfp[link_port] = 0x05;
+	}
+}
+
 void vp_sensor_detect_structed(csi_list_info_t *csi_list_info)
 {
 	struct vcon_properties vcon_props_array[VP_MAX_VCON_NUM];
@@ -976,40 +1007,157 @@ int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config,
 
 
 int copy_config(vp_sensor_config_t* dest, vp_sensor_config_t* src) {
-#if ngy
 	if ((dest == NULL) || (src == NULL)) {
 		return -1;
 	}
 
 	memcpy(dest, src, sizeof(vp_sensor_config_t));
+
+	dest->camera_config = NULL;
+	dest->camera_slave_config = NULL;
+	dest->vin_attr = NULL;
+	dest->isp_cfg = NULL;
+	dest->ynr_attr = NULL;
+	dest->pym_cfg = NULL;
+	dest->deserial_attr = NULL;
+	dest->deserial_slave_attr = NULL;
+
 	if (src->camera_config) {
 		dest->camera_config = malloc(sizeof(camera_config_t));
+		if (dest->camera_config == NULL) {
+			return -1;
+		}
 		memcpy(dest->camera_config, src->camera_config, sizeof(camera_config_t));
+		if (src->camera_config->mipi_cfg) {
+			dest->camera_config->mipi_cfg = malloc(sizeof(mipi_config_t));
+			if (dest->camera_config->mipi_cfg == NULL) {
+				return -1;
+			}
+			memcpy(dest->camera_config->mipi_cfg, src->camera_config->mipi_cfg, sizeof(mipi_config_t));
+		}
 	}
-	if (src->camera_config) {
-		dest->camera_config = malloc(sizeof(vin_node_attr_t));
-		memcpy(dest->camera_config, src->camera_config, sizeof(vin_node_attr_t));
+	if (src->camera_slave_config) {
+		dest->camera_slave_config = malloc(sizeof(camera_config_t));
+		if (dest->camera_slave_config == NULL) {
+			return -1;
+		}
+		memcpy(dest->camera_slave_config, src->camera_slave_config, sizeof(camera_config_t));
+		if (src->camera_slave_config->mipi_cfg) {
+			dest->camera_slave_config->mipi_cfg = malloc(sizeof(mipi_config_t));
+			if (dest->camera_slave_config->mipi_cfg == NULL) {
+				return -1;
+			}
+			memcpy(dest->camera_slave_config->mipi_cfg, src->camera_slave_config->mipi_cfg, sizeof(mipi_config_t));
+		}
 	}
-	if (src->camera_config) {
-		dest->camera_config = malloc(sizeof(vin_ichn_attr_t));
-		memcpy(dest->camera_config, src->camera_config, sizeof(vin_ichn_attr_t));
+	if (src->vin_attr) {
+		dest->vin_attr = malloc(sizeof(vin_attr_t));
+		if (dest->vin_attr == NULL) {
+			return -1;
+		}
+		memcpy(dest->vin_attr, src->vin_attr, sizeof(vin_attr_t));
 	}
-	if (src->camera_config) {
-		dest->camera_config = malloc(sizeof(vin_ochn_attr_t));
-		memcpy(dest->camera_config, src->camera_config, sizeof(vin_ochn_attr_t));
+	if (src->isp_cfg) {
+		dest->isp_cfg = malloc(sizeof(isp_cfg_t));
+		if (dest->isp_cfg == NULL) {
+			return -1;
+		}
+		memcpy(dest->isp_cfg, src->isp_cfg, sizeof(isp_cfg_t));
 	}
-	if (src->isp_attr) {
-		dest->isp_attr = malloc(sizeof(isp_attr_t));
-		memcpy(dest->isp_attr, src->isp_attr, sizeof(isp_attr_t));
+	if (src->ynr_attr) {
+		dest->ynr_attr = malloc(sizeof(struct ynr_init_attr));
+		if (dest->ynr_attr == NULL) {
+			return -1;
+		}
+		memcpy(dest->ynr_attr, src->ynr_attr, sizeof(struct ynr_init_attr));
 	}
-	if (src->isp_ichn_attr) {
-		dest->isp_ichn_attr = malloc(sizeof(isp_ichn_attr_t));
-		memcpy(dest->isp_ichn_attr, src->isp_ichn_attr, sizeof(isp_ichn_attr_t));
+	if (src->pym_cfg) {
+		dest->pym_cfg = malloc(sizeof(pym_cfg_t));
+		if (dest->pym_cfg == NULL) {
+			return -1;
+		}
+		memcpy(dest->pym_cfg, src->pym_cfg, sizeof(pym_cfg_t));
 	}
-	if (src->isp_ochn_attr) {
-		dest->isp_ochn_attr = malloc(sizeof(isp_ochn_attr_t));
-		memcpy(dest->isp_ochn_attr, src->isp_ochn_attr, sizeof(isp_ochn_attr_t));
+	if (src->deserial_attr) {
+		dest->deserial_attr = malloc(sizeof(deserial_config_t));
+		if (dest->deserial_attr == NULL) {
+			return -1;
+		}
+		memcpy(dest->deserial_attr, src->deserial_attr, sizeof(deserial_config_t));
 	}
-#endif
+	if (src->deserial_slave_attr) {
+		dest->deserial_slave_attr = malloc(sizeof(deserial_config_t));
+		if (dest->deserial_slave_attr == NULL) {
+			return -1;
+		}
+		memcpy(dest->deserial_slave_attr, src->deserial_slave_attr, sizeof(deserial_config_t));
+	}
 	return 0;
 }
+
+void free_config(vp_sensor_config_t* config) {
+	if (config == NULL) {
+		return;
+	}
+	
+	// Free all dynamically allocated pointers
+	if (config->camera_config->mipi_cfg) {
+		free(config->camera_config->mipi_cfg);
+		config->camera_config->mipi_cfg = NULL;
+	}
+	if (config->camera_config) {
+		free(config->camera_config);
+		config->camera_config = NULL;
+	}
+	if (config->camera_slave_config->mipi_cfg) {
+		free(config->camera_slave_config->mipi_cfg);
+		config->camera_slave_config->mipi_cfg = NULL;
+	}
+	if (config->camera_slave_config) {
+		free(config->camera_slave_config);
+		config->camera_slave_config = NULL;
+	}
+	if (config->vin_attr) {
+		free(config->vin_attr);
+		config->vin_attr = NULL;
+	}
+	if (config->isp_cfg) {
+		free(config->isp_cfg);
+		config->isp_cfg = NULL;
+	}
+	if (config->ynr_attr) {
+		free(config->ynr_attr);
+		config->ynr_attr = NULL;
+	}
+	if (config->pym_cfg) {
+		free(config->pym_cfg);
+		config->pym_cfg = NULL;
+	}
+	if (config->deserial_attr) {
+		free(config->deserial_attr);
+		config->deserial_attr = NULL;
+	}
+	if (config->deserial_slave_attr) {
+		free(config->deserial_slave_attr);
+		config->deserial_slave_attr = NULL;
+	}
+}
+
+
+int copy_deserial_config(deserial_config_t* dest, deserial_config_t* src) {
+	if ((dest == NULL) || (src == NULL)) {
+		return -1;
+	}
+
+	memcpy(dest, src, sizeof(deserial_config_t));
+	if (src->poc_cfg) {
+		dest->poc_cfg = malloc(sizeof(poc_config_t));
+		if (dest->poc_cfg == NULL) {
+			return -1;
+		}
+		memcpy(dest->poc_cfg, src->poc_cfg, sizeof(poc_config_t));
+	}
+	return 0;
+}
+
+

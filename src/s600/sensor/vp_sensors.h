@@ -86,13 +86,27 @@ typedef struct vp_sensor_config_s {
 	char sensor_name[128];
 	char config_file[128];
 	camera_config_t *camera_config;
+	camera_config_t *camera_slave_config;
 	vin_attr_t *vin_attr;
 	isp_cfg_t      *isp_cfg;
 	struct ynr_init_attr *ynr_attr;
 	pym_cfg_t *pym_cfg;
 	deserial_config_t *deserial_attr;
+	deserial_config_t *deserial_slave_attr;
 	uint16_t sensor_type;
 } vp_sensor_config_t;
+
+typedef struct vp_deserial_config_s {
+	int16_t chip_id_reg;
+	int16_t chip_id;
+	// Some sensors use a different set of i2c addresses
+	uint32_t sensor_i2c_addr_list[8];
+	char sensor_name[128];
+	char config_file[128];
+	deserial_config_t *deserial_attr;
+	deserial_config_t *deserial_slave_attr;
+	uint16_t sensor_type;
+} vp_deserial_config_t;
 
 
 typedef struct mipi_host_info {
@@ -103,6 +117,8 @@ typedef struct mipi_host_info {
 }mipi_host_info_t;
 
 extern vp_sensor_config_t *vp_sensor_config_list[];
+extern vp_sensor_config_t *vp_gmsl_config_list[];
+extern vp_deserial_config_t *vp_deserial_config_list[];
 
 uint32_t vp_get_sensors_list_number();
 void vp_show_sensors_list();
@@ -113,11 +129,16 @@ uint32_t vp_get_gmsl_list_number();
 void vp_show_gmsl_list();
 vp_sensor_config_t *vp_get_gmsl_config_by_name(char *sensor_name);
 
+uint32_t vp_get_deserial_list_number();
+
 int32_t vp_sensor_fixed_mipi_host(vp_sensor_config_t *sensor_config, vp_csi_config_t* mipi_config);
 int32_t vp_sensor_multi_fixed_mipi_host(vp_sensor_config_t *sensor_config, int used_mipi_host, vp_csi_config_t* mipi_config);
 int32_t vp_sensor_detect_2(int host, mipi_host_info_t* host_info);
 int32_t vp_sensor_fixed_mipi_host_1(int host, vp_sensor_config_t *sensor_config, vp_csi_config_t* csi_config);
+void vp_deserial_config_update(deserial_config_t *deserial, const camera_config_t *camera_config, int link_port);
 int copy_config(vp_sensor_config_t* dest, vp_sensor_config_t* src);
+void free_config(vp_sensor_config_t* config);
+int copy_deserial_config(deserial_config_t* dest, deserial_config_t* src);
 #ifdef __cplusplus
 }
 #endif
