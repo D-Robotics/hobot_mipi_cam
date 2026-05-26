@@ -1488,11 +1488,31 @@ int HobotMipiCapIml::create_gdc_node(std::shared_ptr<pipe_contex_t> pipe_contex)
 	uint32_t chn_id = 0;
 	pipe_contex->gdc_init_valid = 0;
 
-	auto input_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
-	auto input_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+	// auto input_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+	// auto input_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+	int input_width = 0, input_height = 0;
+	if (pipe_contex->sensor_config.pym_cfg != nullptr)
+	{
+		input_width = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_width;
+		input_height = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height;
+	}
+	else if (pipe_contex->sensor_config.isp_cfg != nullptr)
+	{
+		input_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+		input_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+	}
+	else if (pipe_contex->sensor_config.camera_config != nullptr)
+	{
+		input_width = pipe_contex->sensor_config.camera_config->width;
+		input_height = pipe_contex->sensor_config.camera_config->height;
+	}
+	else if (pipe_contex->sensor_config.vin_attr != nullptr)
+	{
+		input_width = pipe_contex->sensor_config.vin_attr->vin_ichn_attr.width;
+		input_height = pipe_contex->sensor_config.vin_attr->vin_ichn_attr.height;
+	}
 	auto out_width = pipe_contex->cap_info_->width;
 	auto out_height = pipe_contex->cap_info_->height;
-
     gdc_settings_t gdc_setting = {0};
 	uint32_t hw_id = 0;
 	ret = hbn_vnode_open(HB_GDC, hw_id, AUTO_ALLOC_ID, &pipe_contex->gdc_node_handle);
