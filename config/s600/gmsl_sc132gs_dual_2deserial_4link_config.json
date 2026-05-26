@@ -1,7 +1,7 @@
 {
   "deserial": [
     {
-      "name": "max96712",
+      "name": "max96712_slave3",
       "link": [
         {
           "link_port": 0,
@@ -9,7 +9,8 @@
           "camera_mode": "dual",
           "dual_mode": 0,
           "mipi_rx": 2,
-          "valid_phy": true,
+          "mipi_rx2": 2,
+          "valid_phy": false,
           "phy": 0
         },
         {
@@ -18,7 +19,8 @@
           "camera_mode": "dual",
           "dual_mode": 0,
           "mipi_rx": 2,
-          "valid_phy": true,
+          "mipi_rx2": 2,
+          "valid_phy": false,
           "phy": 0
         }
       ]
@@ -32,6 +34,7 @@
           "camera_mode": "dual",
           "dual_mode": 0,
           "mipi_rx": 3,
+          "mipi_rx2": 3,
           "valid_phy": true,
           "phy": 1
         },
@@ -41,6 +44,7 @@
           "camera_mode": "dual",
           "dual_mode": 0,
           "mipi_rx": 3,
+          "mipi_rx2": 3,
           "valid_phy": true,
           "phy": 1
         }
