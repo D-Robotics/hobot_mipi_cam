@@ -390,6 +390,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					ret = create_and_run_vflow_step1(pipe_contex_tmp);
 					ERR_CON_EQ(ret, 0);
 					#if 1
+					std::vector<sensor_msgs::msg::CameraInfo> local_cam_info;
 					std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bins;
 					if (!link.calibration_file.empty())
 					{
@@ -401,16 +402,30 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 							cal_file_path = cap_info_.config_path + link.calibration_file;
 						}
 						RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
-										"  Dual cal_file_path: %s",  cal_file_path.c_str());
+										"Dual cal_file_path: %s",  cal_file_path.c_str());
 						sensor_msgs::msg::CameraInfo cam_l, cam_r;
 						bool cal_ok = mipi_calibration::GetInstance().getDualCamCalibrationIml(cam_l, cam_r, cal_file_path);
 						if(cal_ok) {
-							std::vector<sensor_msgs::msg::CameraInfo> local_cam_info = {cam_l, cam_r};
-							gdc_bins = create_gsml_gdc_bin_stereo(pipe_contex_tmp, &local_cam_info);
-							cam_info_.push_back(cam_l);
-							cam_info_.push_back(cam_r);
+							local_cam_info = {cam_l, cam_r};
+							RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+											"Dual calibration loaded from file: %s", cal_file_path.c_str());
+						} else {
+							RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+											"Calibration file failed: %s, will try EEPROM", cal_file_path.c_str());
 						}
 					}
+					if (local_cam_info.size() != 2) {
+						if (strcasecmp(pipe_contex_tmp->sensor_config.sensor_name, "ov02b10-1300p25") == 0) {
+							mipi_calibration::GetInstance().getDualCamCalibrationFromEeprom_baolong(local_cam_info);
+						}
+					}
+					if (local_cam_info.size() == 2)
+					{
+						gdc_bins = create_gsml_gdc_bin_stereo(pipe_contex_tmp, &local_cam_info);
+						cam_info_.push_back(local_cam_info[0]);
+						cam_info_.push_back(local_cam_info[1]);
+					}
+
 					if (gdc_bins.size() == 2)
 					{
 						gdc_bin_buf_.push_back(gdc_bins[0]);

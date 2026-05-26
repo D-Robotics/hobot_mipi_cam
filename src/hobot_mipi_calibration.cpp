@@ -197,6 +197,71 @@ int mipi_calibration::detectEeprom_drobot(int i2c_bus, std::string &device, uint
     return -1;
 }
 
+int mipi_calibration::detectEeprom_baolong(std::string &device, int &i2c_bus, uint16_t &i2c_addr)
+{
+	constexpr uint16_t EEPROM_ADDR = 0x50;
+	const std::string EXPECTED_S_NUMBER = "SE401839";
+	constexpr uint8_t EXPECTED_LR_CAMERA = 0x12;
+	constexpr uint8_t EXPECTED_DATA_FORMAT = 0x02;
+	constexpr uint8_t EXPECTED_DIST_TYPE = 0x05;
+
+	std::vector<int> buses = i2c_bus_detect();
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"detectEeprom_baolong: scanning %zu I2C buses...", buses.size());
+
+	for (auto bus : buses)
+	{
+		// 1. S_number (0x12, 8 bytes) — 模组识别码
+		char s_buf[8] = {0};
+		if (!readEeprom16(bus, EEPROM_ADDR, 0x0012, s_buf, 8))
+			continue;
+		if (std::string(s_buf, 8) != EXPECTED_S_NUMBER)
+			continue;
+
+		// 2. Data_format (0x21, 1 byte)
+		uint8_t data_format = 0;
+		if (!readEeprom16(bus, EEPROM_ADDR, 0x0021, (char *)&data_format, 1))
+			continue;
+		if (data_format != EXPECTED_DATA_FORMAT)
+			continue;
+
+		// 3. L_R_camera (0x35, 1 byte) — 0x12=单EEPROM双目
+		uint8_t lr_camera = 0;
+		if (!readEeprom16(bus, EEPROM_ADDR, 0x0035, (char *)&lr_camera, 1))
+			continue;
+		if (lr_camera != EXPECTED_LR_CAMERA)
+		{
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+							"bus %d: L_R_camera=0x%02X (need 0x12, single-EEPROM dual-cam)", bus, lr_camera);
+			continue;
+		}
+
+		// 4. Distortion_Type (0x55, 1 byte) — 0x05=Rational Model
+		uint8_t dist_type = 0;
+		if (!readEeprom16(bus, EEPROM_ADDR, 0x0055, (char *)&dist_type, 1))
+			continue;
+		if (dist_type != EXPECTED_DIST_TYPE)
+			continue;
+
+		// 5. M_number (0x00, 18 bytes) — 仅用于日志
+		char m_buf[18] = {0};
+		readEeprom16(bus, EEPROM_ADDR, 0x0000, m_buf, 18);
+		std::string m_number(m_buf, strnlen(m_buf, 18));
+
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+						"Baolong EEPROM detected: bus=%d, addr=0x%02X, M=[%s], S=[%s]",
+						bus, EEPROM_ADDR, m_number.c_str(), EXPECTED_S_NUMBER.c_str());
+
+		i2c_bus = bus;
+		i2c_addr = EEPROM_ADDR;
+		device = "BaoLong_DualCam";
+		return 0;
+	}
+
+	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+					 "detectEeprom_baolong: no matching EEPROM found");
+	return -1;
+}
 
 bool mipi_calibration::getCamCalibrationFromEeprom() {
   uint16_t i2c_addr;
@@ -1340,6 +1405,194 @@ bool mipi_calibration::getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_
   }
   return false;
 }
+
+bool mipi_calibration::getDualCamCalibrationFromEeprom_baolong(std::vector<sensor_msgs::msg::CameraInfo> &cam_info)
+{
+	int i2c_bus = -1;
+	uint16_t i2c_addr = 0;
+	std::string device;
+	if (detectEeprom_baolong(device, i2c_bus, i2c_addr) != 0)
+	{
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+						 "Baolong EEPROM not detected");
+		return false;
+	}
+	//读取标定数据 (0x55 ~ 0xE1, 141 字节)
+	constexpr uint16_t CAL_DATA_ADDR = 0x0055;
+	constexpr size_t CAL_DATA_SIZE = sizeof(CalDualCamInfo_BaoLong_ST);
+	std::vector<uint8_t> cal_buf(CAL_DATA_SIZE);
+	if (!readEeprom16(i2c_bus, i2c_addr, CAL_DATA_ADDR,
+							reinterpret_cast<char *>(cal_buf.data()), CAL_DATA_SIZE))
+	{
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+						 "Failed to read calibration data at 0x%04X (%zu bytes)", CAL_DATA_ADDR, CAL_DATA_SIZE);
+		return false;
+	}
+	uint8_t crc_buf[2] = {0};
+	if (!readEeprom16(i2c_bus, i2c_addr, 0x00E2,
+							reinterpret_cast<char *>(crc_buf), 2))
+	{
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+						 "Failed to read CRC at 0x00E2");
+		return false;
+	}
+	uint16_t crc_expected = (static_cast<uint16_t>(crc_buf[0]) << 8) |
+									static_cast<uint16_t>(crc_buf[1]);
+	uint32_t sum = 0;
+	for (size_t i = 0; i < CAL_DATA_SIZE; ++i)
+		sum += cal_buf[i];
+	uint16_t crc_actual = static_cast<uint16_t>(sum & 0xFFFF);
+	if (crc_actual != crc_expected)
+	{
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+						 "CRC mismatch: expected=0x%04X, actual=0x%04X", crc_expected, crc_actual);
+		return false;
+	}
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "EEPROM CRC OK: 0x%04X", crc_actual);
+	const auto *cal = reinterpret_cast<const CalDualCamInfo_BaoLong_ST *>(cal_buf.data());
+	if (cal->distortion_type != 0x05)
+	{
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						"Distortion_Type=0x%02X (expected 0x05), proceeding", cal->distortion_type);
+	}
+	
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"Baolong calibration:"
+					"\n  Left:  fx=%.4f fy=%.4f cx=%.4f cy=%.4f"
+					"\n         k1~k6=[%.6f, %.6f, %.6f, %.6f, %.6f, %.6f] p1=%.6f p2=%.6f"
+					"\n         mean_err=%.4f max_err=%.4f"
+					"\n  Right: fx=%.4f fy=%.4f cx=%.4f cy=%.4f"
+					"\n         k1~k6=[%.6f, %.6f, %.6f, %.6f, %.6f, %.6f] p1=%.6f p2=%.6f"
+					"\n         mean_err=%.4f max_err=%.4f"
+					"\n  Ext(L->R): rot=[%.6f, %.6f, %.6f] trans=[%.6f, %.6f, %.6f]"
+					"\n  measur_error=%.4f m",
+					cal->fxl, cal->fyl, cal->cxl, cal->cyl,
+					cal->k1l, cal->k2l, cal->k3l, cal->k4l, cal->k5l, cal->k6l, cal->p1l, cal->p2l,
+					cal->mean_errl, cal->max_errl,
+					cal->fxr, cal->fyr, cal->cxr, cal->cyr,
+					cal->k1r, cal->k2r, cal->k3r, cal->k4r, cal->k5r, cal->k6r, cal->p1r, cal->p2r,
+					cal->mean_errr, cal->max_errr,
+					cal->rot_x, cal->rot_y, cal->rot_z,
+					cal->tx, cal->ty, cal->tz,
+					cal->measur_error);
+	constexpr uint32_t IMAGE_WIDTH = 1600;
+	constexpr uint32_t IMAGE_HEIGHT = 1300;
+	cam_info.resize(2);
+	for (int idx = 0; idx < 2; ++idx)
+	{
+		cam_info[idx].width = IMAGE_WIDTH;
+		cam_info[idx].height = IMAGE_HEIGHT;
+		cam_info[idx].distortion_model = sensor_msgs::distortion_models::RATIONAL_POLYNOMIAL;
+	}
+	cam_info[0].k = {
+		 static_cast<double>(cal->fxl), 0.0, static_cast<double>(cal->cxl),
+		 0.0, static_cast<double>(cal->fyl), static_cast<double>(cal->cyl),
+		 0.0, 0.0, 1.0};
+	cam_info[0].d = {
+		 static_cast<double>(cal->k1l), static_cast<double>(cal->k2l),
+		 static_cast<double>(cal->p1l), static_cast<double>(cal->p2l),
+		 static_cast<double>(cal->k3l), static_cast<double>(cal->k4l),
+		 static_cast<double>(cal->k5l), static_cast<double>(cal->k6l)};
+	cam_info[0].r = {1.0, 0.0, 0.0,
+						  0.0, 1.0, 0.0,
+						  0.0, 0.0, 1.0};
+	cam_info[0].p = {
+		 static_cast<double>(cal->fxl), 0.0, static_cast<double>(cal->cxl), 0.0,
+		 0.0, static_cast<double>(cal->fyl), static_cast<double>(cal->cyl), 0.0,
+		 0.0, 0.0, 1.0, 0.0};
+	cam_info[1].k = {
+		 static_cast<double>(cal->fxr), 0.0, static_cast<double>(cal->cxr),
+		 0.0, static_cast<double>(cal->fyr), static_cast<double>(cal->cyr),
+		 0.0, 0.0, 1.0};
+	cam_info[1].d = {
+		 static_cast<double>(cal->k1r), static_cast<double>(cal->k2r),
+		 static_cast<double>(cal->p1r), static_cast<double>(cal->p2r),
+		 static_cast<double>(cal->k3r), static_cast<double>(cal->k4r),
+		 static_cast<double>(cal->k5r), static_cast<double>(cal->k6r)};
+	// ---- 外参处理 ----
+	// EEPROM 存储的是 左→右 (L2R)，转换为 右→左 (R2L)
+	cv::Mat rvec_l2r = (cv::Mat_<double>(3, 1) << static_cast<double>(cal->rot_x),
+							  static_cast<double>(cal->rot_y),
+							  static_cast<double>(cal->rot_z));
+	cv::Mat R_l2r;
+	cv::Rodrigues(rvec_l2r, R_l2r);
+	cv::Mat T_l2r = (cv::Mat_<double>(3, 1) << static_cast<double>(cal->tx),
+						  static_cast<double>(cal->ty),
+						  static_cast<double>(cal->tz));
+	// 求逆: R_r2l = R_l2r^T,  T_r2l = -R_r2l * T_l2r
+	cv::Mat R_r2l = R_l2r.t();
+	cv::Mat T_r2l = -R_r2l * T_l2r;
+	// R (右→左 旋转矩阵)
+	for (int i = 0; i < 9; ++i)
+		cam_info[1].r[i] = R_r2l.at<double>(i / 3, i % 3);
+	// P (3×4 投影矩阵 = K_right × [R_r2l | T_r2l])
+	cv::Mat K_r = (cv::Mat_<double>(3, 3) << static_cast<double>(cal->fxr), 0.0, static_cast<double>(cal->cxr),
+						0.0, static_cast<double>(cal->fyr), static_cast<double>(cal->cyr),
+						0.0, 0.0, 1.0);
+	cv::Mat RT;
+	cv::hconcat(R_r2l, T_r2l, RT); // [R_r2l | T_r2l] → 3×4
+	cv::Mat P_r = K_r * RT;			 // K × [R|T] → 3×4
+	for (int i = 0; i < 12; ++i)
+		cam_info[1].p[i] = P_r.at<double>(i / 4, i % 4);
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"Baolong dual-cam calibration loaded (bus=%d, addr=0x%02X, %ux%u)"
+					"\n  Left:  fx=%.2f fy=%.2f cx=%.2f cy=%.2f"
+					"\n  Right: fx=%.2f fy=%.2f cx=%.2f cy=%.2f"
+					"\n  Baseline: %.4f m",
+					i2c_bus, i2c_addr, IMAGE_WIDTH, IMAGE_HEIGHT,
+					cal->fxl, cal->fyl, cal->cxl, cal->cyl,
+					cal->fxr, cal->fyr, cal->cxr, cal->cyr,
+					std::sqrt(cal->tx * cal->tx + cal->ty * cal->ty + cal->tz * cal->tz));
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"Baolong dual-cam calibration loaded (bus=%d, addr=0x%02X, %ux%u)"
+					"\n  ---- Left Camera ----"
+					"\n    K: fx=%.4f fy=%.4f cx=%.4f cy=%.4f"
+					"\n    R: [identity]"
+					"\n    P: [%.2f, %.2f, %.2f, %.2f;"
+					"\n        %.2f, %.2f, %.2f, %.2f;"
+					"\n        %.2f, %.2f, %.2f, %.2f]"
+					"\n  ---- Right Camera ----"
+					"\n    K: fx=%.4f fy=%.4f cx=%.4f cy=%.4f"
+					"\n    R(R2L): [%.6f, %.6f, %.6f;"
+					"\n             %.6f, %.6f, %.6f;"
+					"\n             %.6f, %.6f, %.6f]"
+					"\n    T(R2L): [%.6f, %.6f, %.6f] m"
+					"\n    P: [%.2f, %.2f, %.2f, %.2f;"
+					"\n        %.2f, %.2f, %.2f, %.2f;"
+					"\n        %.2f, %.2f, %.2f, %.2f]"
+					"\n  ---- Extrinsics ----"
+					"\n    Baseline: %.4f m"
+					"\n    R(L2R) rodrigues: [%.6f, %.6f, %.6f] rad"
+					"\n    T(L2R): [%.6f, %.6f, %.6f] m",
+					i2c_bus, i2c_addr, IMAGE_WIDTH, IMAGE_HEIGHT,
+					// Left K
+					cal->fxl, cal->fyl, cal->cxl, cal->cyl,
+					// Left P
+					cam_info[0].p[0], cam_info[0].p[1], cam_info[0].p[2], cam_info[0].p[3],
+					cam_info[0].p[4], cam_info[0].p[5], cam_info[0].p[6], cam_info[0].p[7],
+					cam_info[0].p[8], cam_info[0].p[9], cam_info[0].p[10], cam_info[0].p[11],
+					// Right K
+					cal->fxr, cal->fyr, cal->cxr, cal->cyr,
+					// Right R (R2L)
+					cam_info[1].r[0], cam_info[1].r[1], cam_info[1].r[2],
+					cam_info[1].r[3], cam_info[1].r[4], cam_info[1].r[5],
+					cam_info[1].r[6], cam_info[1].r[7], cam_info[1].r[8],
+					// Right T (R2L)
+					T_r2l.at<double>(0, 0), T_r2l.at<double>(1, 0), T_r2l.at<double>(2, 0),
+					// Right P
+					cam_info[1].p[0], cam_info[1].p[1], cam_info[1].p[2], cam_info[1].p[3],
+					cam_info[1].p[4], cam_info[1].p[5], cam_info[1].p[6], cam_info[1].p[7],
+					cam_info[1].p[8], cam_info[1].p[9], cam_info[1].p[10], cam_info[1].p[11],
+					// Baseline
+					std::sqrt(cal->tx * cal->tx + cal->ty * cal->ty + cal->tz * cal->tz),
+					// L2R rodrigues (EEPROM 原始值)
+					cal->rot_x, cal->rot_y, cal->rot_z,
+					// L2R translation (EEPROM 原始值)
+					cal->tx, cal->ty, cal->tz);
+	return true;
+}
+
+
 
 bool mipi_calibration::getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info_l, sensor_msgs::msg::CameraInfo &cam_info_r,
 																const std::string &file_path)

@@ -93,6 +93,32 @@ typedef struct cal_dualcam_info_st {
 } CalDualCamInfo_ST;
 #pragma pack()
 
+#pragma pack(1)
+typedef struct cal_dualcam_info_baolong_st
+{
+  unsigned char distortion_type;
+
+  float k1l, k2l, k3l, k4l, k5l, k6l; 
+  float p1l, p2l;                    
+
+  float cxl, cyl;           
+  float mean_errl, max_errl;
+  float fxl, fyl;          
+
+  float k1r, k2r, k3r, k4r, k5r, k6r; 
+  float p1r, p2r;                  
+
+  float cxr, cyr;        
+  float mean_errr, max_errr; 
+  float fxr, fyr;        
+
+  float rot_x, rot_y, rot_z;
+  float tx, ty, tz;      
+
+  float measur_error;
+} CalDualCamInfo_BaoLong_ST;
+#pragma pack()
+
 #if 0
 #pragma pack(4)
 typedef struct cal_dual_M_D_st {
@@ -342,6 +368,7 @@ class mipi_calibration {
   }
 
   bool getDualCamCalibrationFromEeprom_230ai(std::vector<sensor_msgs::msg::CameraInfo> &cam_info);  
+  bool getDualCamCalibrationFromEeprom_baolong(std::vector<sensor_msgs::msg::CameraInfo> &cam_info);
 
   bool getCamCalibrationIml_single(sensor_msgs::msg::CameraInfo& cam_info, const std::string &file_path);
   bool getDualCamCalibrationIml(sensor_msgs::msg::CameraInfo &cam_info_l, sensor_msgs::msg::CameraInfo &cam_info_r, const std::string &file_path);
@@ -369,6 +396,7 @@ class mipi_calibration {
   int detectEeprom_drobot(int i2c_bus, std::string &device, uint16_t &i2c_addr);
   int detectEeprom_lianhe(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
   std::vector<int> i2c_bus_detect();
+  int detectEeprom_baolong(std::string &device, int &i2c_bus, uint16_t &i2c_addr);
 
   void InitMipiCalibration() {
       std::lock_guard<std::mutex> lock(mutex_);
