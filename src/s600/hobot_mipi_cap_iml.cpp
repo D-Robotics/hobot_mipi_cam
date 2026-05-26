@@ -333,7 +333,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 				num = vp_get_gmsl_list_number();
 				vp_sensor_config_t *sensor_cfg = nullptr;
 				for (int i = 0; i < num; i++) {
-					printf("index: %d  sensor_name: %-16s \tconfig_file:%s\n", i, vp_gmsl_config_list[i]->sensor_name, vp_gmsl_config_list[i]->config_file);
+					//printf("index: %d  sensor_name: %-16s \tconfig_file:%s\n", i, vp_gmsl_config_list[i]->sensor_name, vp_gmsl_config_list[i]->config_file);
 					if (strcasecmp(vp_gmsl_config_list[i]->sensor_name, link.sensor_type.c_str()) == 0) {
 						sensor_cfg = vp_gmsl_config_list[i];
 						break;
@@ -361,7 +361,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 				num = vp_get_gmsl_list_number();
 				vp_sensor_config_t *sensor_cfg = nullptr;
 				for (int i = 0; i < num; i++) {
-					printf("index: %d  sensor_name: %-16s \tconfig_file:%s\n", i, vp_gmsl_config_list[i]->sensor_name, vp_gmsl_config_list[i]->config_file);
+					//printf("index: %d  sensor_name: %-16s \tconfig_file:%s\n", i, vp_gmsl_config_list[i]->sensor_name, vp_gmsl_config_list[i]->config_file);
 					if (strcasecmp(vp_gmsl_config_list[i]->sensor_name, link.sensor_type.c_str()) == 0) {
 						sensor_cfg = vp_gmsl_config_list[i];
 						break;
@@ -395,12 +395,13 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					ret = create_and_run_vflow_step2(pipe_contex_tmp);
 					ERR_CON_EQ(ret, 0);		
 					pipeline_num++;
-	
 					auto pipe_contex_tmp_2 = std::make_shared<pipe_contex_t>();
 					pipe_contex_tmp_2->cap_info_ = &cap_info_;
 					copy_config(&pipe_contex_tmp_2->sensor_config, sensor_cfg);
 					pipe_contex_tmp_2->des_fd = des_fd;
-					//pipe_contex_tmp_2->sensor_config.camera_config = pipe_contex_tmp_2->sensor_config.camera_slave_config;
+					if (pipe_contex_tmp_2->sensor_config.camera_slave_config != nullptr) {
+						pipe_contex_tmp_2->sensor_config.camera_config = pipe_contex_tmp_2->sensor_config.camera_slave_config;
+					}
 					pipe_contex_tmp_2->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx2;
 					pipe_contex_tmp_2->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;
 					if (link.valid_phy2 && pipe_contex_tmp_2->sensor_config.camera_config->mipi_cfg) {
@@ -2246,6 +2247,7 @@ int HobotMipiCapIml::selectSensor(std::string &sensor, int &host, int &i2c_bus) 
 
 
 int HobotMipiCapIml::create_gsml_gdc_bin(std::shared_ptr<pipe_contex_t> pipe_contex) {
+#if 0
 	if (pipe_contex == nullptr) {
 		return -1;
 	}
@@ -2284,7 +2286,7 @@ int HobotMipiCapIml::create_gsml_gdc_bin(std::shared_ptr<pipe_contex_t> pipe_con
 	} else if (!gdc_bin_buf_r_.empty()) {
 		pipe_contex->gdc_bin_r = gdc_bin_buf_r_[0];
 	}
-
+#endif
 	return 0;
 }
 
