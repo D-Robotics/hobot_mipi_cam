@@ -514,10 +514,16 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 				}
 			}
 		}
-		
-		cap_info_.device_mode_ = "multi";
-		combine_flag_ = true;
-
+		if (pipe_contex.size() == 1) {
+			cap_info_.device_mode_ = "single";
+			combine_flag_ = false;
+		} else if (pipe_contex.size() == 2) {
+			cap_info_.device_mode_ = "dual";
+			combine_flag_ = true;
+		} else {
+			cap_info_.device_mode_ = "multi";
+			combine_flag_ = true;
+		}
 	} else {
 		deserial_handle_t des_fd;
 		auto contex_tmp = std::make_shared<pipe_contex_t>();
@@ -1262,7 +1268,7 @@ static int check_pym_config(int src_width, int src_height, int width, int height
 	int bl_width_16 = (src_width >> 4) & ~1;
 	int bl_height_16 = (src_height >> 4) & ~1;
 	if ((width > src_width) || (height > src_height) || (width < bl_width_16) || (height < bl_height_16) || (height < 134)) {
-		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "width and height over rang, width:%d, height:%d", width, height);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "width and height over rang, width:%d, height:%d, src_width:%d, src_height:%d, bl_width_16:%d, bl_height_16:%d", width, height, src_width, src_height, bl_width_16, bl_height_16);
 		return -1;
 	} else if ((width <= src_width) && (height <= src_height) && (width > bl_width_2) && (height > bl_height_2)) {
 		roi_sel = 0;
@@ -1331,7 +1337,7 @@ static int check_pym_config(int src_width, int src_height, int width, int height
 		bl_height = bl_height_4-2;
 		bl_stride = bl_width_4;
 	} else {
-		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "width and height over rang, width:%d, height:%d", width, height);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "width and height over rang,src_width:%d, src_height:%d, width:%d, height:%d",src_width, src_height,  width, height);
 		return -1;
 	}
 	return 0;
@@ -1890,12 +1896,11 @@ int HobotMipiCapIml::create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> p
 	}else{
 		//do nothing
 	}
-
+	if (cap_info_.gdc_enable_) {
+		create_gdc_node(pipe_contex);
+	}
+	create_gdc_node_r(pipe_contex);
 	if (pipe_contex->sensor_config.pym_cfg) {
-		if (cap_info_.gdc_enable_) {
-			create_gdc_node(pipe_contex);
-		}
-		create_gdc_node_r(pipe_contex);
 		ret = create_pym_node(pipe_contex, ch_info->pym_hw_id, ch_info->pym_slot_id, ch_info->pym_mode);
 		ERR_CON_EQ(ret, 0);
 	}
@@ -1910,22 +1915,23 @@ int HobotMipiCapIml::create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> p
 		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
 								pipe_contex->ynr_node_handle);
 		ERR_CON_EQ(ret, 0);
-	}else{
-		//do nothing
 	}
 
-	if (pipe_contex->sensor_config.pym_cfg) {
-		if (pipe_contex->gdc_init_valid_r == 1) {
-			ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
-								pipe_contex->gdc_node_handle_r);
-			ERR_CON_EQ(ret, 0);
-		}
-		if (pipe_contex->gdc_init_valid == 1) {
-			ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
-								pipe_contex->gdc_node_handle);
-			ERR_CON_EQ(ret, 0);
-		}
+	if (pipe_contex->gdc_init_valid_r == 1) {
+		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+							pipe_contex->gdc_node_handle_r);
+		ERR_CON_EQ(ret, 0);
+	}
+	if (pipe_contex->gdc_init_valid == 1) {
+		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+							pipe_contex->gdc_node_handle);
+		ERR_CON_EQ(ret, 0);
+	}
 
+	pipe_contex->stream_handle = pipe_contex->vin_node_handle;
+	pipe_contex->stream_group = 0;
+
+	if (pipe_contex->sensor_config.pym_cfg) {
 		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
 								pipe_contex->pym_node_handle);
 		ERR_CON_EQ(ret, 0);
@@ -1975,8 +1981,6 @@ int HobotMipiCapIml::create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> p
 							0);
 			ERR_CON_EQ(ret, 0);
 
-		}else{
-			//error
 		}
 		pipe_contex->stream_handle = pipe_contex->pym_node_handle;
 		pipe_contex->stream_group = 1;
@@ -2002,15 +2006,12 @@ int HobotMipiCapIml::create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> p
 			ERR_CON_EQ(ret, 0);
 			pipe_contex->stream_handle = pipe_contex->gdc_node_handle;
 			pipe_contex->stream_group = 0;
-		} else {
-		
-		}	
+		}
 	} else {
 		// 3. 绑定 Flow 中的Node
 		if(scene_type == PIPELINE_SCENE_ISP_BYPASS){
 			pipe_contex->stream_handle = pipe_contex->vin_node_handle;
 			pipe_contex->stream_group = 0;
-
 		}else if(scene_type == PIPELINE_SCENE_ISP_ONLY){
 			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
 									pipe_contex->vin_node_handle,
@@ -2036,11 +2037,29 @@ int HobotMipiCapIml::create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> p
 			ERR_CON_EQ(ret, 0);
 			pipe_contex->stream_handle = pipe_contex->ynr_node_handle;
 			pipe_contex->stream_group = 0;
-		}else{
-			//error
-		}		
+		}
+		if (pipe_contex->gdc_init_valid_r == 1) {
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc rotation.\n");
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+								pipe_contex->stream_handle,
+								0,
+								pipe_contex->gdc_node_handle_r,
+								0);
+			ERR_CON_EQ(ret, 0);
+			pipe_contex->stream_handle = pipe_contex->gdc_node_handle_r;
+			pipe_contex->stream_group = 0;
+		} else if (pipe_contex->gdc_init_valid == 1) {
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc cal.\n");
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+								pipe_contex->stream_handle,
+								0,
+								pipe_contex->gdc_node_handle,
+								0);
+			ERR_CON_EQ(ret, 0);
+			pipe_contex->stream_handle = pipe_contex->gdc_node_handle;
+			pipe_contex->stream_group = 0;
+		}
 	}	
-
 	return 0;
 }
 
