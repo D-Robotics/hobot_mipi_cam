@@ -604,7 +604,15 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
       pub_info->info_pub2_->publish(camera_calibration_info);
     }
 
+    auto channel = pub_info->topic_type;
+    auto frame_id = pub_info->frame_id;
+    auto ts = img->header.stamp;
     pub_info->image_pub_->publish(std::move(img));
+    RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+      "Published image on channel: %s, frame_id: %s, ts: %d.%d, delay: %.3f sec",
+      channel.c_str(), frame_id.c_str(),
+      ts.sec, ts.nanosec, this->now().seconds() - rclcpp::Time(ts).seconds()
+    );
   } else {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
