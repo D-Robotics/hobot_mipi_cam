@@ -1510,6 +1510,7 @@ bool mipi_calibration::getDualCamCalibrationFromEeprom_baolong(std::vector<senso
 		 static_cast<double>(cal->k3r), static_cast<double>(cal->k4r),
 		 static_cast<double>(cal->k5r), static_cast<double>(cal->k6r)};
 	// ---- 外参处理 ----
+#if 0
 	// EEPROM 存储的是 左→右 (L2R)，转换为 右→左 (R2L)
 	cv::Mat rvec_l2r = (cv::Mat_<double>(3, 1) << static_cast<double>(cal->rot_x),
 							  static_cast<double>(cal->rot_y),
@@ -1532,6 +1533,34 @@ bool mipi_calibration::getDualCamCalibrationFromEeprom_baolong(std::vector<senso
 	cv::Mat RT;
 	cv::hconcat(R_r2l, T_r2l, RT); // [R_r2l | T_r2l] → 3×4
 	cv::Mat P_r = K_r * RT;			 // K × [R|T] → 3×4
+
+#else 
+	// EEPROM 存储的是 左→右 (L2R)，转换为 右→左 (R2L)
+	cv::Mat rvec_l2r = (cv::Mat_<double>(3, 1) << static_cast<double>(cal->rot_x),
+							  static_cast<double>(cal->rot_y),
+							  static_cast<double>(cal->rot_z));
+
+	cv::Mat T_l2r = (cv::Mat_<double>(3, 1) << static_cast<double>(cal->tx),
+						  static_cast<double>(cal->ty),
+						  static_cast<double>(cal->tz));
+
+	cv::Mat K_r = (cv::Mat_<double>(3, 3) << static_cast<double>(cal->fxr), 0.0, static_cast<double>(cal->cxr),
+						0.0, static_cast<double>(cal->fyr), static_cast<double>(cal->cyr),
+						0.0, 0.0, 1.0);
+						  
+	cv::Mat R_l2r;
+	cv::Rodrigues(rvec_l2r, R_l2r);
+
+	cv::Mat RT;
+	cv::hconcat(R_l2r, T_l2r, RT); // [R_r2l | T_r2l] → 3×4
+	cv::Mat P_r = K_r * RT;			 // K × [R|T] → 3×4
+
+	for (int i = 0; i < 9; ++i)
+		cam_info[1].r[i] = R_l2r.at<double>(i / 3, i % 3);
+
+	cv::Mat R_r2l = R_l2r.t();
+	cv::Mat T_r2l = R_r2l * T_l2r;
+#endif
 	for (int i = 0; i < 12; ++i)
 		cam_info[1].p[i] = P_r.at<double>(i / 4, i % 4);
 	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
