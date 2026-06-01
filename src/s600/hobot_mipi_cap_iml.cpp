@@ -430,7 +430,11 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					{
 						gdc_bin_buf_.push_back(gdc_bins[0]);
 						gdc_bin_buf_.push_back(gdc_bins[1]);
-						pipe_contex_tmp->gdc_bin = gdc_bins[0];
+						if (link.dual_seq == 1) {
+							pipe_contex_tmp->gdc_bin = gdc_bins[1];
+						} else {
+							pipe_contex_tmp->gdc_bin = gdc_bins[0];
+						}
 					}
 					if ((cap_info_.rotation_ != 0) && gdc_bins.empty())
 					{
@@ -482,7 +486,11 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					ERR_CON_EQ(ret, 0);
 
 					if (gdc_bins.size() == 2) {
-						pipe_contex_tmp_2->gdc_bin = gdc_bins[1];
+						if (link.dual_seq == 1) {
+							pipe_contex_tmp_2->gdc_bin = gdc_bins[0];
+						} else {
+							pipe_contex_tmp_2->gdc_bin = gdc_bins[1];
+						}
 					} else if (pipe_contex_tmp->gdc_bin_r) {
 						pipe_contex_tmp_2->gdc_bin_r = pipe_contex_tmp->gdc_bin_r;
 					}
