@@ -468,7 +468,10 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					pipe_contex_tmp_2->cap_info_ = &cap_info_;
 					copy_config(&pipe_contex_tmp_2->sensor_config, sensor_cfg);
 					pipe_contex_tmp_2->des_fd = des_fd;
-					//pipe_contex_tmp_2->sensor_config.camera_config = pipe_contex_tmp_2->sensor_config.camera_slave_config;
+					if (pipe_contex_tmp_2->sensor_config.camera_slave_config != NULL) {
+						RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "Copy camera slave config");
+						pipe_contex_tmp_2->sensor_config.camera_config = pipe_contex_tmp_2->sensor_config.camera_slave_config;
+					}
 					pipe_contex_tmp_2->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx2;
 					pipe_contex_tmp_2->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;
 					if (link.valid_phy2 && pipe_contex_tmp_2->sensor_config.camera_config->mipi_cfg) {
