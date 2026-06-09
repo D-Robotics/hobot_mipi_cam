@@ -1,0 +1,135 @@
+# Copyright (c) 2024，D-Robotics.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import os
+
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from ament_index_python import get_package_share_directory
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch.substitutions import TextSubstitution
+from ament_index_python.packages import get_package_prefix
+from launch.substitutions import PathJoinSubstitution
+
+
+def generate_launch_description():
+    camera_type = os.getenv('CAM_TYPE')
+    print("camera_type is ", camera_type)
+
+    config_file_path = os.path.join(
+        get_package_prefix('mipi_cam'),
+        "lib/mipi_cam/config/")
+    print("config_file_path is ", config_file_path)
+
+    mipi_gsml_cfg_file_arg = DeclareLaunchArgument(
+        'mipi_gsml_cfg_file',
+        default_value=[
+            TextSubstitution(text=str(config_file_path)),
+            "gmsl_isx031std_1deserial_2link_config.json"
+        ],
+        description='gsml camera config file'
+    )
+
+    mipi_lpwm_enable_arg = DeclareLaunchArgument(
+        'mipi_lpwm_enable',
+        default_value='False',
+        description='mipi lpwm enable')
+    
+    mipi_camera_calibration_file_path_arg = DeclareLaunchArgument(
+        'mipi_camera_calibration_file_path',
+        default_value='default',
+        description='mipi lpwm enable')
+    
+    mipi_image_width_arg = DeclareLaunchArgument(
+        'mipi_image_width',
+        default_value='1920',
+        description='mipi width')
+
+    mipi_image_height_arg = DeclareLaunchArgument(
+        'mipi_image_height',
+        default_value='1536',
+        description='mipi height')
+
+    mipi_rotation_arg = DeclareLaunchArgument(
+        'mipi_rotation',
+        default_value='0.0',
+        description='mipi camera out image rotation')
+
+    mipi_cal_rotation_arg = DeclareLaunchArgument(
+        'mipi_cal_rotation',
+        default_value='0.0',
+        description='mipi camera calibration rotation')
+
+    mipi_gdc_enable_arg = DeclareLaunchArgument(
+        'mipi_gdc_enable',
+        default_value='True',
+        description='mipi gdc enable')
+    mipi_image_framerate_arg = DeclareLaunchArgument(
+        'mipi_image_framerate',
+        default_value='30.0',
+        description='mipi camera out image framerate')
+    mipi_frame_ts_type_arg = DeclareLaunchArgument(
+        'mipi_frame_ts_type',
+        default_value='sensor',
+        description='mipi camera out image framerate')
+    mipi_node = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('mipi_cam'),
+                'launch/mipi_cam_gsml.launch.py')),
+        launch_arguments={
+            'mipi_gsml_cfg_file': LaunchConfiguration('mipi_gsml_cfg_file'),
+            'mipi_image_width': LaunchConfiguration('mipi_image_width'),
+            'mipi_image_height': LaunchConfiguration('mipi_image_height'),
+            'mipi_image_framerate': LaunchConfiguration('mipi_image_framerate'),
+            'mipi_io_method': 'ros',
+            'device_mode': 'multi',
+            'dual_combine': '2',
+            'mipi_link_type': '1',
+            'mipi_lpwm_enable': LaunchConfiguration('mipi_lpwm_enable'),
+            'mipi_camera_calibration_file_path':  LaunchConfiguration('mipi_camera_calibration_file_path'),
+            'mipi_gdc_bin_file': './sc230ai_gdc.bin',
+            'mipi_rotation': LaunchConfiguration('mipi_rotation'),
+            'mipi_cal_rotation': LaunchConfiguration('mipi_cal_rotation'),
+            'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
+            'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type')
+        }.items()
+    )
+    shared_mem_node = IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(
+                        get_package_share_directory('hobot_shm'),
+                        'launch/hobot_shm.launch.py'))
+            )
+
+    return LaunchDescription([
+        # 启动零拷贝环境配置node
+        mipi_gsml_cfg_file_arg,
+        mipi_lpwm_enable_arg,
+        mipi_camera_calibration_file_path_arg,
+        mipi_image_width_arg,
+        mipi_image_height_arg,
+        mipi_rotation_arg,
+        mipi_cal_rotation_arg,
+        mipi_gdc_enable_arg,
+        mipi_image_framerate_arg,
+        mipi_frame_ts_type_arg,
+        shared_mem_node,
+        # image publish
+        mipi_node
+    ])

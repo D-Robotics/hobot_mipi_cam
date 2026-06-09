@@ -152,6 +152,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     "\n              sub_image_height: %d" \
     "\n                    framerate: %d" \
     "\n                     rotation: %f" \
+    "\n                     cal_rotation: %f" \
     "\n                  device_mode: %s" \
     "\n                 dual_combine: %d" \
     "\n                  lpwm_enable: %s" \
@@ -180,6 +181,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
               nodePare_->sub_image_height_,
               nodePare_->framerate_,
               nodePare_->rotation_,
+              nodePare_->cal_rotation_,
               nodePare_->device_mode_.c_str(),
               nodePare_->dual_combine_,
               (nodePare_->lpwm_enable_ ? "true" : "false"),

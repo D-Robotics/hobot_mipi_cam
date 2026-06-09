@@ -430,6 +430,12 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCap::gen_gdc_bin_stereo(int 
 		<< "\n===================="
 	);
 
+	cv::Mat rvec;
+
+	cv::Rodrigues(R_rl, rvec);
+
+	RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cap"),"===stetreo rvec==="  << rvec);
+
 	double target_hfov = cal_alpha;
 	double balance = 0.0;
 	double fov_scale = 1.0;

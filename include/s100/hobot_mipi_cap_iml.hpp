@@ -108,6 +108,7 @@ typedef struct {
   int mipi_rx2; //when dual mode is must
   bool valid_phy2; //option
   int phy2; //option
+  std::string calibration_file;
 } LINK_CONFIG_ST;
 
 typedef struct {
@@ -178,8 +179,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   int create_deserial_node(deserial_config_t *deserial_attr, deserial_handle_t &des_fd);
   int create_camera_node(std::shared_ptr<pipe_contex_t> pipe_contex, int link_port);
 
-
   int create_gsml_gdc_bin(std::shared_ptr<pipe_contex_t> pipe_contex);
+  std::vector<std::shared_ptr<GdcBinBuf_ST>> create_gsml_gdc_bin_stereo(std::shared_ptr<pipe_contex_t> pipe_contex, std::vector<sensor_msgs::msg::CameraInfo> *cam_pair);
   bool read_gsml_config(std::string gsml_cfg_file);
 
   void pipeline_connect_param_init(std::shared_ptr<pipe_contex_t> pipe_contex);
