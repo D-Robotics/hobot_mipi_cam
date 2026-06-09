@@ -72,6 +72,7 @@ int ImuManager::auto_detect_iio_devices() {
                             DeviceInfo_T device_info;
                             device_info.sensor_type = device_name_str;
                             device_info.path = device_path;
+                            device_info.d_name = ent->d_name;
                             devices_map_[device].push_back(device_info);
                             //devices_map_[strcspn(device_name, "\n")] = device_path;
                         }
@@ -119,7 +120,7 @@ int ImuManager::read_sensor_data(ImuData_T* data) {
     if (imu_handle == nullptr) {
         return -1;
     } 
-    return imu_handle->read(data);
+    return imu_handle->read_data(data);
 }
 
 // 释放传感器资源

@@ -114,6 +114,7 @@ elseif(PLATFORM_S100)
     src/s100/sensor/ar0820c_linear_1920x1080_yuv_30fps_1lane.c
     src/s100/sensor/ovx3c_linear_1920x1080_raw12_30fps_1lane.c
     src/s100/sensor/gsml_ov02b10_linear_1600x1300_yuv_30fps_4lane.c
+    src/s100/sensor/gsml_isx031std_linear_1920x1536_yuv_30fps_1lane.c
     src/s100/sensor/deserial_max96712_4link.c
     src/s100/sensor/vp_sensors.c
   )
@@ -132,6 +133,7 @@ elseif(PLATFORM_S600)
     src/s600/sensor/gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane.c
     src/s600/sensor/ar0820c_linear_1920x1080_yuv_30fps_1lane.c
     src/s600/sensor/ovx3c_linear_1920x1080_raw12_30fps_1lane.c
+    src/s600/sensor/gsml_isx031std_linear_1920x1536_yuv_30fps_1lane.c
     src/s600/sensor/deserial_max96712_4link.c
     src/s600/sensor/vp_sensors.c
   )
@@ -187,6 +189,7 @@ add_library(${PROJECT_NAME}_plugin SHARED
   src/camera.cpp
   src/hobot_mipi_node.cpp
   src/hobot_mipi_cam.cpp
+  src/hobot_mipi_cap.cpp
   src/${PREFIX_PATH}/hobot_mipi_cap_iml.cpp
   src/${PREFIX_PATH}/hobot_mipi_factory.cpp
   src/hobot_mipi_calibration.cpp

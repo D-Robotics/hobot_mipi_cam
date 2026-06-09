@@ -40,7 +40,7 @@ def generate_launch_description():
         'mipi_gsml_cfg_file',
         default_value=[
             TextSubstitution(text=str(config_file_path)),
-            "gmsl_2deserial_4link_sc132gs_dual_config.json"
+            "gmsl_isx031std_1deserial_2link_config.json"
         ],
         description='gsml camera config file'
     )
@@ -57,17 +57,17 @@ def generate_launch_description():
     
     mipi_image_width_arg = DeclareLaunchArgument(
         'mipi_image_width',
-        default_value='640',
+        default_value='1920',
         description='mipi width')
 
     mipi_image_height_arg = DeclareLaunchArgument(
         'mipi_image_height',
-        default_value='352',
+        default_value='1536',
         description='mipi height')
 
     mipi_rotation_arg = DeclareLaunchArgument(
         'mipi_rotation',
-        default_value='90.0',
+        default_value='0.0',
         description='mipi camera out image rotation')
 
     mipi_cal_rotation_arg = DeclareLaunchArgument(
@@ -81,7 +81,7 @@ def generate_launch_description():
         description='mipi gdc enable')
     mipi_image_framerate_arg = DeclareLaunchArgument(
         'mipi_image_framerate',
-        default_value='10.0',
+        default_value='30.0',
         description='mipi camera out image framerate')
     mipi_frame_ts_type_arg = DeclareLaunchArgument(
         'mipi_frame_ts_type',
@@ -110,32 +110,6 @@ def generate_launch_description():
             'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type')
         }.items()
     )
-
-    # nv12->jpeg
-    jpeg_codec_node = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(
-                get_package_share_directory('hobot_codec'),
-                'launch/hobot_codec_encode.launch.py')),
-        launch_arguments={
-            'codec_in_mode': 'ros',
-            'codec_out_mode': 'ros',
-            'codec_jpg_quality': '85.0',
-            'codec_sub_topic': '/image_combine_raw',
-            'codec_pub_topic': '/image_combine_jpeg'
-        }.items()
-    )
-    # web
-    web_node = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(
-                get_package_share_directory('websocket'),
-                'launch/websocket.launch.py')),
-        launch_arguments={
-            'websocket_image_topic': '/image_combine_jpeg',
-            'websocket_only_show_image': 'True'
-        }.items()
-    )
     shared_mem_node = IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(
@@ -157,9 +131,5 @@ def generate_launch_description():
         mipi_frame_ts_type_arg,
         shared_mem_node,
         # image publish
-        mipi_node,
-        # image codec
-        jpeg_codec_node,
-        # web display
-        web_node
+        mipi_node
     ])

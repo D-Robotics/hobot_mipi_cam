@@ -39,17 +39,6 @@ namespace mipi_cam {
 
 #define PIPES_TOTAL 1
 
-typedef struct gdc_binbuf_s {
-  hb_mem_common_buf_t *bin_buf = nullptr;
-  uint64_t bin_buf_size;
-  ~gdc_binbuf_s() {
-    if (bin_buf != NULL) {
-      hb_mem_free_buf(bin_buf->fd);
-      bin_buf = NULL;
-    }
-  }
-}GdcBinBuf_ST;
-
 typedef struct pipe_contex_s {
 	hbn_vflow_handle_t vflow_fd;
 	hbn_vnode_handle_t vin_node_handle;
@@ -103,25 +92,6 @@ class HobotMipiCapIml : public HobotMipiCap {
   // 如果有 vps ，就 输出vps 的分层数据 channel--"single":单sensor，"left": 双目的左sensor，"right":双目的右sensor，"combine"：左右sensor拼合的图像。
   std::shared_ptr<VideoBuffer> getFrame(std::string channel);
 
-  // 获取cap的info信息；
-  // 输入输出参数：MIPI_CAP_INFO_ST的结构信息。
-  // 返回值：0，初始化成功；-1，初始化失败。
-  int getCapInfo(MIPI_CAP_INFO_ST &info);
-
-  std::vector<sensor_msgs::msg::CameraInfo>* getCalCamInfo() {
-    return &cal_cam_info_;
-  }
-
-  std::vector<sensor_msgs::msg::CameraInfo>* getCalCamInfoSub()
-  {
-    return &cal_cam_info_sub_;
-  }
-
-  int setCamInfo(std::vector<sensor_msgs::msg::CameraInfo> info) {
-    cam_info_ = info;
-    return 0;
-  }
-
  protected:
   //遍历初始话的mipi host.
   void listMipiHost(std::vector<int> &mipi_hosts, std::vector<int> &started,
@@ -136,10 +106,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   void multiFrameTask();
   void subMultiFrameTask();
   void singleFrameTask();
-  void sync_task();
-  void sub_sync_task();
-  bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
+  void sync_awb_ae_task();
 
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
   int creat_vse_node(pipe_contex_t *pipe_contex);
@@ -148,45 +116,6 @@ class HobotMipiCapIml : public HobotMipiCap {
   int creat_gdc_node(pipe_contex_t *pipe_contex);
   int creat_gdc_node_r(pipe_contex_t *pipe_contex);
   int creat_camera_node(camera_config_t* camera_config,int64_t* cam_fd);
-  std::shared_ptr<GdcBinBuf_ST> get_gdc_bin(std::string gdc_bin_file);
-  std::vector<std::shared_ptr<GdcBinBuf_ST>> gen_gdc_bin_stereo(int gdc_width, int gdc_height,int out_width, int out_height, int final_width, int final_height, 
-		std::vector<sensor_msgs::msg::CameraInfo> &cam_info, std::vector<sensor_msgs::msg::CameraInfo> &cal_cam_info,
-    double rotation = 0.0, double cal_rotate = 0.0, double cla_alpha = 0.0, bool pre_rotation = false);
-  std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin(int gdc_width, int gdc_height,int out_width, int out_height,
-       sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info,
-       double rotation = 0.0, double cal_rotate = 0.0, double cla_alpha = 0.0, bool pre_rotation = false);
-  std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
-  std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
-
-  //计算针孔模型下校正后内参对应的FOV（角度） K_rect 校正后的相机内参矩阵，校正后的图像高度和宽度
-  std::pair<double, double> calculatePinholeFOV(const cv::Mat& K_rect, int width, int height);
-  //基于目标FOV和有效FOV范围，计算初始alpha，目标水平FOV，双目交集的最小FOV和最大FOV，返回初始alpha
-  double computeInitAlpha(double target_hfov, double fov_min, double fov_max);
-
-  //根据目标水平FOV，计算双目立体校正的alpha参数（保证双目FOV一致性）
-  double computeStereoAlphaFromFOV(double target_hfov, const cv::Mat& kl, const cv::Mat& Dl,  
-                                                       const cv::Mat& Kr, const cv::Mat& Dr,
-                                                       const cv::Mat& R_rl, const cv::Mat& t_rl,
-                                                       int in_gdc_width, int in_gdc_height,
-                                                       int out_gdc_width, int out_gdc_height,
-                                                       double& actual_hfov_l, double& actual_hfov_r);
-  double find_best_fov_scale(const cv::Mat& Kl, const cv::Mat& Dl,
-                             const cv::Mat& Kr, const cv::Mat& Dr,
-                             const cv::Mat& R_rl, const cv::Mat& t_rl,
-                             cv::Size in_size,
-                             cv::Size out_size);
-                             
-  bool computeFisheyeStereoParamsFromFOV(
-      double target_hfov,
-      const cv::Mat &Kl, const cv::Mat &Dl,
-      const cv::Mat &Kr, const cv::Mat &Dr,
-      const cv::Mat &R_rl, const cv::Mat &t_rl,
-      cv::Size in_size, cv::Size out_size,
-      double &out_balance, double &out_fov_scale,
-      double &actual_hfov_l, double &actual_hfov_r,
-      double tol = 3.0,
-      int max_iter = 10);
-  // -----------------------------------------------------------------------------------------------------
   
   int config_awb_otp(pipe_contex_t *pipe_contex); 
 
@@ -195,7 +124,6 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool combine_flag_ = false;
   int vin_enable_ = true;
   int vps_enable_ = true;
-  MIPI_CAP_INFO_ST cap_info_;
   int entry_index_ = 0;
   int sensor_bus_ = 2;
   int pipeline_id_ = 0;
@@ -206,15 +134,9 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::map<int, BOARD_CONFIG_ST> board_config_m_;
   std::map<int, std::vector<std::string>> host_sensor_m_;
   std::shared_ptr<std::thread> multi_frame_task_ = nullptr;
-  std::shared_ptr<std::thread> sync_task_ = nullptr;
   std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
-  std::shared_ptr<std::thread> sub_sync_task_ = nullptr;
-
-  std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
-  std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_;
-  std::vector<sensor_msgs::msg::CameraInfo> cal_cam_info_sub_;
+  std::shared_ptr<std::thread> awb_ae_sync_task_ = nullptr;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
-  std::vector<Imu_params> imu_info_;
   std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;
 
   std::mutex queue_mtx_;
@@ -244,12 +166,6 @@ class HobotMipiCapIml : public HobotMipiCap {
   hbn_vnode_handle_t vse_node_handle[PIPES_TOTAL] = {0};
 
   std::vector<pipe_contex_t> pipe_contex;
-  std::vector<std::shared_ptr<BuffQueueManage>> v_buff_que_manger_;
-  std::shared_ptr<BuffQueueManage> combine_buff_que_manger_;
-  std::vector<std::shared_ptr<FrameQueue>> v_frame_que_;
-  std::vector<std::shared_ptr<BuffQueueManage>> v_sub_buff_que_manger_;
-  std::shared_ptr<BuffQueueManage> sub_combine_buff_que_manger_;
-  std::vector<std::shared_ptr<FrameQueue>> v_sub_frame_que_;
 };
 
 }  // namespace mipi_cam
