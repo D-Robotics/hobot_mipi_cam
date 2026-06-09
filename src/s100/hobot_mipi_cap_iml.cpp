@@ -333,7 +333,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 				num = vp_get_gmsl_list_number();
 				vp_sensor_config_t *sensor_cfg = nullptr;
 				for (int i = 0; i < num; i++) {
-					printf("index: %d  sensor_name: %-16s \tconfig_file:%s\n", i, vp_gmsl_config_list[i]->sensor_name, vp_gmsl_config_list[i]->config_file);
+					//printf("index: %d  sensor_name: %-16s \tconfig_file:%s\n", i, vp_gmsl_config_list[i]->sensor_name, vp_gmsl_config_list[i]->config_file);
 					if (strcasecmp(vp_gmsl_config_list[i]->sensor_name, link.sensor_type.c_str()) == 0) {
 						sensor_cfg = vp_gmsl_config_list[i];
 						break;
@@ -361,7 +361,7 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 				num = vp_get_gmsl_list_number();
 				vp_sensor_config_t *sensor_cfg = nullptr;
 				for (int i = 0; i < num; i++) {
-					printf("index: %d  sensor_name: %-16s \tconfig_file:%s\n", i, vp_gmsl_config_list[i]->sensor_name, vp_gmsl_config_list[i]->config_file);
+					//printf("index: %d  sensor_name: %-16s \tconfig_file:%s\n", i, vp_gmsl_config_list[i]->sensor_name, vp_gmsl_config_list[i]->config_file);
 					if (strcasecmp(vp_gmsl_config_list[i]->sensor_name, link.sensor_type.c_str()) == 0) {
 						sensor_cfg = vp_gmsl_config_list[i];
 						break;

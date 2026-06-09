@@ -184,6 +184,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   bool read_gsml_config(std::string gsml_cfg_file);
 
   void pipeline_connect_param_init(std::shared_ptr<pipe_contex_t> pipe_contex);
+  void deserial_config_update(deserial_config_t *deserial, const camera_config_t *camera_config, int link_port);
 
   // -----------------------------------------------------------------------------------------------------
 
