@@ -37,6 +37,7 @@ typedef struct {
 typedef struct {
   std::string sensor_type;
   std::string path;
+  std::string d_name;
 } DeviceInfo_T;
 
 class imu_base {
@@ -44,7 +45,7 @@ class imu_base {
     imu_base() {};
     virtual ~imu_base() {};
     virtual int init() = 0;
-    virtual int read(ImuData_T *imu_data) = 0;
+    virtual int read_data(ImuData_T *imu_data) = 0;
     virtual int deinit() = 0;
     virtual int set_path(std::vector<DeviceInfo_T> &dev_info) = 0;
 };

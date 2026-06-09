@@ -57,13 +57,16 @@ extern vp_sensor_config_t ar0820std_linear_1920x1080_yuv_30fps_1lane;
 extern vp_sensor_config_t gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane;
 extern vp_sensor_config_t gsml_ov02b10std_linear_1600x13000_yuv_30fps_4lane;
 extern vp_sensor_config_t gsml_shw3h_linear_1920x1536_30fps_1lane;
+extern vp_sensor_config_t gsml_isx031std_linear_1920x1536_yuv_30fps_1lane;
+
 
 vp_sensor_config_t *vp_gmsl_config_list[] = {
 	&ovx3cstd_linear_1920x1080_raw12_30fps_1lane,
 	&ar0820std_linear_1920x1080_yuv_30fps_1lane,
 	&gsml_sc132gs_linear_1280x1088_raw10_30fps_1lane,
 	&gsml_ov02b10std_linear_1600x13000_yuv_30fps_4lane,
-	&gsml_shw3h_linear_1920x1536_30fps_1lane
+	&gsml_shw3h_linear_1920x1536_30fps_1lane,
+	&gsml_isx031std_linear_1920x1536_yuv_30fps_1lane
 };
 
 uint32_t vp_get_gmsl_list_number() {
@@ -96,10 +99,15 @@ vp_sensor_config_t *vp_get_gmsl_config_by_name(char *sensor_name)
 
 extern vp_deserial_config_t deserial_max96712_4link;
 extern vp_deserial_config_t deserial_max96712_4link_slave;
+extern vp_deserial_config_t deserial_max96712_4link_slave2;
+extern vp_deserial_config_t deserial_max96712_4link_slave3;
+
 
 vp_deserial_config_t *vp_deserial_config_list[] = {
 	&deserial_max96712_4link,
-	&deserial_max96712_4link_slave
+	&deserial_max96712_4link_slave,
+	&deserial_max96712_4link_slave2,
+	&deserial_max96712_4link_slave3
 };
 
 uint32_t vp_get_deserial_list_number() {
