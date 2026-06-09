@@ -94,7 +94,6 @@ vp_deserial_config_t deserial_max96712_4link = {
 	.sensor_name = "max96712",
 	.config_file = "deserial_max96712_4link.c",
     .deserial_attr = &gsml_deserial_config,
-    .deserial_slave_attr = &gsml_deserial_config_slave,
 };
 
 vp_deserial_config_t deserial_max96712_4link_slave = {
@@ -104,7 +103,6 @@ vp_deserial_config_t deserial_max96712_4link_slave = {
 	.sensor_name = "max96712_slave",
 	.config_file = "deserial_max96712_4link.c",
     .deserial_attr = &gsml_deserial_config_slave,
-    .deserial_slave_attr = &gsml_deserial_config_slave,
 };
 
 vp_deserial_config_t deserial_max96712_4link_slave2 = {
@@ -114,7 +112,15 @@ vp_deserial_config_t deserial_max96712_4link_slave2 = {
 	.sensor_name = "max96712_slave2",
 	.config_file = "deserial_max96712_4link.c",
     .deserial_attr = &gsml_deserial_config_slave2,
-    .deserial_slave_attr = &gsml_deserial_config_slave2,
+};
+
+vp_deserial_config_t deserial_max96712_4link_slave3 = {
+	.chip_id_reg = 0,
+	.chip_id = 0x0820,
+	.sensor_i2c_addr_list = {0x29},
+	.sensor_name = "max96712_slave3",
+	.config_file = "deserial_max96712_4link.c",
+    .deserial_attr = &gsml_deserial_config_slave3,
 };
 
 vp_deserial_config_t deserial_max96712_4link_slave3 = {

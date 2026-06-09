@@ -16,31 +16,57 @@
 #define HOBOT_ICM42688_HPP_
 
 #include "imu_base.hpp"
+#include <rclcpp/rclcpp.hpp>
 
 namespace imu_sensor
 {
+/* ========== 固定配置 ========== */
+static constexpr char DEFAULT_IIO_DEV[] = "iio:device1";   // IIO 设备名
+static constexpr int BUF_LENGTH = 512;                     // 缓冲区采样数
+
+/* 单次采样的内存布局（packed，与 IIO 通道顺序无关） */
+#pragma pack(push, 1)
+struct Sample {
+    int16_t  temp;
+    int16_t  accel_x;
+    int16_t  accel_y;
+    int16_t  accel_z;
+    int16_t  gyro_x;
+    int16_t  gyro_y;
+    int16_t  gyro_z;
+    uint8_t  padding[2];
+    uint64_t timestamp;           // 纳秒
+};
+#pragma pack(pop)
+
 class icm42688 : public imu_base {
   public:
     //icm42688(std::string accel_path, std::string gyro_path):accel_dev_path(accel_path),gyro_dev_path(gyro_path) {}
     icm42688() {};
     ~icm42688() {};
     int init() override;
-    int read(ImuData_T *imu_data) override;
+    int read_data(ImuData_T *imu_data) override;
     int deinit() override;
     int set_path(std::vector<DeviceInfo_T>  &dev_info) override;
   
   private:
-    int read_raw_signed(std::string dev_path, const char *type, const char *axis, int *val);
-    int read_sensor_scale(std::string dev_path, const char *type, float *scale);
-    uint64_t get_current_timestamp_us();
-    int device_has_channels(std::string dev_path, const char *type);
+    bool write_sysfs_int(const std::string & path, int val);
+    bool write_sysfs_double(const std::string & path, double val);
+    bool read_sysfs_double(const std::string & path, double & out);
+    bool configure_device(double odr);
 
+    std::string device_name_;
+    std::string sysfs_root_;
+    std::string dev_path_;
+    int fd_ = -1;
 
     int ref_count;                   // 引用计数
     int initialized;                 // 初始化标志
-    float accel_scale;               // 加速度计量程
-    float gyro_scale;                // 陀螺仪量程
-    float gravity = 9.81;                   // 重力加速度
+    double accel_scale_ = 1.0;               // 加速度计量程
+    double gyro_scale_ = 1.0;                // 陀螺仪量程
+    double temp_scale_ = 1.0;               // 温度
+    double temp_offset_ = 0.0;                // 温度偏差
+    double gravity = 9.81;                   // 重力加速度
     //char accel_dev_path[MAX_PATH_LEN]; // 加速度计设备路径
     //char gyro_dev_path[MAX_PATH_LEN];  // 陀螺仪设备路径
     std::string accel_dev_path; // 加速度计设备路径
@@ -48,6 +74,7 @@ class icm42688 : public imu_base {
 
     std::vector<DeviceInfo_T> dev_info_;
 };
+
 }
 
 #endif  // HOBOT_ICM42688_HPP_
