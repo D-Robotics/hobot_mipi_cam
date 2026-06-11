@@ -391,6 +391,7 @@ class mipi_calibration {
   bool getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr);
   bool getCamCalibration_union(int i2c_bus, uint16_t i2c_addr);
   bool getCamCalibration_abham(int i2c_bus, uint16_t i2c_addr);
+  bool getCamCalibration_szsyhtl(int i2c_bus, uint16_t i2c_addr);
 
   bool readEeprom16(uint32_t bus, uint8_t i2c_addr, uint16_t reg_addr, char* buf, int bufsize);
   int detectEeprom_drobot(int i2c_bus, std::string &device, uint16_t &i2c_addr);
