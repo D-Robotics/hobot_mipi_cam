@@ -184,6 +184,7 @@ class VideoBuffer : public std::enable_shared_from_this<VideoBuffer> {
     buff = other.buff;
     raw_buff = other.raw_buff;
     encode = other.encode;
+    w_manager = other.w_manager;
   }
   uint64_t timestamp;
   uint32_t frame_id;

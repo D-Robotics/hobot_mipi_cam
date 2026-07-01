@@ -1995,6 +1995,16 @@ void HobotMipiCapIml::sync_awb_ae_task() {
              slave_ccm_attr.manual_attr.cc_offset[2]);
       printf("======== ccm after sync==========\n");
     }
+    if (sync_awb) {
+		master_ccm_attr.configMode = HBN_ISP_MODE_MANUAL;
+		ret = hbn_isp_set_ccm_attr(slave_isp_handle, &master_ccm_attr);
+		if (ret != 0) {
+		  std::cout << "hbn_isp_set_ccm_attr failed: " << ret <<  ",  for slave_isp_handel" << std::endl;
+		  std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+		  continue;
+		}
+	}
+
     ret = hbn_isp_get_2dnr_attr(master_isp_handle, &master_2dnr_attr);
     auto rt11 = std::chrono::high_resolution_clock::now();
     if (ret != 0) {
