@@ -41,19 +41,28 @@ struct Sample {
 
 class icm42688 : public imu_base {
   public:
-    //icm42688(std::string accel_path, std::string gyro_path):accel_dev_path(accel_path),gyro_dev_path(gyro_path) {}
     icm42688() {};
     ~icm42688() {};
     int init() override;
     int read_data(ImuData_T *imu_data) override;
     int deinit() override;
     int set_path(std::vector<DeviceInfo_T>  &dev_info) override;
-  
+
   private:
+    struct DeviceChannel {
+      std::string sensor_type;
+      std::string path;
+      std::string d_name;
+    };
+
     bool write_sysfs_int(const std::string & path, int val);
     bool write_sysfs_double(const std::string & path, double val);
     bool read_sysfs_double(const std::string & path, double & out);
+    bool read_sysfs_int64(const std::string & path, int64_t & out);
     bool configure_device(double odr);
+    bool path_exists(const std::string &path) const;
+    bool has_split_iio_layout() const;
+    int read_split_data(ImuData_T *imu_data);
 
     std::string device_name_;
     std::string sysfs_root_;
@@ -67,10 +76,12 @@ class icm42688 : public imu_base {
     double temp_scale_ = 1.0;               // 温度
     double temp_offset_ = 0.0;                // 温度偏差
     double gravity = 9.81;                   // 重力加速度
-    //char accel_dev_path[MAX_PATH_LEN]; // 加速度计设备路径
-    //char gyro_dev_path[MAX_PATH_LEN];  // 陀螺仪设备路径
     std::string accel_dev_path; // 加速度计设备路径
     std::string gyro_dev_path;  // 陀螺仪设备路径
+    std::string fsync_dev_path;
+    double split_accel_scale_ = 1.0;
+    double split_gyro_scale_ = 1.0;
+    bool split_iio_enabled_ = false;
 
     std::vector<DeviceInfo_T> dev_info_;
 };

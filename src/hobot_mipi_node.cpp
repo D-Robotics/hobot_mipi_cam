@@ -231,6 +231,9 @@ MipiCamNode::~MipiCamNode() {
     timer->join();
   }
   imu_timer_.clear();
+  if (imu_manager_) {
+    imu_manager_->release_sensor();
+  }
   std::cout << std::endl;
 }
 

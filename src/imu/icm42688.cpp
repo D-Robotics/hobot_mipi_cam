@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -28,7 +27,6 @@
 #include "icm42688.hpp"
 #include "inv_icm42600.h"
 #include <cmath>
-
 
 namespace imu_sensor
 {
@@ -85,15 +83,111 @@ bool icm42688::read_sysfs_double(const std::string & path, double & out) {
     return true;
 }
 
+bool icm42688::read_sysfs_int64(const std::string & path, int64_t & out) {
+    FILE *fp = fopen(path.c_str(), "r");
+    if (!fp) {
+        return false;
+    }
+    long long value = 0;
+    if (fscanf(fp, "%lld", &value) != 1) {
+        fclose(fp);
+        return false;
+    }
+    out = static_cast<int64_t>(value);
+    fclose(fp);
+    return true;
+}
+
+bool icm42688::path_exists(const std::string &path) const {
+    return access(path.c_str(), F_OK) == 0;
+}
+
+bool icm42688::has_split_iio_layout() const {
+    bool has_gyro = false;
+    bool has_accel = false;
+    bool has_fsync = false;
+    for (const auto &info : dev_info_) {
+        if (info.sensor_type.find("icm42688-gyro") == 0) {
+            has_gyro = true;
+        } else if (info.sensor_type.find("icm42688-accel") == 0) {
+            has_accel = true;
+        } else if (info.sensor_type.find("icm42688-fsync") == 0) {
+            has_fsync = true;
+        }
+    }
+    if (has_gyro && has_accel) {
+        RCLCPP_WARN(rclcpp::get_logger("icm42688"),
+                    "Detected split IIO layout for ICM42688 (gyro=%d accel=%d fsync=%d).",
+                    has_gyro, has_accel, has_fsync);
+        return true;
+    }
+    return false;
+}
+
+int icm42688::read_split_data(ImuData_T *imu_data) {
+    int64_t gx_raw = 0, gy_raw = 0, gz_raw = 0;
+    int64_t ax_raw = 0, ay_raw = 0, az_raw = 0;
+
+    if (!read_sysfs_int64(gyro_dev_path + "/in_anglvel_x_raw", gx_raw) ||
+        !read_sysfs_int64(gyro_dev_path + "/in_anglvel_y_raw", gy_raw) ||
+        !read_sysfs_int64(gyro_dev_path + "/in_anglvel_z_raw", gz_raw)) {
+        return -1;
+    }
+    if (!read_sysfs_int64(accel_dev_path + "/in_accel_x_raw", ax_raw) ||
+        !read_sysfs_int64(accel_dev_path + "/in_accel_y_raw", ay_raw) ||
+        !read_sysfs_int64(accel_dev_path + "/in_accel_z_raw", az_raw)) {
+        return -1;
+    }
+
+    imu_data->gx = static_cast<float>(gx_raw * split_gyro_scale_);
+    imu_data->gy = static_cast<float>(gy_raw * split_gyro_scale_);
+    imu_data->gz = static_cast<float>(gz_raw * split_gyro_scale_);
+    imu_data->ax = static_cast<float>(ax_raw * split_accel_scale_);
+    imu_data->ay = static_cast<float>(ay_raw * split_accel_scale_);
+    imu_data->az = static_cast<float>(az_raw * split_accel_scale_);
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    imu_data->timestamp = static_cast<uint64_t>(ts.tv_sec) * 1000000000ULL + static_cast<uint64_t>(ts.tv_nsec);
+    imu_data->mx = 0.0f;
+    imu_data->my = 0.0f;
+    imu_data->mz = 0.0f;
+    imu_data->status = 0;
+    return 0;
+}
+
 
 // 改进的通用初始化函数
 int icm42688::init() {
 
-    int ret;
-
     // 获取参数
-    //device_name_ = this->get_parameter("device").as_string();
     double odr = 200.0;
+
+    split_iio_enabled_ = false;
+    if (has_split_iio_layout()) {
+        for (const auto &info : dev_info_) {
+            if (info.sensor_type.find("icm42688-gyro") == 0) {
+                gyro_dev_path = info.path;
+            } else if (info.sensor_type.find("icm42688-accel") == 0) {
+                accel_dev_path = info.path;
+            } else if (info.sensor_type.find("icm42688-fsync") == 0) {
+                fsync_dev_path = info.path;
+            }
+        }
+        if (gyro_dev_path.empty() || accel_dev_path.empty()) {
+            return -1;
+        }
+        if (!read_sysfs_double(gyro_dev_path + "/in_anglvel_scale", split_gyro_scale_) ||
+            !read_sysfs_double(accel_dev_path + "/in_accel_scale", split_accel_scale_)) {
+            RCLCPP_ERROR(rclcpp::get_logger("icm42688"),
+                         "Failed to read split IIO scales from %s and %s",
+                         gyro_dev_path.c_str(), accel_dev_path.c_str());
+            return -1;
+        }
+        split_iio_enabled_ = true;
+        initialized = 1;
+        return 0;
+    }
 
     // 检查 ODR 是否合法
     if (odr != 200.0 && odr != 500.0) {
@@ -111,21 +205,24 @@ int icm42688::init() {
         RCLCPP_FATAL(rclcpp::get_logger("icm42688"), "Failed to configure IIO device, exiting.");
         return -1;
     }
-    //usleep(1000000);
     initialized = 1;
     return 0;
 
 }
- 
+
 
 // 释放函数
 int icm42688::deinit() {
     // 关闭缓冲区并关闭设备
     if (initialized) {
         initialized = 0;
-        write_sysfs_int(sysfs_root_ + "/buffer/enable", 0);
+        split_iio_enabled_ = false;
+        if (!sysfs_root_.empty() && path_exists(sysfs_root_ + "/buffer/enable")) {
+            write_sysfs_int(sysfs_root_ + "/buffer/enable", 0);
+        }
         if (fd_ >= 0) {
             close(fd_);
+            fd_ = -1;
         }
     }
     return 0;
@@ -196,6 +293,9 @@ int icm42688::read_data(ImuData_T *data) {
     if (!initialized || data == nullptr) {
         fprintf(stderr, "ICM42688 not initialized\n");
         return -1;
+    }
+    if (split_iio_enabled_) {
+        return read_split_data(data);
     }
     Sample sample;
     ssize_t read_len;
