@@ -57,22 +57,22 @@ def generate_launch_description():
     
     mipi_image_width_arg = DeclareLaunchArgument(
         'mipi_image_width',
-        default_value='544',
+        default_value='640',
         description='mipi width')
 
     mipi_image_height_arg = DeclareLaunchArgument(
         'mipi_image_height',
-        default_value='640',
+        default_value='544',
         description='mipi height')
 
     mipi_rotation_arg = DeclareLaunchArgument(
         'mipi_rotation',
-        default_value='0.0',
+        default_value='90.0',
         description='mipi camera out image rotation')
 
     mipi_cal_rotation_arg = DeclareLaunchArgument(
         'mipi_cal_rotation',
-        default_value='0.0',
+        default_value='90.0',
         description='mipi camera calibration rotation')
 
     mipi_gdc_enable_arg = DeclareLaunchArgument(
@@ -107,7 +107,8 @@ def generate_launch_description():
             'mipi_rotation': LaunchConfiguration('mipi_rotation'),
             'mipi_cal_rotation': LaunchConfiguration('mipi_cal_rotation'),
             'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
-            'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type')
+            'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type'),
+            'log_level': 'warn'
         }.items()
     )
 
