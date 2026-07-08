@@ -133,6 +133,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<std::string>("imu_calib_file", imu_calib_file_path_);
 
   nodePare_->sync_awb_ = this->declare_parameter<bool>("sync_awb", false);
+  nodePare_->sync_ccm_ = this->declare_parameter<bool>("sync_ccm", false);
   nodePare_->sync_ae_ = this->declare_parameter<bool>("sync_ae", false);
   nodePare_->print_isp_log_ = this->declare_parameter<bool>("print_isp_log", false);
 
@@ -165,6 +166,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     "\n               io_method_name: %s" \
     "\n                    cal_alpha: %.3f" \
     "\n                    sync_awb: %d" \
+    "\n                    sync_ccm: %d" \
     "\n                    sync_ae: %d" \
     "\n                    print_ips_log: %d",
               nodePare_->config_path_.c_str(),
@@ -194,6 +196,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
               io_method_name_.c_str(),
               nodePare_->cal_alpha_,
               nodePare_->sync_awb_,
+              nodePare_->sync_ccm_,
               nodePare_->sync_ae_,
               nodePare_->print_isp_log_
   );

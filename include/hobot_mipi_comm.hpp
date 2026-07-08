@@ -59,6 +59,7 @@ struct NodePara {
   double cal_alpha_;
   bool sub_stream_enable_;
   bool sync_awb_;
+  bool sync_ccm_;
   bool sync_ae_;
   bool print_isp_log_;
 };
@@ -89,6 +90,7 @@ typedef struct {
   double cal_alpha_;
   bool sub_stream_enable_;
   bool sync_awb_;
+  bool sync_ccm_;
   bool sync_ae_;
   bool print_isp_log_;
 } MIPI_CAP_INFO_ST;
@@ -184,6 +186,7 @@ class VideoBuffer : public std::enable_shared_from_this<VideoBuffer> {
     buff = other.buff;
     raw_buff = other.raw_buff;
     encode = other.encode;
+    w_manager = other.w_manager;
   }
   uint64_t timestamp;
   uint32_t frame_id;

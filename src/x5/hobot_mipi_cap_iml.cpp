@@ -479,7 +479,8 @@ int HobotMipiCapIml::start() {
   }
   if (pipe_contex.size() > 1 &&
       (pipe_contex[0].cap_info_->sync_awb_
-          || pipe_contex[0].cap_info_->sync_ae_
+          || pipe_contex[0].cap_info_->sync_ccm_
+		  || pipe_contex[0].cap_info_->sync_ae_
           || pipe_contex[0].cap_info_->print_isp_log_)) {
     awb_ae_sync_task_ = std::make_shared<std::thread>(
         std::bind(&HobotMipiCapIml::sync_awb_ae_task, this));
@@ -1745,7 +1746,7 @@ void HobotMipiCapIml::sync_awb_ae_task() {
   int vin_fd = -1;
   int isp_fd = -1;
   fd_set read_fds;
-  bool sync_awb; bool sync_ae; bool print_isp_log;
+  bool sync_awb; bool sync_ccm; bool sync_ae; bool print_isp_log;
   hbn_vnode_handle_t master_isp_handle, slave_isp_handle, slave_vin_handle;
   hbn_isp_exposure_attr_t master_exp_attr, slave_exp_attr;
   hbn_isp_awb_attr_t master_awb_attr, slave_awb_attr;
@@ -1755,10 +1756,11 @@ void HobotMipiCapIml::sync_awb_ae_task() {
   if (pipe_contex.size() < 2) return;
 
   sync_awb = pipe_contex[0].cap_info_->sync_awb_;
+  sync_ccm = pipe_contex[0].cap_info_->sync_ccm_;
   sync_ae = pipe_contex[0].cap_info_->sync_ae_;
   print_isp_log = pipe_contex[0].cap_info_->print_isp_log_;
 
-  if (!sync_awb && !sync_ae && !print_isp_log) return;
+  if (!sync_awb && !sync_ccm && !sync_ae && !print_isp_log) return;
 
   master_isp_handle = pipe_contex[0].isp_node_handle;
   slave_isp_handle  = pipe_contex[1].isp_node_handle;
@@ -1865,7 +1867,7 @@ void HobotMipiCapIml::sync_awb_ae_task() {
           dt4);
       printf("======== slave awb before sync==========\n");
     }
-    if (!sync_awb && !sync_ae) {
+    if (!sync_awb && !sync_ccm && !sync_ae) {
       continue;
     }
 
@@ -1995,6 +1997,16 @@ void HobotMipiCapIml::sync_awb_ae_task() {
              slave_ccm_attr.manual_attr.cc_offset[2]);
       printf("======== ccm after sync==========\n");
     }
+    if (sync_ccm) {
+		master_ccm_attr.configMode = HBN_ISP_MODE_MANUAL;
+		ret = hbn_isp_set_ccm_attr(slave_isp_handle, &master_ccm_attr);
+		if (ret != 0) {
+		  std::cout << "hbn_isp_set_ccm_attr failed: " << ret <<  ",  for slave_isp_handel" << std::endl;
+		  std::cout << "error info: " << hbn_err_info(ret) <<  ", error type: " << hbn_err_type(ret) << std::endl;
+		  continue;
+		}
+	}
+
     ret = hbn_isp_get_2dnr_attr(master_isp_handle, &master_2dnr_attr);
     auto rt11 = std::chrono::high_resolution_clock::now();
     if (ret != 0) {
