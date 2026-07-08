@@ -217,6 +217,7 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   cap_info_.stream_mode_ = nodePare_->stream_mode_;
   cap_info_.sub_stream_enable_ = nodePare_->sub_stream_enable_;
   cap_info_.sync_awb_ = nodePare_->sync_awb_;
+  cap_info_.sync_ccm_ = nodePare_->sync_ccm_;
   cap_info_.sync_ae_ = nodePare_->sync_ae_;
   cap_info_.print_isp_log_ = nodePare_->print_isp_log_;
   if (mipiCap_ptr_->initEnv() < 0) {

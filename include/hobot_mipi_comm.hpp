@@ -59,6 +59,7 @@ struct NodePara {
   double cal_alpha_;
   bool sub_stream_enable_;
   bool sync_awb_;
+  bool sync_ccm_;
   bool sync_ae_;
   bool print_isp_log_;
 };
@@ -89,6 +90,7 @@ typedef struct {
   double cal_alpha_;
   bool sub_stream_enable_;
   bool sync_awb_;
+  bool sync_ccm_;
   bool sync_ae_;
   bool print_isp_log_;
 } MIPI_CAP_INFO_ST;

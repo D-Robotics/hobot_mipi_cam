@@ -132,6 +132,10 @@ def generate_launch_description():
             default_value='False',
             description='set the slave awb parameters from the master'),
         DeclareLaunchArgument(
+            'sync_ccm',
+            default_value='False',
+            description='set the slave ccm parameters from the master'),
+        DeclareLaunchArgument(
             'sync_ae',
             default_value='False',
             description='set the slave ae parameters from the master'),
@@ -183,6 +187,7 @@ def generate_launch_description():
                 {"stream_mode": LaunchConfiguration('mipi_stream_mode')},
                 {"sub_stream_enable": LaunchConfiguration('mipi_sub_stream_enable')},
                 {"sync_awb": LaunchConfiguration('sync_awb')},
+                {"sync_ccm": LaunchConfiguration('sync_ccm')},
                 {"sync_ae": LaunchConfiguration('sync_ae')},
                 {"print_isp_log": LaunchConfiguration('print_isp_log')},
             ],
