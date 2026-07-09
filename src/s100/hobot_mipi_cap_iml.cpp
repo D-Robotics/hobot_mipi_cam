@@ -106,7 +106,6 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 int HobotMipiCapIml::mipi_init(MIPI_CAP_INFO_ST &info) {
   int ret = 0;
   cap_info_ = info;
-  cap_info_.sub_stream_enable_ = false;
   std::vector<int> sensor_v;
   std::vector<int> host_v;
   std::vector<mipi_host_info_t> v_host_info;
@@ -187,7 +186,7 @@ int HobotMipiCapIml::mipi_init(MIPI_CAP_INFO_ST &info) {
 				pipe_contex[1]->gdc_bin = gdc_bin[1];
 			}			
 	}
-	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
+	if (cap_info_.gdc_enable_ && (cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
 		vp_sensor_config_t *sensor_conf = &pipe_contex[0]->sensor_config;
 		int width;
 		int height;
@@ -263,7 +262,7 @@ int HobotMipiCapIml::mipi_init(MIPI_CAP_INFO_ST &info) {
 			}
 		}
 	}
-	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
+	if (cap_info_.gdc_enable_ && (cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
 		int width;
 		int height;
 		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
@@ -630,6 +629,11 @@ int HobotMipiCapIml::start() {
   for(auto contex : pipe_contex){
     ret = hbn_vflow_start(contex->vflow_fd);
     ERR_CON_EQ(ret, 0);
+    RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+      "vflow start ok, vflow:%ld, vin:%p, isp:%p, ynr:%p, pym:%p, gdc:%p valid:%d, gdc_r:%p valid_r:%d, stream:%p, stream_group:%d",
+      contex->vflow_fd, contex->vin_node_handle, contex->isp_node_handle, contex->ynr_node_handle,
+      contex->pym_node_handle, contex->gdc_node_handle, contex->gdc_init_valid,
+      contex->gdc_node_handle_r, contex->gdc_init_valid_r, contex->stream_handle, contex->stream_group);
   }
   started_ = true;
   if (!pipe_contex.empty()) {
@@ -647,7 +651,6 @@ int HobotMipiCapIml::start() {
 		}
 		task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::sync_task, this)));
 	}
-#if 0
 	if (cap_info_.sub_stream_enable_ == true) {
 		for(auto contex : pipe_contex) {
 			auto que_manger = std::make_shared<BuffQueueManage>();
@@ -656,7 +659,6 @@ int HobotMipiCapIml::start() {
 		}
 		sub_combine_buff_que_manger_ = std::make_shared<BuffQueueManage>();
 		sub_combine_buff_que_manger_->creat_buff(5);
-		task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::subMultiFrameTask, this)));
 		if (combine_flag_) {
 			for(auto contex : pipe_contex) {
 				v_sub_frame_que_.push_back(std::make_shared<FrameQueue>());
@@ -664,7 +666,6 @@ int HobotMipiCapIml::start() {
 			task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::sub_sync_task, this)));
 		}
 	}
-#endif
   }
   return 0;
 }
@@ -844,76 +845,59 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::
 	return 0;
 }
 
-int HobotMipiCapIml::getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr) {
-	
-	if (buff_ptr == nullptr) {
-
+int HobotMipiCapIml::copyGroupFrameToBuffer(const hbn_vnode_image_group_t &out_img, int group_idx, std::shared_ptr<VideoBuffer> buff_ptr) {
+	if ((buff_ptr == nullptr) || (group_idx < 0) || (group_idx >= 6)) {
 		return -1;
 	}
-	// hbn_vnode_image_t out_img;
-	// int ret = hbn_vnode_getframe(handle, channel, 1000, &out_img);
-
-	hbn_vnode_image_group_t out_img;
-	int ret = hbn_vnode_getframe_group(handle, channel, 1000, &out_img);
-
-	if (ret != 0) {
-		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe_group handle = %p, channel  = %d,ret = %d failed\n", handle, channel,ret);
+	const auto &graph = out_img.buf_group.graph_group[group_idx];
+	if ((graph.virt_addr[0] == nullptr) || (graph.virt_addr[1] == nullptr) ||
+		(graph.width == 0) || (graph.height == 0) || (graph.size[0] == 0)) {
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+			"invalid pym group frame, group_idx:%d, width:%d, height:%d, size:%lu,%lu",
+			group_idx, graph.width, graph.height, graph.size[0], graph.size[1]);
 		return -1;
 	}
-	//hb_mem_invalidate_buf_with_vaddr((uint64_t)out_img.buffer.virt_addr[0],out_img.buffer.size[0]);
-
-	//hb_mem_invalidate_buf_with_vaddr((uint64_t)out_img.buffer.virt_addr[1],out_img.buffer.size[1]);
-
-	//*timestamp = out_img.info.trig_tv.tv_sec * 1e9 + out_img.info.trig_tv.tv_usec * 1e3;
-	//*timestamp = out_img.info.tv.tv_sec * 1e9 + out_img.info.tv.tv_usec * 1e3;
+	hb_mem_invalidate_buf_with_vaddr((uint64_t)graph.virt_addr[0], graph.size[0]);
+	hb_mem_invalidate_buf_with_vaddr((uint64_t)graph.virt_addr[1], graph.size[1]);
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-
+	clock_gettime(CLOCK_MONOTONIC, &ts);
 	uint64_t timestamp_1 = tv.tv_sec * 1e9 + tv.tv_usec * 1e3;
 	uint64_t timestamp_2 = ts.tv_sec * 1e9 + ts.tv_nsec;
-    //RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
-    //        "capture timestamps= %lu, sys_timestamps= %lu, tv.sec=%d, tv.nsec=%d, trig_tv.sec=%d, trig_tv.nsec=%d", 
-	//		out_img.info.timestamps, out_img.info.sys_timestamps, out_img.info.tv.tv_sec, out_img.info.tv.tv_usec, out_img.info.trig_tv.tv_sec, out_img.info.trig_tv.tv_usec);
-
-    RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
-            "capture timestamps= %lu, tv.sec=%d, tv.nsec=%d, trig_tv.sec=%d, trig_tv.nsec=%d", 
-			out_img.info.timestamps, out_img.info.tv.tv_sec, out_img.info.tv.tv_usec, out_img.info.trig_tv.tv_sec, out_img.info.trig_tv.tv_usec);
-
-	RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
-            "system tv.sec=%d, tv.tv_usec=%d, ts.sec=%d, ts.nsec=%d", 
-			tv.tv_sec, tv.tv_usec, ts.tv_sec, ts.tv_nsec);
-
 	if ("realtime" == cap_info_.frame_ts_type_) {
 		buff_ptr->timestamp = out_img.info.timestamps + (timestamp_1 - timestamp_2);
 	} else {
 		buff_ptr->timestamp = out_img.info.timestamps;
-	} 
-	//*timestamp = out_img.info.sys_timestamps;
-	//*timestamp = out_img.info.timestamps;
+	}
 	buff_ptr->frame_id = out_img.info.frame_id;
-
-	RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
-		"capture laps ms= %d", ((timestamp_2 - out_img.info.timestamps)/1000000));
-	
-	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", image time sec:" << out_img.info.tv.tv_sec
-	//          << ", trig time sec:" << out_img.info.trig_tv.tv_sec 
-	//		  << ", image timestamps(/1e9) sec:" << out_img.info.timestamps / 1e9 <<  std::endl;
-
-	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", timestamp time sec:" << (int)(*timestamp / 1e9) <<  std::endl;
-	
-	buff_ptr->stride = out_img.buf_group.graph_group[0].stride;
-	buff_ptr->width = out_img.buf_group.graph_group[0].width;
-	buff_ptr->height = out_img.buf_group.graph_group[0].height;
-	buff_ptr->buff_size = out_img.buf_group.graph_group[0].size[0] + out_img.buf_group.graph_group[0].size[1];
+	buff_ptr->stride = graph.stride;
+	buff_ptr->width = graph.width;
+	buff_ptr->height = graph.height;
+	buff_ptr->buff_size = graph.size[0] + graph.size[1];
 	buff_ptr->buff.resize(buff_ptr->buff_size);
 	buff_ptr->encode = "nv12";
-
-	memcpy(buff_ptr->buff.data(), out_img.buf_group.graph_group[0].virt_addr[0], out_img.buf_group.graph_group[0].size[0]);
-	memcpy(buff_ptr->buff.data() + out_img.buf_group.graph_group[0].size[0], out_img.buf_group.graph_group[0].virt_addr[1], out_img.buf_group.graph_group[0].size[1]);
-	hbn_vnode_releaseframe_group(handle, channel, &out_img);
+	memcpy(buff_ptr->buff.data(), graph.virt_addr[0], graph.size[0]);
+	memcpy(buff_ptr->buff.data() + graph.size[0], graph.virt_addr[1], graph.size[1]);
+	RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
+		"capture pym group[%d], id:%d, width:%d, height:%d, stride:%d, ts:%lu",
+		group_idx, buff_ptr->frame_id, buff_ptr->width, buff_ptr->height, buff_ptr->stride, buff_ptr->timestamp);
 	return 0;
+}
+
+int HobotMipiCapIml::getVnodeFrameGroup(hbn_vnode_handle_t handle, int group_idx, std::shared_ptr<VideoBuffer> buff_ptr) {
+	if (buff_ptr == nullptr) {
+		return -1;
+	}
+	hbn_vnode_image_group_t out_img;
+	int ret = hbn_vnode_getframe_group(handle, 0, 1000, &out_img);
+	if (ret != 0) {
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe_group handle = %p, group_idx = %d, ret = %d failed\n", handle, group_idx, ret);
+		return -1;
+	}
+	ret = copyGroupFrameToBuffer(out_img, group_idx, buff_ptr);
+	hbn_vnode_releaseframe_group(handle, 0, &out_img);
+	return ret;
 }
 
 void HobotMipiCapIml::multiFrameTask() {
@@ -941,15 +925,22 @@ void HobotMipiCapIml::multiFrameTask() {
 	std::iota(indices.begin(), indices.end(), 0); 
 
 	std::for_each(indices.begin(), indices.end(), [&](int i) {
-		hbn_vnode_get_fd(pipe_contex[i]->stream_handle, 0, &ochn_fd[i]);
+		ochn_fd[i] = -1;
+		int fd_ret = hbn_vnode_get_fd(pipe_contex[i]->stream_handle, 0, &ochn_fd[i]);
+		RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
+			"multiFrameTask fd init, pipe:%d, stream_handle:%p, stream_group:%d, get_fd_ret:%d, fd:%d",
+			i, pipe_contex[i]->stream_handle, pipe_contex[i]->stream_group, fd_ret, ochn_fd[i]);
 	});
 
+	int select_timeout_count = 0;
 	while (started_) {
 	  max_handle = 0;
 	  FD_ZERO(&readfds);
 	  std::for_each(indices.begin(), indices.end(), [&](int i) {
-		FD_SET(ochn_fd[i], &readfds);
-		max_handle = max_handle > ochn_fd[i]?max_handle : ochn_fd[i];
+		if (ochn_fd[i] >= 0) {
+			FD_SET(ochn_fd[i], &readfds);
+			max_handle = max_handle > ochn_fd[i]?max_handle : ochn_fd[i];
+		}
 	  });
 
 	  timeout.tv_sec = 2;
@@ -960,32 +951,72 @@ void HobotMipiCapIml::multiFrameTask() {
 		  break;
 	  } else if (result == 0) {
 		  // 超时
-		  std::cout << "Timeout occurred" << std::endl;
+		  select_timeout_count++;
+		  RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+			"select timeout, count:%d, max_handle:%d, pipe_num:%d, fd[0]:%d, fd[1]:%d",
+			select_timeout_count, max_handle, pipe_num,
+			pipe_num > 0 ? ochn_fd[0] : -1, pipe_num > 1 ? ochn_fd[1] : -1);
 		  continue;
 	  } else {
-		  for (int i = 0; i < ochn_fd.size(); i++) {
-			  //if (!rclcpp::ok()) break;
-			  if (FD_ISSET(ochn_fd[i], &readfds)) {
-				std::shared_ptr<VideoBuffer> buff_ptr = v_buff_que_manger_[i]->get_empty_buff();
-				if (buff_ptr) {
+			  RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
+				"select ready, result:%d, max_handle:%d", result, max_handle);
+			  for (int i = 0; i < ochn_fd.size(); i++) {
+				  //if (!rclcpp::ok()) break;
+				  if (FD_ISSET(ochn_fd[i], &readfds)) {
+					std::shared_ptr<VideoBuffer> buff_ptr = v_buff_que_manger_[i]->get_empty_buff();
+					if (!buff_ptr) {
+						continue;
+					}
 					if (pipe_contex[i]->stream_group) {
-						ret = getVnodeFrameGroup(pipe_contex[i]->stream_handle, 0, buff_ptr);
+						hbn_vnode_image_group_t out_img;
+						ret = hbn_vnode_getframe_group(pipe_contex[i]->stream_handle, 0, 1000, &out_img);
+						if (ret == 0) {
+							ret = copyGroupFrameToBuffer(out_img, pipe_contex[i]->main_stream_group_idx, buff_ptr);
+							if (ret == 0) {
+								if (combine_flag_) {
+									auto buff_tmp = std::make_shared<VideoBuffer>(*buff_ptr);
+									v_frame_que_[i]->push(buff_tmp);
+								}
+								buff_ptr->return_data_que();
+							} else {
+								buff_ptr->return_empty_que();
+							}
+							if (cap_info_.sub_stream_enable_ && pipe_contex[i]->sub_stream_valid &&
+								(i < v_sub_buff_que_manger_.size())) {
+								auto sub_buff_ptr = v_sub_buff_que_manger_[i]->get_empty_buff();
+								if (sub_buff_ptr) {
+									int sub_ret = copyGroupFrameToBuffer(out_img, pipe_contex[i]->sub_stream_group_idx, sub_buff_ptr);
+									if (sub_ret == 0) {
+										if (combine_flag_ && (i < v_sub_frame_que_.size())) {
+											auto buff_tmp = std::make_shared<VideoBuffer>(*sub_buff_ptr);
+											v_sub_frame_que_[i]->push(buff_tmp);
+										}
+										sub_buff_ptr->return_data_que();
+									} else {
+										sub_buff_ptr->return_empty_que();
+									}
+								}
+							}
+							hbn_vnode_releaseframe_group(pipe_contex[i]->stream_handle, 0, &out_img);
+						} else {
+							RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe_group PYM pipe = %d failed, ret = %d\n", i, ret);
+							buff_ptr->return_empty_que();
+						}
 					} else {
 						ret = getVnodeFrame(pipe_contex[i]->stream_handle, 0, buff_ptr);
-					}
-					if (ret == 0) {
-						if (combine_flag_) {
-							auto buff_tmp = std::make_shared<VideoBuffer>(*buff_ptr);
-							v_frame_que_[i]->push(buff_tmp);
+						if (ret == 0) {
+							if (combine_flag_) {
+								auto buff_tmp = std::make_shared<VideoBuffer>(*buff_ptr);
+								v_frame_que_[i]->push(buff_tmp);
+							}
+							buff_ptr->return_data_que();
+						} else {
+							RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe channel = %d failed ,ret = %d\n", i,ret);
+							buff_ptr->return_empty_que();
 						}
-						buff_ptr->return_data_que();
-					} else {
-						RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", i,ret);
-						buff_ptr->return_empty_que();
 					}
-				}
+				  }
 			  }
-		  }
 	  }
 	}
 	return;
@@ -1406,20 +1437,57 @@ int HobotMipiCapIml::create_pym_node(std::shared_ptr<pipe_contex_t> pipe_contex,
 	int bl_width = src_width;
 	int bl_height = src_height;
 	int bl_stride = src_width;
+	auto setup_pym_roi = [&](int group_idx, int target_width, int target_height) -> int {
+		int local_roi_sel = 0;
+		int local_roi_layer = 0;
+		int local_bl_width = src_width;
+		int local_bl_height = src_height;
+		int local_bl_stride = src_width;
+		if (check_pym_config(src_width, src_height, target_width, target_height,
+				local_bl_width, local_bl_height, local_bl_stride, local_roi_sel, local_roi_layer) == -1) {
+			return -1;
+		}
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+			"creat_pym_node group[%d]--roi_sel: %d, roi_layer: %d, bl_width: %d, bl_height: %d, out_width: %d, out_height: %d",
+			group_idx, local_roi_sel, local_roi_layer, local_bl_width, local_bl_height, target_width, target_height);
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_sel[group_idx] = local_roi_sel;
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_layer[group_idx] = local_roi_layer;
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[group_idx].region_width = local_bl_width;
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[group_idx].region_height = local_bl_height;
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[group_idx].wstride_uv = ALIGN_16(target_width);
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[group_idx].wstride_y = ALIGN_16(target_width);
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[group_idx].out_width = target_width;
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[group_idx].out_height = target_height;
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[group_idx].vstride = target_height;
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_en |= (1 << group_idx);
+		return 0;
+	};
+	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_en = 0;
 	if (check_pym_config(src_width, src_height, out_width,
 			out_height, bl_width, bl_height, bl_stride, roi_sel, roi_layer) == -1) {
 		return -1;
 	}
-	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "creat_pym_node--roi_sel: %d, roi_layer: %d, bl_width: %d, bl_height: %d", roi_sel, roi_layer, bl_width, bl_height);
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_sel[0] = roi_sel;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_layer[0] = roi_layer;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].region_width = bl_width;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].region_height = bl_height;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].wstride_uv = out_width;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].wstride_y = out_width;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].out_width = out_width;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].out_height = out_height;
-	pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[0].vstride = out_height;
+	if (setup_pym_roi(pipe_contex->main_stream_group_idx, out_width, out_height) == -1) {
+		return -1;
+	}
+	pipe_contex->sub_stream_valid = false;
+	if (pipe_contex->cap_info_->sub_stream_enable_) {
+		int sub_out_width;
+		int sub_out_height;
+		if ((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0)) {
+			sub_out_width = pipe_contex->cap_info_->sub_height;
+			sub_out_height = pipe_contex->cap_info_->sub_width;
+		} else {
+			sub_out_width = pipe_contex->cap_info_->sub_width;
+			sub_out_height = pipe_contex->cap_info_->sub_height;
+		}
+		if (setup_pym_roi(pipe_contex->sub_stream_group_idx, sub_out_width, sub_out_height) == -1) {
+			RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+				"create sub stream pym roi failed, width:%d, height:%d", sub_out_width, sub_out_height);
+			return -1;
+		}
+		pipe_contex->sub_stream_valid = true;
+	}
 
 	int ret = 0;
 	uint32_t chn_id = 0;
@@ -1447,6 +1515,32 @@ int HobotMipiCapIml::create_pym_node(std::shared_ptr<pipe_contex_t> pipe_contex,
 						| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
 	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->pym_node_handle, chn_id, &alloc_attr);
 	ERR_CON_EQ(ret, 0);
+
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+		"pym final cfg, handle:%p, hw:%d, slot:%d, mode:%d, output_buf_num:%d, fb_buf_num:%d, ds_roi_en:0x%x, src:%dx%d stride_y:%d stride_uv:%d, ochn_buf_num:%d",
+		pipe_contex->pym_node_handle,
+		pipe_contex->sensor_config.pym_cfg->hw_id,
+		pipe_contex->sensor_config.pym_cfg->slot_id,
+		pipe_contex->sensor_config.pym_cfg->pym_mode,
+		pipe_contex->sensor_config.pym_cfg->output_buf_num,
+		pipe_contex->sensor_config.pym_cfg->fb_buf_num,
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_en,
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_width,
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height,
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_stride_y,
+		pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_stride_uv,
+		alloc_attr.buffers_num);
+	for (int group_idx : {pipe_contex->main_stream_group_idx, pipe_contex->sub_stream_group_idx}) {
+		const auto &roi = pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_info[group_idx];
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+			"pym roi cfg, group:%d, enable:%d, roi_sel:%d, roi_layer:%d, region:%dx%d, out:%dx%d, stride_y:%d, stride_uv:%d, vstride:%d",
+			group_idx,
+			(pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_en & (1 << group_idx)) ? 1 : 0,
+			pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_sel[group_idx],
+			pipe_contex->sensor_config.pym_cfg->chn_ctrl.ds_roi_layer[group_idx],
+			roi.region_width, roi.region_height, roi.out_width, roi.out_height,
+			roi.wstride_y, roi.wstride_uv, roi.vstride);
+	}
 
 	return 0;
 }
@@ -1762,7 +1856,9 @@ int HobotMipiCapIml::create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_co
 			pipe_contex->stream_handle = pipe_contex->gdc_node_handle;
 			pipe_contex->stream_group = 0;
 		} else {
-		
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+				"PYM selected as app stream, no GDC bind, vflow:%ld, pym:%p, stream:%p, stream_group:%d",
+				pipe_contex->vflow_fd, pipe_contex->pym_node_handle, pipe_contex->stream_handle, pipe_contex->stream_group);
 		}	
 	} else {
 		// 3. 绑定 Flow 中的Node

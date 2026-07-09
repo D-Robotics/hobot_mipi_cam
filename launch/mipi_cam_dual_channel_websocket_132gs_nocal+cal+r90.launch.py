@@ -50,12 +50,12 @@ def generate_launch_description():
 
     mipi_sub_image_width_arg = DeclareLaunchArgument(
         'mipi_sub_image_width',
-        default_value='1280',
+        default_value='640',
         description='mipi camera out image width')
 
     mipi_sub_image_height_arg = DeclareLaunchArgument(
         'mipi_sub_image_height',
-        default_value='1088',
+        default_value='544',
         description='mipi camera out image height')
 
     mipi_rotation_arg = DeclareLaunchArgument(
@@ -108,7 +108,6 @@ def generate_launch_description():
             'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
             'mipi_stream_mode': LaunchConfiguration('mipi_stream_mode'),
             'mipi_sub_stream_enable': 'True',
-            'mipi_lpwm_enable': 'True',
             'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type')
         }.items()
     )

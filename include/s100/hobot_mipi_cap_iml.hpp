@@ -84,9 +84,12 @@ typedef struct pipe_contex_s {
   vp_csi_config_t csi_config;
   std::shared_ptr<GdcBinBuf_ST> gdc_bin;
   std::shared_ptr<GdcBinBuf_ST> gdc_bin_r;
-  int gdc_init_valid;
-  int gdc_init_valid_r;
-  int stream_group;
+  int gdc_init_valid = 0;
+  int gdc_init_valid_r = 0;
+  int stream_group = 0;
+  int main_stream_group_idx = 0;
+  int sub_stream_group_idx = 1;
+  bool sub_stream_valid = false;
   MIPI_CAP_INFO_ST *cap_info_;
   pipeline_channel_info_t pipe_info_;
   pipeline_usage_scene_type_t sensor_type_;
@@ -165,7 +168,8 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   void multiFrameTask();
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
-  int getVnodeFrameGroup(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
+  int getVnodeFrameGroup(hbn_vnode_handle_t handle, int group_idx, std::shared_ptr<VideoBuffer> buff_ptr);
+  int copyGroupFrameToBuffer(const hbn_vnode_image_group_t &out_img, int group_idx, std::shared_ptr<VideoBuffer> buff_ptr);
   int create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_contex);
   int create_and_run_vflow_step1(std::shared_ptr<pipe_contex_t> pipe_contex);
   int create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> pipe_contex);
