@@ -1010,6 +1010,31 @@ void HobotMipiCapIml::multiFrameTask() {
 								v_frame_que_[i]->push(buff_tmp);
 							}
 							buff_ptr->return_data_que();
+							if (cap_info_.gdc_enable_ && cap_info_.sub_stream_enable_ &&
+								pipe_contex[i]->sub_stream_valid && pipe_contex[i]->pym_node_handle &&
+								(i < v_sub_buff_que_manger_.size())) {
+								auto sub_buff_ptr = v_sub_buff_que_manger_[i]->get_empty_buff();
+								if (sub_buff_ptr) {
+									hbn_vnode_image_group_t out_img;
+									int sub_ret = hbn_vnode_getframe_group(pipe_contex[i]->pym_node_handle, 0, 100, &out_img);
+									if (sub_ret == 0) {
+										sub_ret = copyGroupFrameToBuffer(out_img, pipe_contex[i]->sub_stream_group_idx, sub_buff_ptr);
+										hbn_vnode_releaseframe_group(pipe_contex[i]->pym_node_handle, 0, &out_img);
+										if (sub_ret == 0) {
+											if (combine_flag_ && (i < v_sub_frame_que_.size())) {
+												auto buff_tmp = std::make_shared<VideoBuffer>(*sub_buff_ptr);
+												v_sub_frame_que_[i]->push(buff_tmp);
+											}
+											sub_buff_ptr->return_data_que();
+										} else {
+											sub_buff_ptr->return_empty_que();
+										}
+									} else {
+										RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe_group PYM sub stream pipe = %d failed, ret = %d\n", i, sub_ret);
+										sub_buff_ptr->return_empty_que();
+									}
+								}
+							}
 						} else {
 							RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe channel = %d failed ,ret = %d\n", i,ret);
 							buff_ptr->return_empty_que();
