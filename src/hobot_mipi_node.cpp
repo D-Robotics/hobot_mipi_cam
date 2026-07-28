@@ -245,6 +245,7 @@ void MipiCamNode::init() {
                       "[%s]->mipinode init failure.\n",
                       __func__);
     rclcpp::shutdown();
+    return;
   }
 
   RCLCPP_INFO(

@@ -52,6 +52,10 @@ def generate_launch_description():
             'mipi_image_height',
             default_value='544',
             description='mipi camera out image height')
+    mipi_image_framerate_arg = DeclareLaunchArgument(
+            'mipi_image_framerate',
+            default_value='30.0',
+            description='mipi camera out image framerate')
     mipi_channel_arg = DeclareLaunchArgument(
             'mipi_channel',
             default_value='0',
@@ -64,6 +68,7 @@ def generate_launch_description():
         launch_arguments={
             'mipi_image_width': LaunchConfiguration('mipi_image_width'),
             'mipi_image_height': LaunchConfiguration('mipi_image_height'),
+            'mipi_image_framerate': LaunchConfiguration('mipi_image_framerate'),
             'mipi_io_method': 'ros',
             'mipi_channel': LaunchConfiguration('mipi_channel'),
             'mipi_camera_calibration_file_path': LaunchConfiguration('mipi_camera_calibration_file_path'),
@@ -112,6 +117,7 @@ def generate_launch_description():
         mipi_camera_gdc_file_path_arg,
         mipi_image_width_arg,
         mipi_image_height_arg,
+        mipi_image_framerate_arg,
         mipi_rotation_arg,
         mipi_cal_rotation_arg,
         mipi_channel_arg,
