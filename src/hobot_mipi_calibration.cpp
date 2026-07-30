@@ -174,6 +174,7 @@ int mipi_calibration::detectEeprom_drobot(int i2c_bus, std::string &device, uint
 		{1, 0x50, I2C_ADDR_16, 0x00, "SZYGSJKJ", "yuguang"},  // P24C64G-C4H-MIR
 		{1, 0x50, I2C_ADDR_16, 0x00, "UNION", "union"},  // P24C64G-C4H-MIR
 		{1, 0x50, I2C_ADDR_16, 0x00, "SZ_ABHAM", "sz_abham"},  // P24C64G-C4H-MIR
+		{1, 0x50, I2C_ADDR_16, 0x00, "SZSYHTLt", "szsyhtl"},
 	};
 
 	char buf[9] = {0};
@@ -277,7 +278,9 @@ bool mipi_calibration::getCamCalibrationFromEeprom() {
 		getCamCalibration_union(i2c_bus, i2c_addr);
 	} else if (device == "sz_abham") {
 		getCamCalibration_abham(i2c_bus, i2c_addr);
-	} 
+	} else if (device == "szsyhtl") {
+		getCamCalibration_szsyhtl(i2c_bus, i2c_addr);
+	}
   }
   return true;
 }
@@ -623,6 +626,278 @@ bool mipi_calibration::getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) 
 	}
   }
   return false;
+}
+
+bool mipi_calibration::getCamCalibration_szsyhtl(int i2c_bus, uint16_t i2c_addr)
+{
+	std::vector<char> head_buf;
+	head_buf.resize(sizeof(EepromDrobotHead_ST));
+	char check_value;
+	if (readEeprom16(i2c_bus, i2c_addr, 0x0000,
+						  head_buf.data(), sizeof(EepromDrobotHead_ST)) == false)
+	{
+		return false;
+	}
+	int check_index = sizeof(EepromDrobotHead_ST) - 1; // 0x0F
+	check_value = head_buf[check_index];
+	head_buf[check_index] = 0;
+	int sum = 0;
+	std::for_each(head_buf.begin(), head_buf.end(),
+					  [&sum](char c)
+					  { sum += static_cast<int>(c); });
+	if (((sum % 255) + 1) != check_value)
+	{
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						"szsyhtl eeprom checksum mismatch: calc=%d, eeprom=%d",
+						(sum % 255) + 1, check_value);
+		return false;
+	}
+	EepromDrobotHead_ST *head = (EepromDrobotHead_ST *)head_buf.data();
+	struct CalibrationParams cal_param;
+	cal_param.eeprom_name_ = "szsyhtl";
+	cal_param.i2c_bus = i2c_bus;
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"====szsyhtl head====\n bus:%d flag:%.8s camType:%d cal_type:%d "
+					"ver:%d.%d angle:%d d_num:%d",
+					i2c_bus, head->flag, head->camType, head->cal_tpye,
+					head->ver_main, head->ver_min, head->angle, head->d_num);
+	// switch (head->angle)
+	// {
+	// case 0x01:
+	// 	cal_param.cal_rotation_ = 90.0;
+	// 	break;
+	// case 0x02:
+	// 	cal_param.cal_rotation_ = 180.0;
+	// 	break;
+	// case 0x03:
+	// 	cal_param.cal_rotation_ = 270.0;
+	// 	break;
+	// default:
+	// 	cal_param.cal_rotation_ = 0.0;
+	// 	break;
+	// }
+	if (head->camType != 0x01)
+	{
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						"szsyhtl: unexpected camType=%d, expect 0x01 (dual)",
+						head->camType);
+		return false;
+	}
+	cal_param.cam_info_.resize(2);
+	if (head->cal_tpye == 0x01)
+	{
+		cal_param.cam_info_[0].distortion_model =
+			 cal_param.cam_info_[1].distortion_model =
+				  sensor_msgs::distortion_models::EQUIDISTANT; // 鱼眼
+	}
+	else
+	{
+		cal_param.cam_info_[0].distortion_model =
+			 cal_param.cam_info_[1].distortion_model =
+				  sensor_msgs::distortion_models::PLUMB_BOB; // 针孔
+	}
+	CalDualMDInfo_ST m_d_info_l, m_d_info_r;
+	CalDualRTInfo_ST r_t_info;
+	if (readEeprom16(i2c_bus, i2c_addr, 0x0010,
+						  (char *)&m_d_info_l, sizeof(CalDualMDInfo_ST)) == false)
+	{
+		return false;
+	}
+	if (readEeprom16(i2c_bus, i2c_addr, 0x0048,
+						  (char *)&m_d_info_r, sizeof(CalDualMDInfo_ST)) == false)
+	{
+		return false;
+	}
+	// std::swap(m_d_info_l, m_d_info_r);
+	if (readEeprom16(i2c_bus, i2c_addr, 0x008C,
+						  (char *)&r_t_info, sizeof(CalDualRTInfo_ST)) == false)
+	{
+		return false;
+	}
+
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"====szsyhtl L==== %dx%d fx:%f fy:%f cx:%f cy:%f",
+					m_d_info_l.width, m_d_info_l.height,
+					m_d_info_l.fx, m_d_info_l.fy, m_d_info_l.cx, m_d_info_l.cy);
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"====szsyhtl R==== %dx%d fx:%f fy:%f cx:%f cy:%f",
+					m_d_info_r.width, m_d_info_r.height,
+					m_d_info_r.fx, m_d_info_r.fy, m_d_info_r.cx, m_d_info_r.cy);
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"====szsyhtl RT==== r11:%f ... r33:%f tx:%f ty:%f tz:%f",
+					r_t_info.r11, r_t_info.r33, r_t_info.tx, r_t_info.ty, r_t_info.tz);
+
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_l======" \
+      "\n ----------------" \
+      "\n width: %d" \
+      "\n height: %d" \
+      "\n fx: %f" \
+      "\n fy: %f" \
+      "\n cx: %f" \
+      "\n cy: %f" \
+      "\n d[0] k1: %f" \
+      "\n d[1] k2: %f" \
+      "\n d[2] p1: %f" \
+      "\n d[3] p2: %f" \
+      "\n d[4] k3: %f" \
+      "\n d[5] k4: %f" \
+      "\n d[6] k5: %f" \
+      "\n d[7] k6: %f" \
+      "\n ----------------",
+      m_d_info_l.width,
+      m_d_info_l.height,
+      m_d_info_l.fx,
+      m_d_info_l.fy,
+      m_d_info_l.cx,
+      m_d_info_l.cy,
+      m_d_info_l.d[0],
+      m_d_info_l.d[1],
+      m_d_info_l.d[2],
+      m_d_info_l.d[3],
+      m_d_info_l.d[4],
+      m_d_info_l.d[5],
+      m_d_info_l.d[6],
+      m_d_info_l.d[7]
+  );
+
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====m_d_info_r======" \
+      "\n ----------------" \
+      "\n width: %d" \
+      "\n height: %d" \
+      "\n fx: %f" \
+      "\n fy: %f" \
+      "\n cx: %f" \
+      "\n cy: %f" \
+      "\n d[0] k1: %f" \
+      "\n d[1] k2: %f" \
+      "\n d[2] p1: %f" \
+      "\n d[3] p2: %f" \
+      "\n d[4] k3: %f" \
+      "\n d[5] k4: %f" \
+      "\n d[6] k5: %f" \
+      "\n d[7] k6: %f" \
+      "\n ----------------",
+      m_d_info_r.width,
+      m_d_info_r.height,
+      m_d_info_r.fx,
+      m_d_info_r.fy,
+      m_d_info_r.cx,
+      m_d_info_r.cy,
+      m_d_info_r.d[0],
+      m_d_info_r.d[1],
+      m_d_info_r.d[2],
+      m_d_info_r.d[3],
+      m_d_info_r.d[4],
+      m_d_info_r.d[5],
+      m_d_info_r.d[6],
+      m_d_info_r.d[7]
+  );
+
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====r_t_info======" \
+      "\n ----------------" \
+      "\n r11: %f" \
+      "\n r12: %f" \
+      "\n r13: %f" \
+      "\n r21: %f" \
+      "\n r22: %f" \
+      "\n r23: %f" \
+      "\n r31: %f" \
+      "\n r32: %f" \
+      "\n r33: %f" \
+      "\n tx: %f" \
+      "\n ty: %f" \
+      "\n tz: %f" \
+      "\n ----------------",
+      r_t_info.r11,
+      r_t_info.r12,
+      r_t_info.r13,
+      r_t_info.r21,
+      r_t_info.r22,
+      r_t_info.r23,
+      r_t_info.r31,
+      r_t_info.r32,
+      r_t_info.r33,
+      r_t_info.tx,
+      r_t_info.ty,
+      r_t_info.tz
+  );
+
+	cal_param.cam_info_[0].width = m_d_info_l.width;
+	cal_param.cam_info_[0].height = m_d_info_l.height;
+	cal_param.cam_info_[1].width = m_d_info_r.width;
+	cal_param.cam_info_[1].height = m_d_info_r.height;
+
+	int d_num = 8;
+	if (head->d_num > 0 && head->d_num < 8)
+	{
+		d_num = head->d_num;
+	}
+
+	cv::Mat l_k = cv::Mat::zeros(3, 3, CV_64F);
+	l_k.at<double>(0, 0) = m_d_info_l.fx;
+	l_k.at<double>(0, 2) = m_d_info_l.cx;
+	l_k.at<double>(1, 1) = m_d_info_l.fy;
+	l_k.at<double>(1, 2) = m_d_info_l.cy;
+	l_k.at<double>(2, 2) = 1;
+	std::copy(l_k.ptr<double>(0), l_k.ptr<double>(0) + l_k.total(),
+				 cal_param.cam_info_[0].k.begin());
+
+	cal_param.cam_info_[0].d.resize(d_num);
+	for (int i = 0; i < d_num; i++)
+	{
+		cal_param.cam_info_[0].d[i] = m_d_info_l.d[i];
+	}
+
+	cv::Mat l_r_eye = cv::Mat::eye(3, 3, CV_64F);
+	std::copy(l_r_eye.ptr<double>(0), l_r_eye.ptr<double>(0) + l_r_eye.total(),
+				 cal_param.cam_info_[0].r.begin());
+
+	cv::Mat l_p_eye = cv::Mat::eye(3, 4, CV_64F);
+	cv::Mat l_p = l_k * l_p_eye;
+	std::copy(l_p.ptr<double>(0), l_p.ptr<double>(0) + l_p.total(),
+				 cal_param.cam_info_[0].p.begin());
+
+	cv::Mat r_k = cv::Mat::zeros(3, 3, CV_64F);
+	r_k.at<double>(0, 0) = m_d_info_r.fx;
+	r_k.at<double>(0, 2) = m_d_info_r.cx;
+	r_k.at<double>(1, 1) = m_d_info_r.fy;
+	r_k.at<double>(1, 2) = m_d_info_r.cy;
+	r_k.at<double>(2, 2) = 1;
+	std::copy(r_k.ptr<double>(0), r_k.ptr<double>(0) + r_k.total(),
+				 cal_param.cam_info_[1].k.begin());
+
+	cal_param.cam_info_[1].d.resize(d_num);
+	for (int i = 0; i < d_num; i++)
+	{
+		cal_param.cam_info_[1].d[i] = m_d_info_r.d[i];
+	}
+
+	cv::Mat R = cv::Mat::zeros(3, 3, CV_64F);
+	R.at<double>(0, 0) = r_t_info.r11;
+	R.at<double>(0, 1) = r_t_info.r12;
+	R.at<double>(0, 2) = r_t_info.r13;
+	R.at<double>(1, 0) = r_t_info.r21;
+	R.at<double>(1, 1) = r_t_info.r22;
+	R.at<double>(1, 2) = r_t_info.r23;
+	R.at<double>(2, 0) = r_t_info.r31;
+	R.at<double>(2, 1) = r_t_info.r32;
+	R.at<double>(2, 2) = r_t_info.r33;
+
+	cv::Mat T = cv::Mat::zeros(3, 1, CV_64F);
+	T.at<double>(0, 0) = r_t_info.tx;
+	T.at<double>(0, 1) = r_t_info.ty;
+	T.at<double>(0, 2) = r_t_info.tz;
+
+	cv::Mat RT, P;
+	cv::hconcat(R, T, RT);
+	P = r_k * RT;
+	std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(),
+				 cal_param.cam_info_[1].r.begin());
+	std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(),
+				 cal_param.cam_info_[1].p.begin());
+
+	v_cal_params_.push_back(cal_param);
+	return true;
 }
 
 bool mipi_calibration::getCamCalibration_union(int i2c_bus, uint16_t i2c_addr) {
@@ -1829,7 +2104,6 @@ bool mipi_calibration::getCamCalibrationIml_single(sensor_msgs::msg::CameraInfo 
 }
 
 }
-
 
 
 
