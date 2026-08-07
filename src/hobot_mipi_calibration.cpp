@@ -8,6 +8,7 @@
 #include <string>
 #include <fstream>
 #include <iostream>
+#include <cstring>
 #include <unistd.h>
 #include <regex>
 #include <cmath>
@@ -282,25 +283,59 @@ bool mipi_calibration::getCamCalibrationFromEeprom() {
   return true;
 }
 
+namespace {
+
+#pragma pack(push, 4)
+struct YuguangImuEepromData_ST {
+  ImuMatrix3f_ST acc_scale_misalignment;
+  float acc_noise_density;
+  float acc_random_walk;
+  ImuMatrix3f_ST gyro_scale_misalignment;
+  float gyro_noise_density;
+  float gyro_random_walk;
+  float gravity;
+  ImuMatrix3f_ST imu_to_left_rotation;
+  float imu_to_left_translation[3];
+  float left_cam_to_imu_timeshift;
+  ImuMatrix3f_ST accel_to_gyro_coupling;
+  ImuMatrix3f_ST gyro_to_accel_rotation;
+};
+#pragma pack(pop)
+
+static_assert(sizeof(float) == 4, "Yuguang EEPROM requires float32");
+static_assert(sizeof(ImuMatrix3f_ST) == 0x24,
+              "Invalid IMU 3x3 matrix size");
+static_assert(sizeof(YuguangImuEepromData_ST) == 0xD8,
+              "Invalid Yuguang IMU EEPROM data size");
+
+}
+
 bool mipi_calibration::getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) {
   std::string device;
   std::vector<char> head_buf;
   head_buf.resize(sizeof(EepromDrobotHead_ST));
-  char chech_value;
-  if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(), sizeof(EepromDrobotHead_ST)) == false) {
+  uint8_t check_value;
+  if (readEeprom16(i2c_bus, i2c_addr, 0x0000, head_buf.data(),
+		sizeof(EepromDrobotHead_ST)) == false) {
 	return false;
   }
-  int chech_index = sizeof(EepromDrobotHead_ST) - 1;
-  chech_value = head_buf[chech_index];
-  head_buf[chech_index] = 0;
-  int sum = 0;
-  
-  std::for_each(head_buf.begin(), head_buf.end(), [&sum](char c) {
-	sum += static_cast<int>(c);
-  });
-  if (((sum % 255) + 1) == chech_value) {
-	EepromDrobotHead_ST* head_buf_ptr = (EepromDrobotHead_ST *)head_buf.data();
-	struct CalibrationParams cal_param;
+  const size_t check_index = sizeof(EepromDrobotHead_ST) - 1;
+  check_value = static_cast<uint8_t>(head_buf[check_index]);
+  uint32_t sum = 0;
+  for (size_t index = 0; index < check_index; ++index) {
+	sum += static_cast<uint8_t>(head_buf[index]);
+  }
+  const uint8_t calculated_check_value =
+	  static_cast<uint8_t>((sum % 0xFFu) + 1u);
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+	"[yuguang] header checksum stored=0x%02X calculated=0x%02X",
+	static_cast<unsigned int>(check_value),
+	static_cast<unsigned int>(calculated_check_value));
+  if (calculated_check_value == check_value) {
+	EepromDrobotHead_ST head_info{};
+	std::memcpy(&head_info, head_buf.data(), sizeof(head_info));
+	EepromDrobotHead_ST* head_buf_ptr = &head_info;
+	struct CalibrationParams cal_param{};
 	cal_param.eeprom_name_ = "yuguang";
 	cal_param.i2c_bus = i2c_bus;
 
@@ -308,7 +343,7 @@ bool mipi_calibration::getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) 
 	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====EepromDrobotHead======" \
 		"\n ----------------" \
 		"\n bus: %d" \
-		"\n flag: %s" \
+		"\n flag: %.8s" \
 		"\n camType: %d" \
 		"\n cal_tpye: %d" \
 		"\n ver_main: %d" \
@@ -336,7 +371,8 @@ bool mipi_calibration::getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) 
 		cal_param.cal_rotation_ = 270.0;
 	}
 
-	if (head_buf_ptr->camType == 0x01) {
+	if ((head_buf_ptr->camType == 0x01) ||
+		(head_buf_ptr->camType == 0x11)) {
 		cal_param.cam_info_.resize(2);
 		if (head_buf_ptr->cal_tpye == 0x01) {
 			cal_param.cam_info_[0].distortion_model = cal_param.cam_info_[1].distortion_model = sensor_msgs::distortion_models::EQUIDISTANT;
@@ -505,6 +541,7 @@ bool mipi_calibration::getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) 
 
 
 
+
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====r_t_info======" \
 			"\n ----------------" \
 			"\n r11: %f" \
@@ -609,15 +646,204 @@ bool mipi_calibration::getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) 
 
 		cv::Mat T = cv::Mat::zeros(3, 1, CV_64F);
 		T.at<double>(0,0) = r_t_info.tx;
-		T.at<double>(0,1) = r_t_info.ty;
-		T.at<double>(0,2) = r_t_info.tz;
+		T.at<double>(1,0) = r_t_info.ty;
+		T.at<double>(2,0) = r_t_info.tz;
 
 		cv::Mat RT;
 		cv::hconcat(R, T, RT);
 		cv::Mat P = r_k * RT;
 		std::copy(R.ptr<double>(0), R.ptr<double>(0) + R.total(), cal_param.cam_info_[1].r.begin());
 		std::copy(P.ptr<double>(0), P.ptr<double>(0) + P.total(), cal_param.cam_info_[1].p.begin());
-		
+
+		if (head_buf_ptr->camType == 0x11) {
+			YuguangImuEepromData_ST imu_eeprom_data{};
+			uint8_t stored_imu_checksum = 0;
+			if (readEeprom16(i2c_bus, i2c_addr, 0x0200,
+					(char*)&imu_eeprom_data,
+					sizeof(YuguangImuEepromData_ST)) == false) {
+				RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+					"[yuguang][imu] EEPROM data read failed");
+			} else if (readEeprom16(i2c_bus, i2c_addr, 0x02D8,
+					(char*)&stored_imu_checksum,
+					sizeof(stored_imu_checksum)) == false) {
+				RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+					"[yuguang][imu] EEPROM checksum read failed");
+			} else {
+				const uint8_t* imu_raw_data =
+					reinterpret_cast<const uint8_t*>(&imu_eeprom_data);
+				RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"====Yuguang IMU raw data======");
+				for (size_t offset = 0;
+						offset < sizeof(YuguangImuEepromData_ST);
+						offset += 12) {
+					RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+						"0x%04X: %02X %02X %02X %02X %02X %02X "
+						"%02X %02X %02X %02X %02X %02X",
+						static_cast<unsigned int>(0x0200 + offset),
+						static_cast<unsigned int>(imu_raw_data[offset]),
+						static_cast<unsigned int>(imu_raw_data[offset + 1]),
+						static_cast<unsigned int>(imu_raw_data[offset + 2]),
+						static_cast<unsigned int>(imu_raw_data[offset + 3]),
+						static_cast<unsigned int>(imu_raw_data[offset + 4]),
+						static_cast<unsigned int>(imu_raw_data[offset + 5]),
+						static_cast<unsigned int>(imu_raw_data[offset + 6]),
+						static_cast<unsigned int>(imu_raw_data[offset + 7]),
+						static_cast<unsigned int>(imu_raw_data[offset + 8]),
+						static_cast<unsigned int>(imu_raw_data[offset + 9]),
+						static_cast<unsigned int>(imu_raw_data[offset + 10]),
+						static_cast<unsigned int>(imu_raw_data[offset + 11]));
+				}
+
+				uint32_t imu_checksum_sum = 0;
+				for (size_t index = 0;
+						index < sizeof(YuguangImuEepromData_ST); ++index) {
+					imu_checksum_sum += imu_raw_data[index];
+				}
+				const uint8_t calculated_imu_checksum = static_cast<uint8_t>(
+					(imu_checksum_sum % 0xFFu) + 1u);
+				RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"[yuguang][imu] checksum address=0x%04X stored=0x%02X calculated=0x%02X",
+					static_cast<unsigned int>(0x02D8),
+					static_cast<unsigned int>(stored_imu_checksum),
+					static_cast<unsigned int>(calculated_imu_checksum));
+
+				if (stored_imu_checksum == calculated_imu_checksum) {
+					Imu_params imu_param{};
+					imu_param.acc_n_w_.n = imu_eeprom_data.acc_noise_density;
+					imu_param.acc_n_w_.w = imu_eeprom_data.acc_random_walk;
+					imu_param.gyro_n_w_.n = imu_eeprom_data.gyro_noise_density;
+					imu_param.gyro_n_w_.w = imu_eeprom_data.gyro_random_walk;
+
+					const ImuMatrix3f_ST& rotation =
+						imu_eeprom_data.imu_to_left_rotation;
+					imu_param.r_t_info_.r11 = rotation.m00;
+					imu_param.r_t_info_.r12 = rotation.m01;
+					imu_param.r_t_info_.r13 = rotation.m02;
+					imu_param.r_t_info_.r21 = rotation.m10;
+					imu_param.r_t_info_.r22 = rotation.m11;
+					imu_param.r_t_info_.r23 = rotation.m12;
+					imu_param.r_t_info_.r31 = rotation.m20;
+					imu_param.r_t_info_.r32 = rotation.m21;
+					imu_param.r_t_info_.r33 = rotation.m22;
+					imu_param.r_t_info_.tx =
+						imu_eeprom_data.imu_to_left_translation[0];
+					imu_param.r_t_info_.ty =
+						imu_eeprom_data.imu_to_left_translation[1];
+					imu_param.r_t_info_.tz =
+						imu_eeprom_data.imu_to_left_translation[2];
+					imu_param.r_t_info_.timeshift =
+						imu_eeprom_data.left_cam_to_imu_timeshift;
+
+					imu_param.combined_calibration_.acc_scale_misalignment_ =
+						imu_eeprom_data.acc_scale_misalignment;
+					imu_param.combined_calibration_.gyro_scale_misalignment_ =
+						imu_eeprom_data.gyro_scale_misalignment;
+					imu_param.combined_calibration_.gravity_ =
+						imu_eeprom_data.gravity;
+					imu_param.combined_calibration_.accel_to_gyro_coupling_ =
+						imu_eeprom_data.accel_to_gyro_coupling;
+					imu_param.combined_calibration_.gyro_to_accel_rotation_ =
+						imu_eeprom_data.gyro_to_accel_rotation;
+					imu_param.combined_calibration_.valid_ = true;
+					cal_param.imu_info_.push_back(imu_param);
+
+					RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====Yuguang IMU r_t_info======" \
+						"\n ----------------" \
+						"\n r11: %f" \
+						"\n r12: %f" \
+						"\n r13: %f" \
+						"\n r21: %f" \
+						"\n r22: %f" \
+						"\n r23: %f" \
+						"\n r31: %f" \
+						"\n r32: %f" \
+						"\n r33: %f" \
+						"\n tx: %f" \
+						"\n ty: %f" \
+						"\n tz: %f" \
+						"\n timeshift: %f" \
+						"\n ----------------",
+						rotation.m00,
+						rotation.m01,
+						rotation.m02,
+						rotation.m10,
+						rotation.m11,
+						rotation.m12,
+						rotation.m20,
+						rotation.m21,
+						rotation.m22,
+						imu_eeprom_data.imu_to_left_translation[0],
+						imu_eeprom_data.imu_to_left_translation[1],
+						imu_eeprom_data.imu_to_left_translation[2],
+						imu_eeprom_data.left_cam_to_imu_timeshift
+					);
+
+					const ImuMatrix3f_ST& acc_sm =
+						imu_eeprom_data.acc_scale_misalignment;
+					const ImuMatrix3f_ST& gyro_sm =
+						imu_eeprom_data.gyro_scale_misalignment;
+					const ImuMatrix3f_ST& a2g_coup =
+						imu_eeprom_data.accel_to_gyro_coupling;
+					const ImuMatrix3f_ST& g2a_rot =
+						imu_eeprom_data.gyro_to_accel_rotation;
+					RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====Yuguang IMU acc_calib======" \
+						"\n ----------------" \
+						"\n acc_scale_misalignment:" \
+						"\n   [0]: %f  [1]: %f  [2]: %f" \
+						"\n   [3]: %f  [4]: %f  [5]: %f" \
+						"\n   [6]: %f  [7]: %f  [8]: %f" \
+						"\n acc_noise_density: %f" \
+						"\n acc_random_walk:    %f" \
+						"\n ----------------",
+						acc_sm.m00, acc_sm.m01, acc_sm.m02,
+						acc_sm.m10, acc_sm.m11, acc_sm.m12,
+						acc_sm.m20, acc_sm.m21, acc_sm.m22,
+						imu_eeprom_data.acc_noise_density,
+						imu_eeprom_data.acc_random_walk
+					);
+					RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====Yuguang IMU gyro_calib======" \
+						"\n ----------------" \
+						"\n gyro_scale_misalignment:" \
+						"\n   [0]: %f  [1]: %f  [2]: %f" \
+						"\n   [3]: %f  [4]: %f  [5]: %f" \
+						"\n   [6]: %f  [7]: %f  [8]: %f" \
+						"\n gyro_noise_density: %f" \
+						"\n gyro_random_walk:   %f" \
+						"\n gravity:            %f" \
+						"\n ----------------",
+						gyro_sm.m00, gyro_sm.m01, gyro_sm.m02,
+						gyro_sm.m10, gyro_sm.m11, gyro_sm.m12,
+						gyro_sm.m20, gyro_sm.m21, gyro_sm.m22,
+						imu_eeprom_data.gyro_noise_density,
+						imu_eeprom_data.gyro_random_walk,
+						imu_eeprom_data.gravity
+					);
+					RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),"====Yuguang IMU coupling======" \
+						"\n ----------------" \
+						"\n accel_to_gyro_coupling:" \
+						"\n   [0]: %f  [1]: %f  [2]: %f" \
+						"\n   [3]: %f  [4]: %f  [5]: %f" \
+						"\n   [6]: %f  [7]: %f  [8]: %f" \
+						"\n gyro_to_accel_rotation:" \
+						"\n   [0]: %f  [1]: %f  [2]: %f" \
+						"\n   [3]: %f  [4]: %f  [5]: %f" \
+						"\n   [6]: %f  [7]: %f  [8]: %f" \
+						"\n ----------------",
+						a2g_coup.m00, a2g_coup.m01, a2g_coup.m02,
+						a2g_coup.m10, a2g_coup.m11, a2g_coup.m12,
+						a2g_coup.m20, a2g_coup.m21, a2g_coup.m22,
+						g2a_rot.m00, g2a_rot.m01, g2a_rot.m02,
+						g2a_rot.m10, g2a_rot.m11, g2a_rot.m12,
+						g2a_rot.m20, g2a_rot.m21, g2a_rot.m22
+					);
+				} else {
+					RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+						"[yuguang][imu] checksum mismatch; "
+						"camera calibration remains available");
+				}
+			}
+		}
+
 		v_cal_params_.push_back(cal_param);
 		return true;
 	}
