@@ -528,6 +528,9 @@ std::shared_ptr<VideoBuffer> HobotMipiCapIml::getFrame(std::string channel) {
 		return buff_ptr;
 	}
 	int loop = (1000 / cap_info_.fps + 100) / 10;
+	if ((channel == "sub_single") || (channel == "sub_left") || (channel == "sub_right") || (channel == "sub_combine")) {
+		loop = (1000 / cap_info_.sub_fps + 100) / 10;
+	}
 	do {
 		if (!rclcpp::ok()) break;
 
@@ -999,6 +1002,7 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 		vse_ochn_attr.target_h = pipe_contex->cap_info_->height;
 	}
 	int vse_fps = pipe_contex->cap_info_->fps == 1.0 ? 1 : ceil(pipe_contex->cap_info_->fps * 30 / pipe_contex->sensor_config.camera_config->fps);
+	int sub_vse_fps = pipe_contex->cap_info_->sub_fps == 1.0 ? 1 : ceil(pipe_contex->cap_info_->sub_fps * 30 / pipe_contex->sensor_config.camera_config->fps);
 	if (pipe_contex->cap_info_->lpwm_enable_) {
 		vse_ochn_attr.fps.src = 0;
 		vse_ochn_attr.fps.dst = 0;
@@ -1036,10 +1040,10 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 		
 			if (pipe_contex->cap_info_->lpwm_enable_) {
 				sub_vse_ochn_attr.fps.src = 0;
-				sub_vse_ochn_attr.fps.dst = 0;
+				sub_vse_ochn_attr.fps.dst = sub_vse_fps;
 			} else {
 				sub_vse_ochn_attr.fps.src = 0;
-				sub_vse_ochn_attr.fps.dst = vse_fps;
+				sub_vse_ochn_attr.fps.dst = sub_vse_fps;
 			}
 
 			ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 1, &sub_vse_ochn_attr);
@@ -1071,10 +1075,10 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 		
 			if (pipe_contex->cap_info_->lpwm_enable_) {
 				sub_vse_ochn_attr.fps.src = 0;
-				sub_vse_ochn_attr.fps.dst = 0;
+				sub_vse_ochn_attr.fps.dst = sub_vse_fps;
 			} else {
 				sub_vse_ochn_attr.fps.src = 0;
-				sub_vse_ochn_attr.fps.dst = vse_fps;
+				sub_vse_ochn_attr.fps.dst = sub_vse_fps;
 			}
 		
 			ret = hbn_vnode_set_ochn_attr(pipe_contex->vse_node_handle, 5, &sub_vse_ochn_attr);

@@ -42,6 +42,7 @@ struct NodePara {
   int sub_image_width_;
   int sub_image_height_;
   int framerate_;
+  int sub_framerate_;
   double rotation_ = 0.0;
   double cal_rotation_ = 0.0;
   int stream_mode_; //0:表示正常模式，1：表示输出gdc矫正前和矫正后的双码流。
@@ -73,6 +74,7 @@ typedef struct {
   int sub_width;
   int sub_height;
   int fps;
+  int sub_fps;
   int channel_;
   int channel2_;
   double rotation_ = 0.0;
