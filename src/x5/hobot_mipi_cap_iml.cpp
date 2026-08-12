@@ -1075,7 +1075,7 @@ int HobotMipiCapIml::creat_vse_node(pipe_contex_t *pipe_contex) {
 		
 			if (pipe_contex->cap_info_->sub_fps == sub_vse_fps) {
 				sub_vse_ochn_attr.fps.src = 0;
-				sub_vse_ochn_attr.fps.dst = sub_vse_fps;
+				sub_vse_ochn_attr.fps.dst = 0;
 			} else {
 				sub_vse_ochn_attr.fps.src = 0;
 				sub_vse_ochn_attr.fps.dst = sub_vse_fps;
