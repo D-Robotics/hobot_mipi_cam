@@ -56,6 +56,10 @@ def generate_launch_description():
             default_value='30.0',
             description='mipi camera out image framerate'),
         DeclareLaunchArgument(
+            'mipi_image_subframerate',
+            default_value='30.0',
+            description='mipi camera out image sub framerate'),
+        DeclareLaunchArgument(
             'mipi_channel',
             default_value='0',
             description='mipi camera host channel'),
@@ -129,6 +133,7 @@ def generate_launch_description():
                     'mipi_camera_calibration_file_path')},
                 {"out_format": LaunchConfiguration('mipi_out_format')},
                 {"framerate": LaunchConfiguration('mipi_image_framerate')},
+                {"sub_framerate": LaunchConfiguration('mipi_image_subframerate')},
                 {"image_width": LaunchConfiguration('mipi_image_width')},
                 {"image_height": LaunchConfiguration('mipi_image_height')},
                 {"io_method": LaunchConfiguration('mipi_io_method')},

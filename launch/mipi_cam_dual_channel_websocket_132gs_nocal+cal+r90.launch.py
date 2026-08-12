@@ -30,7 +30,7 @@ def generate_launch_description():
 
     mipi_lpwm_enable_arg = DeclareLaunchArgument(
         'mipi_lpwm_enable',
-        default_value='False',
+        default_value='True',
         description='mipi lpwm enable')
     
     mipi_camera_calibration_file_path_arg = DeclareLaunchArgument(
@@ -108,7 +108,6 @@ def generate_launch_description():
             'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
             'mipi_stream_mode': LaunchConfiguration('mipi_stream_mode'),
             'mipi_sub_stream_enable': 'True',
-            'mipi_lpwm_enable': 'True',
             'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type')
         }.items()
     )

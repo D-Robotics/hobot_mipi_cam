@@ -49,6 +49,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->sub_image_width_ = 960;
   nodePare_->sub_image_height_ = 540;
   nodePare_->framerate_ = 30;
+  nodePare_->sub_framerate_ = 30;
   nodePare_->rotation_ = 0.0;
   nodePare_->cal_rotation_ = 0.0;
   nodePare_->device_mode_ = "single"; //single, dual;
@@ -65,6 +66,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   frame_id_ = "camera_link";
   io_method_name_ = "ros"; //shared_mem, ros;
   double framerate = 30.0;
+  double sub_framerate = 30.0;
   imu_type_ = "";
 
   this->declare_parameter<std::string>("frame_id", frame_id_);
@@ -82,6 +84,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<int>("sub_image_width", nodePare_->sub_image_width_);
   this->declare_parameter<int>("sub_image_height", nodePare_->sub_image_height_);
   this->declare_parameter<double>("framerate", framerate);
+  this->declare_parameter<double>("sub_framerate", sub_framerate);
   this->declare_parameter<double>("rotation", nodePare_->rotation_);
   this->declare_parameter<double>("cal_rotation", nodePare_->cal_rotation_);
   this->declare_parameter<std::string>("device_mode", nodePare_->device_mode_);
@@ -113,6 +116,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<int>("sub_image_width", nodePare_->sub_image_width_);
   this->get_parameter<int>("sub_image_height", nodePare_->sub_image_height_);
   this->get_parameter<double>("framerate", framerate);
+  this->get_parameter<double>("sub_framerate", sub_framerate);
   this->get_parameter<double>("rotation", nodePare_->rotation_);
   this->get_parameter<double>("cal_rotation", nodePare_->cal_rotation_);
   this->get_parameter<std::string>("device_mode", nodePare_->device_mode_);
@@ -129,6 +133,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
 
   nodePare_->framerate_ = static_cast<int>(framerate);
+  nodePare_->sub_framerate_ = static_cast<int>(sub_framerate);
 
   this->get_parameter<std::string>("imu_calib_file", imu_calib_file_path_);
 
@@ -152,6 +157,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     "\n               sub_image_width: %d" \
     "\n              sub_image_height: %d" \
     "\n                    framerate: %d" \
+    "\n                    sub_framerate: %d" \
     "\n                     rotation: %f" \
     "\n                     cal_rotation: %f" \
     "\n                  device_mode: %s" \
@@ -182,6 +188,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
               nodePare_->sub_image_width_,
               nodePare_->sub_image_height_,
               nodePare_->framerate_,
+              nodePare_->sub_framerate_,
               nodePare_->rotation_,
               nodePare_->cal_rotation_,
               nodePare_->device_mode_.c_str(),

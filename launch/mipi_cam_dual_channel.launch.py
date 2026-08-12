@@ -64,6 +64,10 @@ def generate_launch_description():
             default_value='10.0',
             description='mipi camera out image framerate'),
         DeclareLaunchArgument(
+            'mipi_image_subframerate',
+            default_value='10.0',
+            description='mipi camera out image sub framerate'),
+        DeclareLaunchArgument(
             'mipi_io_method',
             default_value='ros',
             description='mipi camera out io_method'),
@@ -170,6 +174,7 @@ def generate_launch_description():
                 {"sub_image_width": LaunchConfiguration('mipi_sub_image_width')},
                 {"sub_image_height": LaunchConfiguration('mipi_sub_image_height')},
                 {"framerate": LaunchConfiguration('mipi_image_framerate')},
+                {"sub_framerate": LaunchConfiguration('mipi_image_subframerate')},
                 {"io_method": LaunchConfiguration('mipi_io_method')},
                 {"video_device": LaunchConfiguration('mipi_video_device')},
                 {"device_mode": LaunchConfiguration('device_mode')},

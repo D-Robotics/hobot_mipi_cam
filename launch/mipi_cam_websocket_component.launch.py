@@ -70,6 +70,11 @@ def generate_launch_description():
             default_value='30.0',
             description='mipi camera out image framerate')
 
+    mipi_image_subframerate_args = DeclareLaunchArgument(
+            'mipi_image_subframerate',
+            default_value='30.0',
+            description='mipi camera out image sub framerate')
+
     mipi_out_format_args = DeclareLaunchArgument(
             'mipi_out_format',
             default_value='nv12',
@@ -132,6 +137,7 @@ def generate_launch_description():
                         'mipi_camera_calibration_file_path')},
                     {"out_format": LaunchConfiguration('mipi_out_format')},
                     {"framerate": LaunchConfiguration('mipi_image_framerate')},
+                    {"sub_framerate": LaunchConfiguration('mipi_image_subframerate')},
                     {"image_width": LaunchConfiguration('mipi_image_width')},
                     {"image_height": LaunchConfiguration('mipi_image_height')},
                     {"io_method": LaunchConfiguration('mipi_io_method')},
@@ -173,6 +179,7 @@ def generate_launch_description():
         mipi_lpwm_enable_arg,
         mipi_io_method_args,
         mipi_image_framerate_args,
+        mipi_image_subframerate_args,
         mipi_out_format_args,
         declare_container_name_cmd,
         mipi_cmd_group,
