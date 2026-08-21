@@ -237,6 +237,20 @@ typedef struct imu_mislign_st {
 #pragma pack()
 
 #pragma pack(4)
+typedef struct imu_matrix_3f_st {
+  float m00;
+  float m01;
+  float m02;
+  float m10;
+  float m11;
+  float m12;
+  float m20;
+  float m21;
+  float m22;
+} ImuMatrix3f_ST;
+#pragma pack()
+
+#pragma pack(4)
 typedef struct imu_scale_st {
   float s0;
   float s1;
@@ -259,6 +273,16 @@ typedef struct imu_n_w_st {
 } ImuNW_ST;
 #pragma pack()
 
+struct ImuCombinedCalibration_ST
+{
+  ImuMatrix3f_ST acc_scale_misalignment_{};
+  ImuMatrix3f_ST gyro_scale_misalignment_{};
+  float gravity_ = 0.0f;
+  ImuMatrix3f_ST accel_to_gyro_coupling_{};
+  ImuMatrix3f_ST gyro_to_accel_rotation_{};
+  bool valid_ = false;
+};
+
 struct Imu_params
 {
   ImuMislign_ST acc_mislign_;
@@ -270,6 +294,7 @@ struct Imu_params
   ImuNW_ST acc_n_w_;
   ImuNW_ST gyro_n_w_;
   ImuRTTimeInfo_d_ST r_t_info_;
+  ImuCombinedCalibration_ST combined_calibration_;
 };
 
 //AWB配置参数
