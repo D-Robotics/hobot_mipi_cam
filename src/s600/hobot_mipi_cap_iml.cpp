@@ -291,6 +291,11 @@ int HobotMipiCapIml::mipi_init(MIPI_CAP_INFO_ST &info) {
   return ret;
 }
 
+// 判断该 deserial 配置是否为 HSMT 链路（解串器由 sensor 驱动库自管理，无 deserial 节点）
+static bool is_hsmt_deserial(const GSML_CONFIG_ST &cfg) {
+	return strcasecmp(cfg.deserial_type.c_str(), "hsmt") == 0;
+}
+
 int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 	int ret = 0;
 	cap_info_ = info;
@@ -313,6 +318,12 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 		gdc_bin_buf_.clear();
 		gdc_bin_buf_r_.clear();
 		for (auto gsml_cfg : gsml_config_) {
+			// HSMT链路：独立初始化后跳过下方GMSL流程
+			if (is_hsmt_deserial(gsml_cfg)) {
+				ret = gsml_init_hsmt(gsml_cfg);
+				ERR_CON_EQ(ret, 0);
+				continue;
+			}
 			int des_num = vp_get_deserial_list_number();
 			vp_deserial_config_t *deserial_cfg = nullptr;
 			for (int i = 0; i < des_num; i++) {
@@ -599,6 +610,57 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 	return ret;
   }
   
+
+
+/* HSMT链路初始化：解串器由sensor驱动库（libsc233hgs_hsmt.so）通过I2C隧道自管理，
+ * vflow不创建deserial节点，camera直挂VIN。每路link建一个pipeline，
+ * vc_index与extra_mode按pipeline顺序分配（厂商库语义：extra_mode == VC号，必须一致）。 */
+int HobotMipiCapIml::gsml_init_hsmt(const GSML_CONFIG_ST &gsml_cfg) {
+	int ret = 0;
+	int pipeline_num = 0;
+
+	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+		"HSMT deserial: managed by sensor driver lib, skip deserial node");
+
+	for (auto link : gsml_cfg.link) {
+		int num = vp_get_gmsl_list_number();
+		vp_sensor_config_t *sensor_cfg = nullptr;
+		for (int i = 0; i < num; i++) {
+			if (strcasecmp(vp_gmsl_config_list[i]->sensor_name, link.sensor_type.c_str()) == 0) {
+				sensor_cfg = vp_gmsl_config_list[i];
+				break;
+			}
+		}
+		if (sensor_cfg == nullptr) {
+			return -1;
+		}
+
+		auto pipe_contex_tmp = std::make_shared<pipe_contex_t>();
+		pipe_contex_tmp->cap_info_ = &cap_info_;
+		copy_config(&pipe_contex_tmp->sensor_config, sensor_cfg);
+		pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.mipi_rx = link.mipi_rx;
+		pipe_contex_tmp->sensor_config.vin_attr->vin_node_attr.cim_attr.vc_index = pipeline_num % 4;
+		pipe_contex_tmp->sensor_config.camera_config->extra_mode = pipeline_num % 4;
+		if (link.valid_phy && pipe_contex_tmp->sensor_config.camera_config->mipi_cfg) {
+			pipe_contex_tmp->sensor_config.camera_config->mipi_cfg->rx_attr.phy = link.phy;
+		}
+		/* HSMT：各相机共用固定I2C地址，靠extra_mode路由，不做地址偏移；
+		 * camera_bind_=false 使 step1 走 hbn_camera_attach_to_vin 直挂分支 */
+		pipe_contex_tmp->gsml_link_port_ = -1;
+		pipe_contex_tmp->camera_bind_ = false;
+
+		pipeline_connect_param_init(pipe_contex_tmp);
+		ret = create_and_run_vflow_step1(pipe_contex_tmp);
+		ERR_CON_EQ(ret, 0);
+		ret = create_and_run_vflow_step2(pipe_contex_tmp);
+		ERR_CON_EQ(ret, 0);
+
+		pipe_contex.push_back(pipe_contex_tmp);
+		pipeline_num++;
+	}
+
+	return 0;
+}
 
 
 int HobotMipiCapIml::deInit() {
@@ -1877,7 +1939,7 @@ int HobotMipiCapIml::create_and_run_vflow_step1(std::shared_ptr<pipe_contex_t> p
 							pipe_contex->vin_node_handle);
 	ERR_CON_EQ(ret, 0);
 
-	if(pipe_contex->sensor_config.sensor_type != SENSOR_TYPE_NORMAL) {
+	if(pipe_contex->sensor_config.sensor_type != SENSOR_TYPE_NORMAL && pipe_contex->sensor_config.sensor_type != SENSOR_TYPE_HSMT_RAW) {
 		//ret = create_deserial_node(pipe_contex);
 		//ERR_CON_EQ(ret, 0);
 		if (pipe_contex->camera_bind_) {
@@ -1890,6 +1952,8 @@ int HobotMipiCapIml::create_and_run_vflow_step1(std::shared_ptr<pipe_contex_t> p
 			//ERR_CON_EQ(ret, 0);
 		}
 	}else {
+		// SENSOR_TYPE_NORMAL / SENSOR_TYPE_HSMT_RAW：camera 直挂 VIN
+		// （HSMT 的解串器由 libsc233hgs_hsmt.so 用户态自管理，vflow 不建 deserial 节点）
 		ret = hbn_camera_attach_to_vin(pipe_contex->cam_fd,
 							pipe_contex->vin_node_handle);
 		ERR_CON_EQ(ret, 0);
@@ -2160,6 +2224,11 @@ bool HobotMipiCapIml::read_gsml_config(std::string gsml_cfg_file) {
 		const Json::Value& des = deserials[i];
 		GSML_CONFIG_ST gsml_config;
 		gsml_config.deserial_name = des["name"].asString();
+		if (des.isMember("type")) {
+			gsml_config.deserial_type = des["type"].asString();
+		} else {
+			gsml_config.deserial_type = "";
+		}
 		// 获取 link 数组
 		const Json::Value links = des["link"];
 		for (unsigned int j = 0; j < links.size(); j++) {

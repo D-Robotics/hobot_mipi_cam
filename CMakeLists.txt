@@ -136,6 +136,7 @@ elseif(PLATFORM_S600)
     src/s600/sensor/ar0820c_linear_1920x1080_yuv_30fps_1lane.c
     src/s600/sensor/ovx3c_linear_1920x1080_raw12_30fps_1lane.c
     src/s600/sensor/gsml_isx031std_linear_1920x1536_yuv_30fps_1lane.c
+    src/s600/sensor/hsmt_sc233hgs_linear_1920x1200_raw10_30fps_4lane.c
     src/s600/sensor/deserial_max96712_4link.c
     src/s600/sensor/vp_sensors.c
   )

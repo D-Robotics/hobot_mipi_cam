@@ -1,0 +1,42 @@
+{
+  "deserial": [
+    {
+      "name": "hsmt_no_des_node",
+      "type": "hsmt",
+      "link": [
+        {
+          "link_port": 0,
+          "sensor": "sc233hgs_hsmt",
+          "camera_mode": "single",
+          "mipi_rx": 0,
+          "valid_phy": true,
+          "phy": 0
+        },
+        {
+          "link_port": 1,
+          "sensor": "sc233hgs_hsmt",
+          "camera_mode": "single",
+          "mipi_rx": 0,
+          "valid_phy": true,
+          "phy": 0
+        },
+        {
+          "link_port": 2,
+          "sensor": "sc233hgs_hsmt",
+          "camera_mode": "single",
+          "mipi_rx": 0,
+          "valid_phy": true,
+          "phy": 0
+        },
+        {
+          "link_port": 3,
+          "sensor": "sc233hgs_hsmt",
+          "camera_mode": "single",
+          "mipi_rx": 0,
+          "valid_phy": true,
+          "phy": 0
+        }
+      ]
+    }
+  ]
+}

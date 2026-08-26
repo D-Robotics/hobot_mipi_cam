@@ -37,6 +37,7 @@ extern "C" {
 #define SENSOR_TYPE_GMSL_RAW	1
 #define SENSOR_TYPE_GMSL_YUV	2
 #define SENSOR_TYPE_GMSL_RGBIR	3
+#define SENSOR_TYPE_HSMT_RAW	4
 
 
 typedef struct {
