@@ -183,6 +183,7 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   int create_gsml_gdc_bin(std::shared_ptr<pipe_contex_t> pipe_contex);
   std::vector<std::shared_ptr<GdcBinBuf_ST>> create_gsml_gdc_bin_stereo(std::shared_ptr<pipe_contex_t> pipe_contex, std::vector<sensor_msgs::msg::CameraInfo> *cam_pair);
+  std::shared_ptr<GdcBinBuf_ST> create_gsml_gdc_bin_single(std::shared_ptr<pipe_contex_t> pipe_contex, sensor_msgs::msg::CameraInfo *cam_info);
   bool read_gsml_config(std::string gsml_cfg_file);
 
   void pipeline_connect_param_init(std::shared_ptr<pipe_contex_t> pipe_contex);

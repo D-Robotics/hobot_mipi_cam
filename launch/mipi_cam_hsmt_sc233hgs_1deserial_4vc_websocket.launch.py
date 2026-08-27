@@ -79,9 +79,16 @@ def generate_launch_description():
         default_value='0.0',
         description='mipi camera calibration rotation')
 
+    # 单目鱼眼GDC输出视场角(度)：<=0 自动取映射全有效的最大FOV(兼容默认)；
+    # >0 指定目标水平FOV，值越小边缘拉伸越小，供按镜头/场景调试
+    mipi_cal_alpha_arg = DeclareLaunchArgument(
+        'mipi_cal_alpha',
+        default_value='0.0',
+        description='single fisheye GDC target horizontal FOV(deg); <=0: auto widest fully-valid FOV')
+
     mipi_gdc_enable_arg = DeclareLaunchArgument(
         'mipi_gdc_enable',
-        default_value='False',
+        default_value='True',
         description='mipi gdc enable')
     mipi_image_framerate_arg = DeclareLaunchArgument(
         'mipi_image_framerate',
@@ -110,6 +117,7 @@ def generate_launch_description():
             'mipi_gdc_bin_file': '',
             'mipi_rotation': LaunchConfiguration('mipi_rotation'),
             'mipi_cal_rotation': LaunchConfiguration('mipi_cal_rotation'),
+            'mipi_cal_alpha': LaunchConfiguration('mipi_cal_alpha'),
             'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
             'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type'),
             'log_level': 'info'
@@ -156,6 +164,7 @@ def generate_launch_description():
         mipi_image_height_arg,
         mipi_rotation_arg,
         mipi_cal_rotation_arg,
+        mipi_cal_alpha_arg,
         mipi_gdc_enable_arg,
         mipi_image_framerate_arg,
         mipi_frame_ts_type_arg,

@@ -130,6 +130,9 @@ class HobotMipiCap {
   virtual std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin(int gdc_width, int gdc_height,int out_width, int out_height,
        sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info,
        double rotation = 0.0, double cal_rotate = 0.0, double cla_alpha = 0.0, bool pre_rotation = false);
+  virtual std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_mono_fisheye(int gdc_width, int gdc_height,int out_width, int out_height,
+       sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info,
+       double rotation = 0.0, double cal_rotate = 0.0, double target_hfov = 0.0);
   virtual std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height, double rotation);
   virtual std::shared_ptr<GdcBinBuf_ST> gen_gdc_bin_json(std::string file);
 

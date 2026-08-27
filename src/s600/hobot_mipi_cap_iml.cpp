@@ -652,6 +652,32 @@ int HobotMipiCapIml::gsml_init_hsmt(const GSML_CONFIG_ST &gsml_cfg) {
 		pipeline_connect_param_init(pipe_contex_tmp);
 		ret = create_and_run_vflow_step1(pipe_contex_tmp);
 		ERR_CON_EQ(ret, 0);
+		/* HSMT单目GDC：读link级calibration_file，生成本路专属gdc_bin（对照dual分支的单目版）。
+		 * 解析/生成失败时不GDC，链路照常出流（与无GDC现状一致） */
+		if (!link.calibration_file.empty()) {
+			std::string cal_file_path;
+			if (link.calibration_file[0] == '/') {
+				// 绝对路径直接用
+				cal_file_path = link.calibration_file;
+			} else {
+				cal_file_path = cap_info_.config_path + link.calibration_file;
+			}
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+							"HSMT cal_file_path: %s", cal_file_path.c_str());
+			sensor_msgs::msg::CameraInfo cam_single;
+			bool cal_ok = mipi_calibration::GetInstance().getCamCalibrationIml_single(cam_single, cal_file_path);
+			if (cal_ok) {
+				auto gdc_bin = create_gsml_gdc_bin_single(pipe_contex_tmp, &cam_single);
+				if (gdc_bin) {
+					gdc_bin_buf_.push_back(gdc_bin);
+					pipe_contex_tmp->gdc_bin = gdc_bin;
+					cam_info_.push_back(cam_single);
+				}
+			} else {
+				RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+								"HSMT calibration file failed: %s, run without GDC", cal_file_path.c_str());
+			}
+		}
 		ret = create_and_run_vflow_step2(pipe_contex_tmp);
 		ERR_CON_EQ(ret, 0);
 
@@ -2555,6 +2581,97 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::create_gsml_gdc_bin_
 	}
 
 	return result;
+}
+
+/* HSMT/单目链路GDC bin生成：create_gsml_gdc_bin_stereo 的单目版，
+ * 内部调用既有 gen_gdc_bin（EQUIDISTANT 鱼眼走 cv::fisheye 分支），
+ * 仅供 gsml_init_hsmt 使用，不影响双目/GMSL 既有路径 */
+std::shared_ptr<GdcBinBuf_ST> HobotMipiCapIml::create_gsml_gdc_bin_single(
+	 std::shared_ptr<pipe_contex_t> pipe_contex,
+	 sensor_msgs::msg::CameraInfo *cam_info)
+{
+	if (pipe_contex == nullptr || cam_info == nullptr)
+	{
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+						 ">>> create_gsml_gdc_bin_single: invalid input, cam_info=%p",
+						 (void *)cam_info);
+		return nullptr;
+	}
+
+	if (!cap_info_.gdc_enable_ || cal_tpye_ != 0)
+	{
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						">>> create_gsml_gdc_bin_single: gdc_enable=%d, cal_type=%d, skip",
+						cap_info_.gdc_enable_, cal_tpye_);
+		return nullptr;
+	}
+
+	int src_width = 0, src_height = 0;
+
+	if (pipe_contex->sensor_config.pym_cfg != nullptr)
+	{
+		src_width = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_width;
+		src_height = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height;
+	}
+	else if (pipe_contex->sensor_config.isp_cfg != nullptr)
+	{
+		src_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+		src_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+	}
+	else if (pipe_contex->sensor_config.camera_config != nullptr)
+	{
+		src_width = pipe_contex->sensor_config.camera_config->width;
+		src_height = pipe_contex->sensor_config.camera_config->height;
+	}
+	else if (pipe_contex->sensor_config.vin_attr != nullptr)
+	{
+		src_width = pipe_contex->sensor_config.vin_attr->vin_ichn_attr.width;
+		src_height = pipe_contex->sensor_config.vin_attr->vin_ichn_attr.height;
+	}
+	if (src_width <= 0 || src_height <= 0)
+	{
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+						 ">>> create_gsml_gdc_bin_single: cannot determine src resolution!");
+		return nullptr;
+	}
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					">>> create_gsml_gdc_bin_single: src=%dx%d, dst=%dx%d, rotation=%.1f, cal_rotation=%.1f",
+					src_width, src_height, cap_info_.width, cap_info_.height,
+					cap_info_.rotation_, cap_info_.cal_rotation_);
+
+	sensor_msgs::msg::CameraInfo cal_cam_info;
+	std::shared_ptr<GdcBinBuf_ST> gdc_bin;
+	if (cam_info->distortion_model == sensor_msgs::distortion_models::EQUIDISTANT) {
+		/* 鱼眼走单目鱼眼专用路径（cv::fisheye映射+有效视场搜索）。
+		 * cal_alpha_ 语义同双目鱼眼：>0 指定目标水平FOV(度)，<=0 自动选最大安全视场 */
+		gdc_bin = gen_gdc_bin_mono_fisheye(
+			 src_width, src_height,
+			 cap_info_.width, cap_info_.height,
+			 cam_info,
+			 &cal_cam_info,
+			 cap_info_.rotation_,
+			 cap_info_.cal_rotation_,
+			 cap_info_.cal_alpha_);
+	} else {
+		gdc_bin = gen_gdc_bin(
+			 src_width, src_height,
+			 cap_info_.width, cap_info_.height,
+			 cam_info,
+			 &cal_cam_info,
+			 cap_info_.rotation_,
+			 cap_info_.cal_rotation_);
+	}
+	if (gdc_bin)
+	{
+		cal_cam_info_.push_back(cal_cam_info);
+	}
+	else
+	{
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						">>> create_gsml_gdc_bin_single: gdc bin generation returned null");
+	}
+
+	return gdc_bin;
 }
 
 void HobotMipiCapIml::deserial_config_update(deserial_config_t *deserial, const camera_config_t *camera_config, int link_port) {

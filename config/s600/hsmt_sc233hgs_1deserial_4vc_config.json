@@ -10,7 +10,8 @@
           "camera_mode": "single",
           "mipi_rx": 0,
           "valid_phy": true,
-          "phy": 0
+          "phy": 0,
+          "calibration_file": "hsmt_sc233hgs_calibration_vc0.yaml"
         },
         {
           "link_port": 1,
@@ -18,7 +19,8 @@
           "camera_mode": "single",
           "mipi_rx": 0,
           "valid_phy": true,
-          "phy": 0
+          "phy": 0,
+          "calibration_file": "hsmt_sc233hgs_calibration_vc1.yaml"
         },
         {
           "link_port": 2,
@@ -26,7 +28,8 @@
           "camera_mode": "single",
           "mipi_rx": 0,
           "valid_phy": true,
-          "phy": 0
+          "phy": 0,
+          "calibration_file": "hsmt_sc233hgs_calibration_vc2.yaml"
         },
         {
           "link_port": 3,
@@ -34,7 +37,8 @@
           "camera_mode": "single",
           "mipi_rx": 0,
           "valid_phy": true,
-          "phy": 0
+          "phy": 0,
+          "calibration_file": "hsmt_sc233hgs_calibration_vc3.yaml"
         }
       ]
     }
