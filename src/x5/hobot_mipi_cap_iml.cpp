@@ -17,6 +17,8 @@
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/distortion_models.hpp"
 #include "opencv2/opencv.hpp"
+#include "isp_feature/isp_bypass.h"
+#include "hbn_isp_api.h"
 
 #include "hobot_mipi_calibration.hpp"
 
@@ -291,6 +293,46 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 			cal_cam_info_sub_.push_back(cal_info);
 		}
 	}
+
+	for(auto& contex : pipe_contex) {
+		hbn_isp_otp_ctrl_t otp;
+		int i = 0;
+    	memset(&otp, 0, sizeof(otp));
+		ret = hbn_isp_get_otp_control(contex.isp_node_handle, &otp);
+		if (ret != 0) {
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+			"pipe-%zu hbn_isp_get_otp_control fail (ret=%d)", i, ret);
+		continue;
+		}
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+		"pipe-%zu OTP support lsc=%d awb=%d af=%d",
+		i, otp.support.lsc, otp.support.awb, otp.support.af);
+		// 仅开 LSC（且仅在驱动支持时开）；AWB 留给 config_awb_otp；AF 不开
+		otp.enable.lsc = otp.support.lsc ? 1 : 0;
+		otp.enable.awb = 0;
+		otp.enable.af  = 0;
+		ret = hbn_isp_set_otp_control(contex.isp_node_handle, &otp);
+		if (ret != 0) {
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+			"pipe-%zu hbn_isp_set_otp_control fail (ret=%d)", i, ret);
+		continue;
+		}
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+		"pipe-%zu OTP apply lsc=%d awb=%d af=%d",
+		i, otp.enable.lsc, otp.enable.awb, otp.enable.af);
+		i++;
+	}
+	bool isp_sync_bind_enable = true;
+	if (isp_sync_bind_enable) {
+		ret = hbn_isp_sync_enable(pipe_contex[0].isp_node_handle, pipe_contex[1].isp_node_handle);
+		if (ret != 0) {
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "AE/AWB sync enable failed.\n");
+		} else {
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "AE/AWB sync enable success.\n");
+		}
+	}
+
+
   } else {
 	bool deteced_flag = false;
 	int sensor_count = vp_get_sensors_list_number();
@@ -477,6 +519,7 @@ int HobotMipiCapIml::start() {
 		  }
 	  }
   }
+#if 0
   if (pipe_contex.size() > 1 &&
       (pipe_contex[0].cap_info_->sync_awb_
           || pipe_contex[0].cap_info_->sync_ccm_
@@ -485,6 +528,7 @@ int HobotMipiCapIml::start() {
     awb_ae_sync_task_ = std::make_shared<std::thread>(
         std::bind(&HobotMipiCapIml::sync_awb_ae_task, this));
   }
+#endif
   return 0;
 }
 
