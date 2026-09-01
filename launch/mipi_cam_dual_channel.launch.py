@@ -144,6 +144,10 @@ def generate_launch_description():
             default_value='False',
             description='set the slave ae parameters from the master'),
         DeclareLaunchArgument(
+            'isp_sync_enable',
+            default_value='False',
+            description='enable ISP master->slave peer bind sync (hbn_isp_sync_enable)'),
+        DeclareLaunchArgument(
             'print_isp_log',
             default_value='False',
             description='print isp parameters log'),
@@ -194,6 +198,7 @@ def generate_launch_description():
                 {"sync_awb": LaunchConfiguration('sync_awb')},
                 {"sync_ccm": LaunchConfiguration('sync_ccm')},
                 {"sync_ae": LaunchConfiguration('sync_ae')},
+                {"isp_sync_enable": LaunchConfiguration('isp_sync_enable')},
                 {"print_isp_log": LaunchConfiguration('print_isp_log')},
             ],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]

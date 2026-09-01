@@ -307,10 +307,10 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
 		"pipe-%zu OTP support lsc=%d awb=%d af=%d",
 		i, otp.support.lsc, otp.support.awb, otp.support.af);
-		// 仅开 LSC（且仅在驱动支持时开）；AWB 留给 config_awb_otp；AF 不开
+		// 按 sensor 实际支持情况开启
 		otp.enable.lsc = otp.support.lsc ? 1 : 0;
-		otp.enable.awb = 0;
-		otp.enable.af  = 0;
+		otp.enable.awb = otp.support.awb ? 1 : 0;
+		otp.enable.af  = otp.support.af  ? 1 : 0;
 		ret = hbn_isp_set_otp_control(contex.isp_node_handle, &otp);
 		if (ret != 0) {
 		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
@@ -322,8 +322,8 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		i, otp.enable.lsc, otp.enable.awb, otp.enable.af);
 		i++;
 	}
-	bool isp_sync_bind_enable = true;
-	if (isp_sync_bind_enable) {
+	// 主从 ISP 一次性绑定同步：由参数 isp_sync_enable 控制（替代旧的逐帧 get/set 线程）
+	if (cap_info_.isp_sync_enable_) {
 		ret = hbn_isp_sync_enable(pipe_contex[0].isp_node_handle, pipe_contex[1].isp_node_handle);
 		if (ret != 0) {
 			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "AE/AWB sync enable failed.\n");
