@@ -61,6 +61,7 @@ typedef struct pipe_contex_s {
   bool gdc_resize_enable;
   MIPI_CAP_INFO_ST *cap_info_;
   std::shared_ptr<Opt_Awb_Config> awb_otp_data;
+  std::shared_ptr<Opt_Lsc_Config> lsc_otp_data;
 }pipe_contex_t;
 
 class HobotMipiCapIml : public HobotMipiCap {
@@ -117,7 +118,8 @@ class HobotMipiCapIml : public HobotMipiCap {
   int creat_gdc_node_r(pipe_contex_t *pipe_contex);
   int creat_camera_node(camera_config_t* camera_config,int64_t* cam_fd);
   
-  int config_awb_otp(pipe_contex_t *pipe_contex); 
+  // AWB + LSC 合并下发OTP配置
+  int config_sensor_otp(pipe_contex_t *pipe_contex);
 
   bool m_inited_ = false;
   bool started_ = false;
@@ -138,6 +140,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::shared_ptr<std::thread> awb_ae_sync_task_ = nullptr;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
   std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;
+  std::vector<std::shared_ptr<Opt_Lsc_Config>> lsc_otp_data_;
 
   std::mutex queue_mtx_;
 

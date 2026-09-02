@@ -21,6 +21,14 @@
 #include "hbn_isp_api.h"
 
 #include "hobot_mipi_calibration.hpp"
+#include "sc132gs_lsc_golden.h"
+
+// LSC网格常量需与SDK sensor_otp_lsc_t 的维度一致
+static_assert(LSC_GRID_SIZE == SENSOR_OTP_LSC_EEPROM_SIZE,
+              "LSC_GRID_SIZE mismatch with SENSOR_OTP_LSC_EEPROM_SIZE");
+static_assert(LSC_GOLDEN_GRID_SIZE == SENSOR_OTP_LSC_V_GRID_NUM &&
+              LSC_GOLDEN_GRID_SIZE == SENSOR_OTP_LSC_H_GRID_NUM,
+              "LSC_GOLDEN_GRID_SIZE mismatch with SENSOR_OTP_LSC_V/H_GRID_NUM");
 
 #include <string>
 #include <fstream>
@@ -192,6 +200,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 			cap_info_.cal_rotation_ = cal_params[0].cal_rotation_;
 			eeprom_name_ = cal_params[0].eeprom_name_;
 			awb_otp_data_ = cal_params[0].awb_otp_data_;
+			lsc_otp_data_ = cal_params[0].lsc_otp_data_;
 		}
 	}
 	if((cam_info_.size() != 2) && (strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0)) {
@@ -260,6 +269,10 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	if (awb_otp_data_.size() == 2) {
 		pipe_contex[0].awb_otp_data = awb_otp_data_[0];
 		pipe_contex[1].awb_otp_data = awb_otp_data_[1];
+	}
+	if (lsc_otp_data_.size() == 2) {
+		pipe_contex[0].lsc_otp_data = lsc_otp_data_[0];
+		pipe_contex[1].lsc_otp_data = lsc_otp_data_[1];
 	}
 	ret = create_and_run_vflow(&pipe_contex[1]);
 	ERR_CON_EQ(ret, 0);
@@ -1325,8 +1338,8 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	// 创建pipeline中的每个node
 	ret = creat_camera_node(pipe_contex->sensor_config.camera_config, &pipe_contex->cam_fd);
 	ERR_CON_EQ(ret, 0);
-	//调用AWB OTP配置函数
-	ret = config_awb_otp(pipe_contex);
+	//调用sensor OTP配置函数（AWB + LSC 单次合并下发）
+	ret = config_sensor_otp(pipe_contex);
 	ERR_CON_EQ(ret, 0);
 	ret = creat_vin_node(pipe_contex);
 	ERR_CON_EQ(ret, 0);
@@ -1492,19 +1505,22 @@ int HobotMipiCapIml::create_and_run_vflow(pipe_contex_t *pipe_contex) {
 	return 0;
 }
 
-// 封装AWB OTP配置函数（HBN接口方式）
-int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
+// AWB + LSC 装入同一 sensor_otp_t，单次调用 hbn_camera_enable_otp 合并下发
+int HobotMipiCapIml::config_sensor_otp(pipe_contex_t *pipe_contex) {
 	if (pipe_contex->cam_fd < 0) {
 		//RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "Invalid cam_fd: %ld for AWB OTP config", cam_fd);
         return -1;
 	}
 
-	if (!pipe_contex->awb_otp_data) {
+	// 无AWB/LSC数据则不下发；有一项即继续，各项由下方if分别处理
+	if (!(pipe_contex->awb_otp_data || pipe_contex->lsc_otp_data)) {
 		return 0;
 	}
 
-	//初始化AWB OTP配置结构体
+	//初始化OTP配置结构体
 	sensor_otp_t pdata = {0};
+
+	if (pipe_contex->awb_otp_data) {
 	pdata.otp_awb_enable = 1;          // 启用AWB OTP配置
     pdata.awb_ct_num = 3;              // AWB色温配置数量
     pdata.awb_golden_ct_num = 3;       // AWB黄金色温配置数量
@@ -1588,6 +1604,54 @@ int HobotMipiCapIml::config_awb_otp(pipe_contex_t *pipe_contex) {
 	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].gb: %ld",  pdata.awb_data[0].gb);
 	// RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "pdata.awb_data[0].b: %ld",  pdata.awb_data[0].b);
 	RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "=> ================== all awb otp data ==================");
+	}
+
+	if (pipe_contex->lsc_otp_data) {
+		// LSC模组数据来自EEPROM，golden由 sc132gs_lsc_golden.h 硬编码提供
+		pdata.otp_lsc_enable = 1;
+		pdata.lsc_ct_num = 1;
+		for (int v = 0; v < LSC_GRID_SIZE; v++) {
+			for (int h = 0; h < LSC_GRID_SIZE; h++) {
+				pdata.lsc_data[0].r[v][h] =
+					pipe_contex->lsc_otp_data->r[v * LSC_GRID_SIZE + h];
+				pdata.lsc_data[0].gr[v][h] =
+					pipe_contex->lsc_otp_data->gr[v * LSC_GRID_SIZE + h];
+				pdata.lsc_data[0].gb[v][h] =
+					pipe_contex->lsc_otp_data->gb[v * LSC_GRID_SIZE + h];
+				pdata.lsc_data[0].b[v][h] =
+					pipe_contex->lsc_otp_data->b[v * LSC_GRID_SIZE + h];
+			}
+		}
+		for (int v = 0; v < LSC_GOLDEN_GRID_SIZE; v++) {
+			for (int h = 0; h < LSC_GOLDEN_GRID_SIZE; h++) {
+				pdata.lsc_data[0].golden_r[v][h] =
+					kSc132gsLscGoldenR[v * LSC_GOLDEN_GRID_SIZE + h];
+				pdata.lsc_data[0].golden_gr[v][h] =
+					kSc132gsLscGoldenGr[v * LSC_GOLDEN_GRID_SIZE + h];
+				pdata.lsc_data[0].golden_gb[v][h] =
+					kSc132gsLscGoldenGb[v * LSC_GOLDEN_GRID_SIZE + h];
+				pdata.lsc_data[0].golden_b[v][h] =
+					kSc132gsLscGoldenB[v * LSC_GOLDEN_GRID_SIZE + h];
+			}
+		}
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+			"==> =========== lsc otp data ===========");
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+			"[lsc] calib=%ux%u pattern=%u bls=[%u,%u,%u,%u]",
+			static_cast<unsigned int>(pipe_contex->lsc_otp_data->width),
+			static_cast<unsigned int>(pipe_contex->lsc_otp_data->height),
+			static_cast<unsigned int>(pipe_contex->lsc_otp_data->pattern),
+			static_cast<unsigned int>(pipe_contex->lsc_otp_data->bls_r),
+			static_cast<unsigned int>(pipe_contex->lsc_otp_data->bls_gr),
+			static_cast<unsigned int>(pipe_contex->lsc_otp_data->bls_gb),
+			static_cast<unsigned int>(pipe_contex->lsc_otp_data->bls_b));
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+			"[lsc] lsc r[0][0]=%u, golden r[0][0]=%u, lsc b[16][16]=%u, golden b[32][32]=%u",
+			static_cast<unsigned int>(pdata.lsc_data[0].r[0][0]),
+			static_cast<unsigned int>(pdata.lsc_data[0].golden_r[0][0]),
+			static_cast<unsigned int>(pdata.lsc_data[0].b[LSC_GRID_SIZE - 1][LSC_GRID_SIZE - 1]),
+			static_cast<unsigned int>(pdata.lsc_data[0].golden_b[LSC_GOLDEN_GRID_SIZE - 1][LSC_GOLDEN_GRID_SIZE - 1]));
+	}
 
     int32_t ret = hbn_camera_enable_otp(pipe_contex->cam_fd, &pdata);                    ////cam_fd由hbn_camera_create创建
 	ERR_CON_EQ(ret, 0);

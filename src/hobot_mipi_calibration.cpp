@@ -421,6 +421,148 @@ bool mipi_calibration::getCamCalibration_yugang(int i2c_bus, uint16_t i2c_addr) 
 			return false;
 			// 可返回true（兼容无AWB参数的情况），或false（强制要求AWB参数）
 		}
+
+		// ===================== 扩展：读取LSC数据 =====================
+		// LSC区域 0x0400..0x1618，校验字节 0x1619 = (Sum(0x0400..0x1618) % 0xFF) + 1
+		// 布局: 9字节头部(宽/高/pattern/bls) + 8个17x17矩阵(左右目各R/GR/GB/B)
+		// 读取失败或校验不匹配(含未烧录LSC的批次)时跳过，不影响其他标定数据
+		// TODO(批次区分, 后补): valid/absent/corrupt 三态区分与内容合理性检查
+		do {
+			static const uint16_t kLscRegionAddr = 0x0400;
+			static const uint32_t kLscRegionSize = 0x1219;   // 4633
+			static const uint16_t kLscChecksumAddr = 0x1619;
+			static const size_t kBlockSize =
+				LSC_GRID_SIZE * LSC_GRID_SIZE * sizeof(uint16_t);  // 578
+			static const size_t kChunkSize = 128;  // 分块读取, 避免单条I2C消息过长
+			// 8个矩阵块相对区域基址0x0400的偏移
+			static const size_t kOffLeftR  = 0x0009, kOffLeftGr  = 0x024B;
+			static const size_t kOffLeftGb = 0x048D, kOffLeftB   = 0x06CF;
+			static const size_t kOffRightR = 0x0911, kOffRightGr = 0x0B53;
+			static const size_t kOffRightGb = 0x0D95, kOffRightB = 0x0FD7;
+
+			std::vector<uint8_t> lsc_buf(kLscRegionSize);
+			bool lsc_read_ok = true;
+
+			for (size_t off = 0; off < kLscRegionSize; off += kChunkSize) {
+				size_t len = std::min(kChunkSize, kLscRegionSize - off);
+				if (readEeprom16(i2c_bus, i2c_addr,
+						static_cast<uint16_t>(kLscRegionAddr + off),
+						reinterpret_cast<char*>(lsc_buf.data() + off),
+						static_cast<int>(len)) == false) {
+					RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						"[yuguang][lsc] EEPROM read failed at 0x%04X (%zu bytes), "
+						"LSC skipped",
+						static_cast<unsigned int>(kLscRegionAddr + off), len);
+					lsc_read_ok = false;
+					break;
+				}
+			}
+
+			uint8_t lsc_stored_checksum = 0;
+			if (lsc_read_ok &&
+				readEeprom16(i2c_bus, i2c_addr, kLscChecksumAddr,
+					reinterpret_cast<char*>(&lsc_stored_checksum), 1) == false) {
+				RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+					"[yuguang][lsc] EEPROM checksum byte read failed at 0x%04X, "
+					"LSC skipped",
+					static_cast<unsigned int>(kLscChecksumAddr));
+				lsc_read_ok = false;
+			}
+
+			if (lsc_read_ok) {
+				uint32_t lsc_sum = 0;
+				for (size_t i = 0; i < kLscRegionSize; ++i) {
+					lsc_sum += lsc_buf[i];
+				}
+				const uint8_t lsc_calc_checksum =
+					static_cast<uint8_t>((lsc_sum % 0xFFu) + 1u);
+				RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"[yuguang][lsc] region read ok (%u bytes), "
+					"checksum stored=0x%02X calculated=0x%02X",
+					static_cast<unsigned int>(kLscRegionSize),
+					static_cast<unsigned int>(lsc_stored_checksum),
+					static_cast<unsigned int>(lsc_calc_checksum));
+				if (lsc_calc_checksum != lsc_stored_checksum) {
+					RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						"[yuguang][lsc] checksum mismatch, LSC skipped "
+						"(batch without LSC data or corrupted)");
+					break;
+				}
+
+				// 区域头部(左右目共用)
+				const uint16_t lsc_width =
+					static_cast<uint16_t>(lsc_buf[0] | (lsc_buf[1] << 8));
+				const uint16_t lsc_height =
+					static_cast<uint16_t>(lsc_buf[2] | (lsc_buf[3] << 8));
+				const uint8_t lsc_pattern = lsc_buf[4];
+				if (lsc_width == 0 || lsc_height == 0) {
+					RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						"[yuguang][lsc] implausible calibration resolution %ux%u, "
+						"EEPROM may be uncalibrated",
+						static_cast<unsigned int>(lsc_width),
+						static_cast<unsigned int>(lsc_height));
+				}
+
+				auto lsc_fill_entry = [&](const std::shared_ptr<Opt_Lsc_Config>& cfg,
+						size_t off_r, size_t off_gr, size_t off_gb, size_t off_b) {
+					cfg->width = lsc_width;
+					cfg->height = lsc_height;
+					cfg->pattern = lsc_pattern;
+					cfg->bls_r = lsc_buf[5];
+					cfg->bls_gr = lsc_buf[6];
+					cfg->bls_gb = lsc_buf[7];
+					cfg->bls_b = lsc_buf[8];
+					std::memcpy(cfg->r, lsc_buf.data() + off_r, kBlockSize);
+					std::memcpy(cfg->gr, lsc_buf.data() + off_gr, kBlockSize);
+					std::memcpy(cfg->gb, lsc_buf.data() + off_gb, kBlockSize);
+					std::memcpy(cfg->b, lsc_buf.data() + off_b, kBlockSize);
+				};
+
+				cal_param.lsc_otp_data_.resize(2);
+				cal_param.lsc_otp_data_[0] = std::make_shared<Opt_Lsc_Config>();
+				cal_param.lsc_otp_data_[1] = std::make_shared<Opt_Lsc_Config>();
+				lsc_fill_entry(cal_param.lsc_otp_data_[0],
+					kOffLeftR, kOffLeftGr, kOffLeftGb, kOffLeftB);
+				lsc_fill_entry(cal_param.lsc_otp_data_[1],
+					kOffRightR, kOffRightGr, kOffRightGb, kOffRightB);
+
+				RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+					"[yuguang][lsc] LSC OTP loaded: %ux%u pattern=%u "
+					"bls=[%u,%u,%u,%u]",
+					static_cast<unsigned int>(lsc_width),
+					static_cast<unsigned int>(lsc_height),
+					static_cast<unsigned int>(lsc_pattern),
+					static_cast<unsigned int>(lsc_buf[5]),
+					static_cast<unsigned int>(lsc_buf[6]),
+					static_cast<unsigned int>(lsc_buf[7]),
+					static_cast<unsigned int>(lsc_buf[8]));
+				auto lsc_log_summary = [](const char* eye, const char* ch,
+						const uint16_t* data) {
+					uint16_t mn = data[0], mx = data[0];
+					for (size_t i = 1;
+							i < static_cast<size_t>(LSC_GRID_SIZE * LSC_GRID_SIZE);
+							++i) {
+						if (data[i] < mn) mn = data[i];
+						if (data[i] > mx) mx = data[i];
+					}
+					RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+						"[yuguang][lsc] %s %s: first=%u min=%u max=%u",
+						eye, ch,
+						static_cast<unsigned int>(data[0]),
+						static_cast<unsigned int>(mn),
+						static_cast<unsigned int>(mx));
+				};
+				lsc_log_summary("LEFT ", "R ", cal_param.lsc_otp_data_[0]->r);
+				lsc_log_summary("LEFT ", "GR", cal_param.lsc_otp_data_[0]->gr);
+				lsc_log_summary("LEFT ", "GB", cal_param.lsc_otp_data_[0]->gb);
+				lsc_log_summary("LEFT ", "B ", cal_param.lsc_otp_data_[0]->b);
+				lsc_log_summary("RIGHT", "R ", cal_param.lsc_otp_data_[1]->r);
+				lsc_log_summary("RIGHT", "GR", cal_param.lsc_otp_data_[1]->gr);
+				lsc_log_summary("RIGHT", "GB", cal_param.lsc_otp_data_[1]->gb);
+				lsc_log_summary("RIGHT", "B ", cal_param.lsc_otp_data_[1]->b);
+			}
+		} while (0);
+		//
 		
 		cal_param.awb_otp_data_.resize(2);
 		cal_param.awb_otp_data_[0] = std::make_shared<Opt_Awb_Config>(); // 分配内存
