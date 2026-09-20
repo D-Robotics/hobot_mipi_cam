@@ -176,34 +176,73 @@ int HobotMipiCapIml::mipi_init(MIPI_CAP_INFO_ST &info) {
 				awb_otp_data_ = cal_params[0].awb_otp_data_;
 			}
 		}
-			auto gdc_bin = gen_gdc_bin_stereo(sensor_cfg->isp_cfg->isp_attr.size.width, sensor_cfg->isp_cfg->isp_attr.size.height,
-					cap_info_.width, cap_info_.height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_);
-
-			if (gdc_bin.size() == 2) {
-				gdc_bin_buf_.push_back(gdc_bin[0]);
-				gdc_bin_buf_.push_back(gdc_bin[1]);
-				pipe_contex[0]->gdc_bin = gdc_bin[0];
-				pipe_contex[1]->gdc_bin = gdc_bin[1];
-			}			
-	}
-	if (cap_info_.gdc_enable_ && (cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
-		vp_sensor_config_t *sensor_conf = &pipe_contex[0]->sensor_config;
-		int width;
-		int height;
-		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
-			width = cap_info_.height;
-			height = cap_info_.width;
-		} else {
-			width = cap_info_.width;
-			height = cap_info_.height;
+		// stream_mode_==1且需旋转(场景5)：先在源分辨率生成纯旋转bin(GDC_r)，矫正bin以pre_rotation
+		// 作用于已旋转图像(与X5 mode-1一致)；mode-0的旋转折入矫正bin(不生成GDC_r)；矫正bin失败时
+		// 旋转bin保留入队，该链退化为仅旋转(X5同款入队时序)
+		std::shared_ptr<GdcBinBuf_ST> rot_bin = nullptr;
+		if ((cap_info_.stream_mode_ == 1) && (cap_info_.rotation_ != 0)) {
+			rot_bin = gen_gdc_bin_rotation(sensor_cfg->isp_cfg->isp_attr.size.width,
+					sensor_cfg->isp_cfg->isp_attr.size.height,
+					sensor_cfg->isp_cfg->isp_attr.size.width,
+					sensor_cfg->isp_cfg->isp_attr.size.height, cap_info_.rotation_);
 		}
+		int cal_in_width = sensor_cfg->isp_cfg->isp_attr.size.width;
+		int cal_in_height = sensor_cfg->isp_cfg->isp_attr.size.height;
+		if ((rot_bin != nullptr) && ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0))) {
+			cal_in_width = sensor_cfg->isp_cfg->isp_attr.size.height;
+			cal_in_height = sensor_cfg->isp_cfg->isp_attr.size.width;
+		}
+		// mode-1：末端GDC矫正+缩放，out=cap；mode-0(与X5 mode-0一致)：GDC 1:1(旋转折入矫正bin)，
+		// out=源分辨率(90/270交换)，主码流缩放由GDC后PYM2 group0完成(硬件契约：喂PYM的GDC不缩放)；
+		// sub码流未启用时无PYM2，GDC即链路末端，保持缩放到cap(契约允许末端GDC缩放)
+		int cal_out_width = cap_info_.width;
+		int cal_out_height = cap_info_.height;
+		if ((cap_info_.stream_mode_ != 1) && cap_info_.sub_stream_enable_) {
+			cal_out_width = sensor_cfg->isp_cfg->isp_attr.size.width;
+			cal_out_height = sensor_cfg->isp_cfg->isp_attr.size.height;
+			if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+				cal_out_width = sensor_cfg->isp_cfg->isp_attr.size.height;
+				cal_out_height = sensor_cfg->isp_cfg->isp_attr.size.width;
+			}
+		}
+		auto gdc_bin = gen_gdc_bin_stereo(cal_in_width, cal_in_height,
+				cal_out_width, cal_out_height, cam_info_, cal_cam_info_, cap_info_.rotation_, cap_info_.cal_rotation_, cap_info_.cal_alpha_,
+				rot_bin != nullptr);
 
-		auto gdc_bin = gen_gdc_bin_rotation(width, height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+		if (gdc_bin.size() == 2) {
+			if (rot_bin != nullptr) {
+				gdc_bin_buf_.push_back(rot_bin);
+				pipe_contex[0]->gdc_bin_r = rot_bin;
+				pipe_contex[1]->gdc_bin_r = rot_bin;
+			}
+			gdc_bin_buf_.push_back(gdc_bin[0]);
+			gdc_bin_buf_.push_back(gdc_bin[1]);
+			pipe_contex[0]->gdc_bin = gdc_bin[0];
+			pipe_contex[1]->gdc_bin = gdc_bin[1];
+			}
+	}
+	// 无矫正bin的纯旋转回退：以源分辨率1:1旋转(PYM1直通层喂GDC_r，gen_gdc_bin_rotation内部
+	// 90/270自动把输出交换为旋转后尺寸，out参数被覆盖)；mode-1+rotation且gdc_enable=false、
+	// 或矫正bin生成失败(任意mode)时走到这里
+	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
+		vp_sensor_config_t *sensor_conf = &pipe_contex[0]->sensor_config;
+		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_cfg->isp_attr.size.width,
+			sensor_conf->isp_cfg->isp_attr.size.height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
 		if (gdc_bin) {
 			gdc_bin_buf_.push_back(gdc_bin);
 			pipe_contex[0]->gdc_bin_r = gdc_bin;
 			pipe_contex[1]->gdc_bin_r = gdc_bin;
 		}
+	}
+
+	// ---- stream_mode_==0(双码流均GDC矫正, 采用PYM+GDC+PYM流程)：子码流内参=主码流矫正内参 ----
+	// 子码流图像=PYM2 group1从矫正后源分辨率图像缩放到sub尺寸，内参(交换后源尺度)由
+	// scaleSubStreamCamInfo等比缩放到sub(与X5 mode-0语义一致)
+	if ((cap_info_.stream_mode_ == 0) && cap_info_.sub_stream_enable_ && (cal_cam_info_.size() == 2)) {
+		cal_cam_info_sub_ = cal_cam_info_;
+	} else if ((cap_info_.stream_mode_ == 1) && cap_info_.sub_stream_enable_ && (cam_info_.size() == 2)) {
+		// stream_mode_==1(主码流矫正, 子码流仅旋转不矫正)：子码流内参=原始内参(与X5 mode-1语义一致)
+		cal_cam_info_sub_ = cam_info_;
 	}
 
 	pipeline_connect_param_init(pipe_contex[0]);
@@ -250,33 +289,68 @@ int HobotMipiCapIml::mipi_init(MIPI_CAP_INFO_ST &info) {
 		vp_sensor_config_t *sensor_cfg = &pipe_contex[0]->sensor_config;
 		if (cam_info_.size() > 0) {
 			sensor_msgs::msg::CameraInfo cal_cam_info;
-			if (cal_tpye_ == 0) {
-				auto gdc_bin = gen_gdc_bin(sensor_cfg->isp_cfg->isp_attr.size.width, sensor_cfg->isp_cfg->isp_attr.size.height,
-						cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_);
-				//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
-				if (gdc_bin) {
-					gdc_bin_buf_.push_back(gdc_bin);
-					pipe_contex[0]->gdc_bin = gdc_bin;
-					cal_cam_info_.push_back(cal_cam_info);
+			// stream_mode_==1且需旋转(场景5)：先在源分辨率生成纯旋转bin(GDC_r)，矫正bin以pre_rotation
+			// 作用于已旋转图像(与X5 mode-1一致)；mode-0的旋转折入矫正bin(不生成GDC_r)；矫正bin失败时
+			// 旋转bin保留入队，该链退化为仅旋转(X5同款入队时序)
+			std::shared_ptr<GdcBinBuf_ST> rot_bin = nullptr;
+			if ((cap_info_.stream_mode_ == 1) && (cap_info_.rotation_ != 0)) {
+				rot_bin = gen_gdc_bin_rotation(sensor_cfg->isp_cfg->isp_attr.size.width,
+						sensor_cfg->isp_cfg->isp_attr.size.height,
+						sensor_cfg->isp_cfg->isp_attr.size.width,
+						sensor_cfg->isp_cfg->isp_attr.size.height, cap_info_.rotation_);
+			}
+			int cal_in_width = sensor_cfg->isp_cfg->isp_attr.size.width;
+			int cal_in_height = sensor_cfg->isp_cfg->isp_attr.size.height;
+			if ((rot_bin != nullptr) && ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0))) {
+				cal_in_width = sensor_cfg->isp_cfg->isp_attr.size.height;
+				cal_in_height = sensor_cfg->isp_cfg->isp_attr.size.width;
+			}
+			// mode-1：末端GDC矫正+缩放，out=cap；mode-0(与X5 mode-0一致)：GDC 1:1(旋转折入矫正bin)，
+			// out=源分辨率(90/270交换)，主码流缩放由GDC后PYM2 group0完成(硬件契约：喂PYM的GDC不缩放)；
+			// sub码流未启用时无PYM2，GDC即链路末端，保持缩放到cap(契约允许末端GDC缩放)
+			int cal_out_width = cap_info_.width;
+			int cal_out_height = cap_info_.height;
+			if ((cap_info_.stream_mode_ != 1) && cap_info_.sub_stream_enable_) {
+				cal_out_width = sensor_cfg->isp_cfg->isp_attr.size.width;
+				cal_out_height = sensor_cfg->isp_cfg->isp_attr.size.height;
+				if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+					cal_out_width = sensor_cfg->isp_cfg->isp_attr.size.height;
+					cal_out_height = sensor_cfg->isp_cfg->isp_attr.size.width;
 				}
+			}
+			auto gdc_bin = gen_gdc_bin(cal_in_width, cal_in_height,
+					cal_out_width, cal_out_height, &cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_,
+					0.0, rot_bin != nullptr);
+			//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
+			if (gdc_bin) {
+				if (rot_bin != nullptr) {
+					gdc_bin_buf_.push_back(rot_bin);
+					pipe_contex[0]->gdc_bin_r = rot_bin;
+				}
+				gdc_bin_buf_.push_back(gdc_bin);
+				pipe_contex[0]->gdc_bin = gdc_bin;
+				cal_cam_info_.push_back(cal_cam_info);
 			}
 		}
 	}
-	if (cap_info_.gdc_enable_ && (cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
-		int width;
-		int height;
-		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
-			width = cap_info_.height;
-			height = cap_info_.width;
-		} else {
-			width = cap_info_.width;
-			height = cap_info_.height;
-		}
-		auto gdc_bin = gen_gdc_bin_rotation(width, height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+	// 无矫正bin的纯旋转回退：以源分辨率1:1旋转(PYM1直通层喂GDC_r，gen_gdc_bin_rotation内部
+	// 90/270自动把输出交换为旋转后尺寸，out参数被覆盖)；mode-1+rotation且gdc_enable=false、
+	// 或矫正bin生成失败(任意mode)时走到这里
+	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0)) {
+		vp_sensor_config_t *sensor_conf = &pipe_contex[0]->sensor_config;
+		auto gdc_bin = gen_gdc_bin_rotation(sensor_conf->isp_cfg->isp_attr.size.width,
+			sensor_conf->isp_cfg->isp_attr.size.height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
 		if (gdc_bin) {
 			gdc_bin_buf_.push_back(gdc_bin);
 			pipe_contex[0]->gdc_bin_r = gdc_bin;
 		}
+	}
+	// ---- stream_mode_==0(双码流均GDC矫正, 采用PYM+GDC+PYM流程)：子码流内参=主码流矫正内参 ----
+	if ((cap_info_.stream_mode_ == 0) && cap_info_.sub_stream_enable_ && (cal_cam_info_.size() > 0)) {
+		cal_cam_info_sub_ = cal_cam_info_;
+	} else if ((cap_info_.stream_mode_ == 1) && cap_info_.sub_stream_enable_ && (cam_info_.size() > 0)) {
+		// stream_mode_==1(主码流矫正, 子码流仅旋转不矫正)：子码流内参=原始内参(与X5 mode-1语义一致)
+		cal_cam_info_sub_ = cam_info_;
 	}
 	pipeline_connect_param_init(pipe_contex[0]);
 	ret = create_and_run_vflow(pipe_contex[0]);
@@ -293,7 +367,6 @@ int HobotMipiCapIml::mipi_init(MIPI_CAP_INFO_ST &info) {
 int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 	int ret = 0;
 	cap_info_ = info;
-	cap_info_.sub_stream_enable_ = false;
 	std::vector<int> sensor_v;
 	std::vector<int> host_v;
 	std::vector<mipi_host_info_t> v_host_info;
@@ -439,14 +512,18 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 					{
 						if (gdc_bin_buf_r_.empty())
 						{
-							int w = (cap_info_.rotation_ == 90.0 || cap_info_.rotation_ == 270.0)
-											? cap_info_.height
-											: cap_info_.width;
-							int h = (cap_info_.rotation_ == 90.0 || cap_info_.rotation_ == 270.0)
-											? cap_info_.width
-											: cap_info_.height;
-							auto rot_bin = gen_gdc_bin_rotation(
-								 w, h, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+							// 无矫正bin的纯旋转回退：以源分辨率1:1旋转(gen_gdc_bin_rotation内部90/270
+							// 自动交换输出尺寸，out参数被覆盖)，PYM1直通层喂GDC_r
+							int src_w = 0, src_h = 0;
+							if (pipe_contex_tmp->sensor_config.pym_cfg != nullptr) {
+								src_w = pipe_contex_tmp->sensor_config.pym_cfg->chn_ctrl.src_in_width;
+								src_h = pipe_contex_tmp->sensor_config.pym_cfg->chn_ctrl.src_in_height;
+							} else if (pipe_contex_tmp->sensor_config.isp_cfg != nullptr) {
+								src_w = pipe_contex_tmp->sensor_config.isp_cfg->isp_attr.size.width;
+								src_h = pipe_contex_tmp->sensor_config.isp_cfg->isp_attr.size.height;
+							}
+							auto rot_bin = (src_w > 0 && src_h > 0) ? gen_gdc_bin_rotation(
+								 src_w, src_h, cap_info_.width, cap_info_.height, cap_info_.rotation_) : nullptr;
 							if (rot_bin)
 							{
 								gdc_bin_buf_r_.push_back(rot_bin);
@@ -492,6 +569,10 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 							pipe_contex_tmp_2->gdc_bin = gdc_bins[0];
 						} else {
 							pipe_contex_tmp_2->gdc_bin = gdc_bins[1];
+						}
+						// stream_mode_==1双GDC链(场景5)：旋转bin同步传播到同link的第二路pipe
+						if (pipe_contex_tmp->gdc_bin_r) {
+							pipe_contex_tmp_2->gdc_bin_r = pipe_contex_tmp->gdc_bin_r;
 						}
 					} else if (pipe_contex_tmp->gdc_bin_r) {
 						pipe_contex_tmp_2->gdc_bin_r = pipe_contex_tmp->gdc_bin_r;
@@ -594,6 +675,13 @@ int HobotMipiCapIml::gsml_init(MIPI_CAP_INFO_ST &info) {
 	} else {
 		return -1;
 	}
+	// ---- stream_mode_==0(双码流均GDC矫正)：子码流内参=主码流矫正内参 ----
+	// ---- stream_mode_==1(主码流矫正, 子码流仅旋转不矫正)：子码流内参=原始内参(与X5 mode-1语义一致) ----
+	if ((cap_info_.stream_mode_ == 0) && cap_info_.sub_stream_enable_ && (cal_cam_info_.size() >= 2)) {
+		cal_cam_info_sub_ = cal_cam_info_;
+	} else if ((cap_info_.stream_mode_ == 1) && cap_info_.sub_stream_enable_ && (cam_info_.size() >= 2)) {
+		cal_cam_info_sub_ = cam_info_;
+	}
 	m_inited_ = true;
   
 	return ret;
@@ -609,6 +697,15 @@ int HobotMipiCapIml::deInit() {
 	for(auto contex : pipe_contex) {
 		hbn_camera_destroy(contex->cam_fd);
 		hbn_vflow_destroy(contex->vflow_fd);
+		// 销毁PYM2独立flow与释放GDC后PYM的独立配置副本
+		if (contex->vflow_post_fd != 0) {
+			hbn_vflow_destroy(contex->vflow_post_fd);
+			contex->vflow_post_fd = 0;
+		}
+		if (contex->pym_cfg_post != nullptr) {
+			free(contex->pym_cfg_post);
+			contex->pym_cfg_post = nullptr;
+		}
 	}
     for (auto deserial : deserial_contex) {
 		hbn_deserial_destroy(deserial->des_fd);
@@ -629,6 +726,11 @@ int HobotMipiCapIml::start() {
   for(auto contex : pipe_contex){
     ret = hbn_vflow_start(contex->vflow_fd);
     ERR_CON_EQ(ret, 0);
+    // PYM2所在独立flow(M2M节点,由桥接线程sendframe喂帧)
+    if (contex->pym_post_valid && (contex->vflow_post_fd != 0)) {
+      ret = hbn_vflow_start(contex->vflow_post_fd);
+      ERR_CON_EQ(ret, 0);
+    }
     RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
       "vflow start ok, vflow:%ld, vin:%p, isp:%p, ynr:%p, pym:%p, gdc:%p valid:%d, gdc_r:%p valid_r:%d, stream:%p, stream_group:%d",
       contex->vflow_fd, contex->vin_node_handle, contex->isp_node_handle, contex->ynr_node_handle,
@@ -645,6 +747,14 @@ int HobotMipiCapIml::start() {
 	combine_buff_que_manger_ = std::make_shared<BuffQueueManage>();
 	combine_buff_que_manger_->creat_buff(5);
 	task_.emplace_back(std::make_shared<std::thread>(std::bind(&HobotMipiCapIml::multiFrameTask, this)));
+	// GDC→PYM2(M2M)桥接线程(每pipe独立,避免sendframe阻塞串行化)：任一pipe启用PYM+GDC+PYM流程时启动
+	for (int i = 0; i < (int)pipe_contex.size(); i++) {
+		auto contex = pipe_contex[i];
+		if (contex->pym_post_valid && contex->pym_post_src_handle) {
+			task_.emplace_back(std::make_shared<std::thread>(
+				std::bind(&HobotMipiCapIml::gdcToPymBridgeTask, this, i)));
+		}
+	}
 	if (combine_flag_) {
 		for(auto contex : pipe_contex) {
 			v_frame_que_.push_back(std::make_shared<FrameQueue>());
@@ -686,6 +796,11 @@ int HobotMipiCapIml::stop() {
   for(auto contex : pipe_contex){
     ret = hbn_vflow_stop(contex->vflow_fd);
     ERR_CON_EQ(ret, 0);
+    // PYM2独立flow先于节点关闭停止
+    if (contex->vflow_post_fd != 0) {
+      ret = hbn_vflow_stop(contex->vflow_post_fd);
+      ERR_CON_EQ(ret, 0);
+    }
     if(contex->sensor_config.sensor_type != SENSOR_TYPE_NORMAL) {
 		if (contex->camera_bind_) {
 			hbn_deserial_detach_from_vin(contex->des_fd, (camera_des_link_t)contex->gsml_link_port_);
@@ -702,6 +817,9 @@ int HobotMipiCapIml::stop() {
 	}
 	if (contex->pym_node_handle != 0) {
 		hbn_vnode_close(contex->pym_node_handle);
+	}
+	if (contex->pym_node_handle_post != 0) {
+		hbn_vnode_close(contex->pym_node_handle_post);
 	}
 	if (contex->ynr_node_handle != 0) {
 		hbn_vnode_close(contex->ynr_node_handle);
@@ -1010,16 +1128,22 @@ void HobotMipiCapIml::multiFrameTask() {
 								v_frame_que_[i]->push(buff_tmp);
 							}
 							buff_ptr->return_data_que();
-							if (cap_info_.gdc_enable_ && cap_info_.sub_stream_enable_ &&
+							// stream_group==0(主码流为GDC输出)的子码流来源：
+							// stream_mode_==1双GDC(场景5)时子码流来自GDC_r后PYM2的group1(已旋转未矫正)；
+							// stream_mode_==1仅标定或PYM2创建失败的回退时，子码流来自GDC前PYM1的group1(未矫正)
+							if (cap_info_.sub_stream_enable_ &&
 								pipe_contex[i]->sub_stream_valid && pipe_contex[i]->pym_node_handle &&
 								(i < v_sub_buff_que_manger_.size())) {
+								hbn_vnode_handle_t sub_pym_handle =
+									pipe_contex[i]->pym_post_valid ? pipe_contex[i]->pym_node_handle_post
+																	: pipe_contex[i]->pym_node_handle;
 								auto sub_buff_ptr = v_sub_buff_que_manger_[i]->get_empty_buff();
 								if (sub_buff_ptr) {
 									hbn_vnode_image_group_t out_img;
-									int sub_ret = hbn_vnode_getframe_group(pipe_contex[i]->pym_node_handle, 0, 100, &out_img);
+									int sub_ret = hbn_vnode_getframe_group(sub_pym_handle, 0, 100, &out_img);
 									if (sub_ret == 0) {
 										sub_ret = copyGroupFrameToBuffer(out_img, pipe_contex[i]->sub_stream_group_idx, sub_buff_ptr);
-										hbn_vnode_releaseframe_group(pipe_contex[i]->pym_node_handle, 0, &out_img);
+										hbn_vnode_releaseframe_group(sub_pym_handle, 0, &out_img);
 										if (sub_ret == 0) {
 											if (combine_flag_ && (i < v_sub_frame_que_.size())) {
 												auto buff_tmp = std::make_shared<VideoBuffer>(*sub_buff_ptr);
@@ -1046,6 +1170,70 @@ void HobotMipiCapIml::multiFrameTask() {
 	}
 	return;
   }
+
+// GDC输出→PYM2(M2M输入)的CPU桥接线程(每pipe一个)：本驱动上GDC ochn→PYM ichn的bind拉流不生效
+// (实测GDC出帧后PYM2从不请求,Request恒为0)，M2M输入须由CPU经sendframe喂帧
+// (与hobot_cv喂VSE同款模式)；sendframe为阻塞语义(约1帧周期)，返回后即可释放GDC帧，
+// 缓冲为句柄传递零拷贝，桥接开销仅为每帧两次syscall
+void HobotMipiCapIml::gdcToPymBridgeTask(int pipe_idx) {
+	if (!started_) {
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "gdc bridge: camera isn't started");
+		return;
+	}
+	if ((pipe_idx < 0) || (pipe_idx >= (int)pipe_contex.size()) ||
+		(!pipe_contex[pipe_idx]->pym_post_valid) || (!pipe_contex[pipe_idx]->pym_post_src_handle)) {
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"), "gdc bridge: invalid pipe:%d", pipe_idx);
+		return;
+	}
+	auto contex = pipe_contex[pipe_idx];
+
+	int ochn_fd = -1;
+	int fd_ret = hbn_vnode_get_fd(contex->pym_post_src_handle, 0, &ochn_fd);
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+		"gdc bridge fd init, pipe:%d, src gdc:%p, pym2:%p, get_fd_ret:%d, fd:%d",
+		pipe_idx, contex->pym_post_src_handle, contex->pym_node_handle_post, fd_ret, ochn_fd);
+	if ((fd_ret != 0) || (ochn_fd < 0)) {
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "gdc bridge: get fd failed, pipe:%d", pipe_idx);
+		return;
+	}
+
+	fd_set readfds;
+	struct timeval timeout;
+	int result;
+	int select_timeout_count = 0;
+	while (started_) {
+		FD_ZERO(&readfds);
+		FD_SET(ochn_fd, &readfds);
+
+		timeout.tv_sec = 2;
+		timeout.tv_usec = 0;
+		result = select(ochn_fd + 1, &readfds, nullptr, nullptr, &timeout);
+		if (result == -1) {
+			std::cerr << "gdc bridge select error" << std::endl;
+			break;
+		} else if (result == 0) {
+			select_timeout_count++;
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+				"gdc bridge select timeout, pipe:%d, count:%d", pipe_idx, select_timeout_count);
+			continue;
+		} else if (FD_ISSET(ochn_fd, &readfds)) {
+			hbn_vnode_image_t img;
+			int ret = hbn_vnode_getframe(contex->pym_post_src_handle, 0, 1000, &img);
+			if (ret == 0) {
+				ret = hbn_vnode_sendframe(contex->pym_node_handle_post, 0, &img);
+				hbn_vnode_releaseframe(contex->pym_post_src_handle, 0, &img);
+				if (ret != 0) {
+					RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+						"gdc bridge sendframe pipe = %d failed, ret = %d", pipe_idx, ret);
+				}
+			} else {
+				RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+					"gdc bridge getframe pipe = %d failed, ret = %d", pipe_idx, ret);
+			}
+		}
+	}
+	return;
+}
 
 int HobotMipiCapIml::create_camera_node(std::shared_ptr<pipe_contex_t> pipe_contex, int link_port) {
 	int32_t ret = 0;
@@ -1444,7 +1632,8 @@ int HobotMipiCapIml::create_pym_node(std::shared_ptr<pipe_contex_t> pipe_contex,
 	int src_height = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height;
     int out_width;
 	int out_height;
-	if (pipe_contex->gdc_init_valid == 1) {
+	// 链上任一GDC生效时group0=源分辨率1:1直通(硬件契约：第一个PYM不缩放，缩放交给GDC后PYM2/末端GDC)
+	if ((pipe_contex->gdc_init_valid == 1) || (pipe_contex->gdc_init_valid_r == 1)) {
 		out_width = src_width;
 		out_height = src_height;
 	} else {
@@ -1495,8 +1684,11 @@ int HobotMipiCapIml::create_pym_node(std::shared_ptr<pipe_contex_t> pipe_contex,
 	if (setup_pym_roi(pipe_contex->main_stream_group_idx, out_width, out_height) == -1) {
 		return -1;
 	}
-	pipe_contex->sub_stream_valid = false;
+	// PYM1的group1子码流配置：pym_post_valid时子码流实际取GDC后PYM2的group1，
+	// 但在线链(ISP/YNR/PYM同slot)的PYM单group配置(ds_roi_en仅bit0)会被判ILLEGAL_ATTR，
+	// 故group1始终配置(PYM2生效时仅闲置输出，不改变子码流来源)
 	if (pipe_contex->cap_info_->sub_stream_enable_) {
+		pipe_contex->sub_stream_valid = false;
 		int sub_out_width;
 		int sub_out_height;
 		if ((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0)) {
@@ -1570,6 +1762,136 @@ int HobotMipiCapIml::create_pym_node(std::shared_ptr<pipe_contex_t> pipe_contex,
 	return 0;
 }
 
+// 创建GDC后的第二个PYM节点做主/子码流分流(PYM+GDC+PYM流程，PYM2等价于X5的VSE)：
+// stream_mode_==0：输入为主GDC输出(交换后源尺寸,已完成矫正与旋转1:1)，group0缩放到cap输出主码流、group1输出子码流；
+// stream_mode_==1双GDC链(场景5)：输入为GDC_r纯旋转输出(源分辨率旋转后)，group0直通后送GDC矫正缩放、group1输出子码流；
+// mode-1仅旋转：输入为GDC_r输出，group0直通(主码流=旋转后源分辨率，X5语义)。
+// 输入已旋转，子尺寸无需再交换宽高
+int HobotMipiCapIml::create_pym_node_post(std::shared_ptr<pipe_contex_t> pipe_contex, int hw_id, int slot_id, int pym_mode,
+		int in_width, int in_height) {
+	if ((pipe_contex == nullptr) || (pipe_contex->sensor_config.pym_cfg == nullptr)) {
+		return -1;
+	}
+	int ret = 0;
+	uint32_t chn_id = 0;
+	pipe_contex->pym_post_valid = false;
+
+	// 从sensor的pym配置拷贝独立副本(纯POD结构)，不影响PYM1的配置
+	if (pipe_contex->pym_cfg_post == nullptr) {
+		pipe_contex->pym_cfg_post = (pym_cfg_t *)malloc(sizeof(pym_cfg_t));
+		if (pipe_contex->pym_cfg_post == nullptr) {
+			RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"), "malloc pym_cfg_post failed");
+			return -1;
+		}
+		memcpy(pipe_contex->pym_cfg_post, pipe_contex->sensor_config.pym_cfg, sizeof(pym_cfg_t));
+	}
+	pym_cfg_t *pym_cfg = pipe_contex->pym_cfg_post;
+	pym_cfg->hw_id = hw_id;
+	pym_cfg->pym_mode = pym_mode;
+	pym_cfg->slot_id = slot_id;
+
+	// 输入=上游GDC输出：stream_mode_==0为主GDC(矫正+旋转)输出cap尺寸；双GDC链为GDC_r纯旋转输出(源分辨率旋转后)
+	int src_width = in_width;
+	int src_height = in_height;
+	pym_cfg->chn_ctrl.src_in_width = src_width;
+	pym_cfg->chn_ctrl.src_in_height = src_height;
+	pym_cfg->chn_ctrl.src_in_stride_y = ALIGN_16(src_width);
+	pym_cfg->chn_ctrl.src_in_stride_uv = ALIGN_16(src_width);
+
+	// group0: 主码流目标(X5 VSE chn0规则)：mode-1=直通(=输入尺寸，链路末端还有缩放GDC或主码流即源分辨率)；
+	// mode-0=缩放到cap(硬件契约：喂PYM的GDC不缩放，主码流缩放由PYM完成)
+	int out_width = src_width;
+	int out_height = src_height;
+	if (pipe_contex->cap_info_->stream_mode_ != 1) {
+		out_width = pipe_contex->cap_info_->width;
+		out_height = pipe_contex->cap_info_->height;
+	}
+	int roi_sel = 0;
+	int roi_layer = 0;
+	int bl_width = src_width;
+	int bl_height = src_height;
+	int bl_stride = src_width;
+	pym_cfg->chn_ctrl.ds_roi_en = 0;
+	if (check_pym_config(src_width, src_height, out_width, out_height,
+			bl_width, bl_height, bl_stride, roi_sel, roi_layer) == -1) {
+		return -1;
+	}
+	pym_cfg->chn_ctrl.ds_roi_sel[pipe_contex->main_stream_group_idx] = roi_sel;
+	pym_cfg->chn_ctrl.ds_roi_layer[pipe_contex->main_stream_group_idx] = roi_layer;
+	pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->main_stream_group_idx].region_width = bl_width;
+	pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->main_stream_group_idx].region_height = bl_height;
+	pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->main_stream_group_idx].wstride_y = ALIGN_16(out_width);
+	pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->main_stream_group_idx].wstride_uv = ALIGN_16(out_width);
+	pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->main_stream_group_idx].out_width = out_width;
+	pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->main_stream_group_idx].out_height = out_height;
+	pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->main_stream_group_idx].vstride = out_height;
+	pym_cfg->chn_ctrl.ds_roi_en |= (1 << pipe_contex->main_stream_group_idx);
+
+	// group1: 子码流(输入已完成矫正与旋转，直接使用sub尺寸)
+	pipe_contex->sub_stream_valid = false;
+	int sub_out_width = pipe_contex->cap_info_->sub_width;
+	int sub_out_height = pipe_contex->cap_info_->sub_height;
+	if ((sub_out_width > 0) && (sub_out_height > 0)) {
+		int sub_roi_sel = 0;
+		int sub_roi_layer = 0;
+		int sub_bl_width = src_width;
+		int sub_bl_height = src_height;
+		int sub_bl_stride = src_width;
+		if (check_pym_config(src_width, src_height, sub_out_width, sub_out_height,
+				sub_bl_width, sub_bl_height, sub_bl_stride, sub_roi_sel, sub_roi_layer) == -1) {
+			RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+				"create post pym sub group failed, width:%d, height:%d", sub_out_width, sub_out_height);
+			return -1;
+		}
+		pym_cfg->chn_ctrl.ds_roi_sel[pipe_contex->sub_stream_group_idx] = sub_roi_sel;
+		pym_cfg->chn_ctrl.ds_roi_layer[pipe_contex->sub_stream_group_idx] = sub_roi_layer;
+		pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->sub_stream_group_idx].region_width = sub_bl_width;
+		pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->sub_stream_group_idx].region_height = sub_bl_height;
+		pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->sub_stream_group_idx].wstride_y = ALIGN_16(sub_out_width);
+		pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->sub_stream_group_idx].wstride_uv = ALIGN_16(sub_out_width);
+		pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->sub_stream_group_idx].out_width = sub_out_width;
+		pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->sub_stream_group_idx].out_height = sub_out_height;
+		pym_cfg->chn_ctrl.ds_roi_info[pipe_contex->sub_stream_group_idx].vstride = sub_out_height;
+		pym_cfg->chn_ctrl.ds_roi_en |= (1 << pipe_contex->sub_stream_group_idx);
+		pipe_contex->sub_stream_valid = true;
+	}
+
+	hbn_buf_alloc_attr_t alloc_attr = {0};
+	ret = hbn_vnode_open(HB_PYM, hw_id, AUTO_ALLOC_ID, &pipe_contex->pym_node_handle_post);
+	ERR_CON_EQ(ret, 0);
+
+	ret = hbn_vnode_set_attr(pipe_contex->pym_node_handle_post, pym_cfg);
+	ERR_CON_EQ(ret, 0);
+	ret = hbn_vnode_set_ichn_attr(pipe_contex->pym_node_handle_post, chn_id, pym_cfg);
+	ERR_CON_EQ(ret, 0);
+	ret = hbn_vnode_set_ochn_attr(pipe_contex->pym_node_handle_post, chn_id, pym_cfg);
+	ERR_CON_EQ(ret, 0);
+	alloc_attr.buffers_num = 3;
+	alloc_attr.is_contig = 1;
+	alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN
+						| HB_MEM_USAGE_CPU_WRITE_OFTEN
+						| HB_MEM_USAGE_CACHED
+						| HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
+	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->pym_node_handle_post, chn_id, &alloc_attr);
+	ERR_CON_EQ(ret, 0);
+	// PYM2(M2M)独立成flow(不加入相机主flow、无bind)：本驱动上GDC→PYM的bind拉流不生效且
+	// 与sendframe互斥("src node already bind, can't send again")，M2M节点须独立flow+
+	// CPU sendframe喂帧(hobot_cv喂VSE同款模式)，由gdcToPymBridgeTask跨flow搬运
+	if (pipe_contex->vflow_post_fd == 0) {
+		ret = hbn_vflow_create(&pipe_contex->vflow_post_fd);
+		ERR_CON_EQ(ret, 0);
+	}
+	ret = hbn_vflow_add_vnode(pipe_contex->vflow_post_fd, pipe_contex->pym_node_handle_post);
+	ERR_CON_EQ(ret, 0);
+	pipe_contex->pym_post_valid = true;
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+		"create post pym node ok, handle:%p, hw:%d, slot:%d, mode:%d, src:%dx%d, group0(main):%dx%d, group1(sub):%dx%d, vflow_post:%ld",
+		pipe_contex->pym_node_handle_post, hw_id, slot_id, pym_mode, src_width, src_height,
+		out_width, out_height, sub_out_width, sub_out_height, pipe_contex->vflow_post_fd);
+
+	return 0;
+}
+
 int HobotMipiCapIml::create_gdc_node_r(std::shared_ptr<pipe_contex_t> pipe_contex) {
 	if ((pipe_contex == nullptr) || (pipe_contex->gdc_bin_r == nullptr)) {
 		return -1;
@@ -1580,17 +1902,50 @@ int HobotMipiCapIml::create_gdc_node_r(std::shared_ptr<pipe_contex_t> pipe_conte
 	pipe_contex->gdc_init_valid_r = 0;
 	int input_width, input_height, out_width, out_height;
 
-	if ((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0)) {
-		out_height = input_width = pipe_contex->cap_info_->height;
-		out_width = input_height = pipe_contex->cap_info_->width;
+	if (pipe_contex->gdc_init_valid == 1) {
+		// 双GDC链(场景5)：PYM1 group0直通src，GDC_r在源分辨率纯旋转，输出为旋转后(交换)尺寸
+		if (pipe_contex->sensor_config.pym_cfg != nullptr) {
+			input_width = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_width;
+			input_height = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height;
+		} else {
+			input_width = pipe_contex->cap_info_->width;
+			input_height = pipe_contex->cap_info_->height;
+		}
+		if ((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0)) {
+			out_width = input_height;
+			out_height = input_width;
+		} else {
+			out_width = input_width;
+			out_height = input_height;
+		}
 	} else {
-		out_width = input_width = pipe_contex->cap_info_->width;
-		out_height = input_height = pipe_contex->cap_info_->height;
+		// 无矫正bin的纯旋转链：PYM1直通层输出源分辨率喂GDC_r，1:1旋转输出=交换后源尺寸
+		// (缩放由GDC后PYM2 group0完成，硬件契约：喂PYM的GDC不缩放)
+		if (pipe_contex->sensor_config.pym_cfg != nullptr) {
+			input_width = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_width;
+			input_height = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height;
+		} else if (pipe_contex->sensor_config.isp_cfg != nullptr) {
+			input_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+			input_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+		} else {
+			input_width = pipe_contex->cap_info_->width;
+			input_height = pipe_contex->cap_info_->height;
+		}
+		if ((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0)) {
+			out_width = input_height;
+			out_height = input_width;
+		} else {
+			out_width = input_width;
+			out_height = input_height;
+		}
 	}
 
 	gdc_settings_t gdc_setting = {0};
 	uint32_t hw_id = 0;
-	ret = hbn_vnode_open(HB_GDC, hw_id, AUTO_ALLOC_ID, &pipe_contex->gdc_node_handle_r);
+	// 双GDC链(场景5)：cal GDC已随PYM2放入post flow(见bind_gdc_pym_stream)，GDC_r留在主flow，
+	// 每flow一个GDC实例(与D2每pipe一个GDC同款,同flow双GDC实例驱动不分配slot,实测不出帧)
+	int gdc_ctx_id = AUTO_ALLOC_ID;
+	ret = hbn_vnode_open(HB_GDC, hw_id, gdc_ctx_id, &pipe_contex->gdc_node_handle_r);
 	ERR_CON_EQ(ret, 0);
 
 
@@ -1621,9 +1976,11 @@ int HobotMipiCapIml::create_gdc_node_r(std::shared_ptr<pipe_contex_t> pipe_conte
 	hbn_buf_alloc_attr_t alloc_attr = {0};
 	alloc_attr.buffers_num = 3;
 	alloc_attr.is_contig = 1;
+	// 同create_gdc_node：输出可能被PYM2等硬件节点DMA消费，须物理连续
 	alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN |
 					HB_MEM_USAGE_CPU_WRITE_OFTEN |
-					HB_MEM_USAGE_CACHED;
+					HB_MEM_USAGE_CACHED |
+					HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
 	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->gdc_node_handle_r, chn_id, &alloc_attr);
 	ERR_CON_EQ(ret, 0);
 	pipe_contex->gdc_init_valid_r = 1;	
@@ -1662,8 +2019,27 @@ int HobotMipiCapIml::create_gdc_node(std::shared_ptr<pipe_contex_t> pipe_contex)
 		input_width = pipe_contex->sensor_config.vin_attr->vin_ichn_attr.width;
 		input_height = pipe_contex->sensor_config.vin_attr->vin_ichn_attr.height;
 	}
-	auto out_width = pipe_contex->cap_info_->width;
-	auto out_height = pipe_contex->cap_info_->height;
+	// 双GDC链(场景5)：矫正bin以pre_rotation作用于已旋转图像，GDC输入为交换后的源尺寸
+	if ((pipe_contex->gdc_bin_r != nullptr) &&
+		((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0))) {
+		int input_tmp = input_width;
+		input_width = input_height;
+		input_height = input_tmp;
+	}
+	// mode-1：末端GDC矫正+缩放到cap；mode-0(与X5 mode-0一致)：GDC 1:1(旋转已折入矫正bin)，
+	// 输出=源分辨率(90/270交换)，主码流缩放由GDC后PYM2 group0完成(硬件契约：喂PYM的GDC不缩放)；
+	// sub码流未启用时无PYM2，GDC即链路末端，保持缩放到cap(契约允许末端GDC缩放)
+	int out_width = pipe_contex->cap_info_->width;
+	int out_height = pipe_contex->cap_info_->height;
+	if ((pipe_contex->cap_info_->stream_mode_ != 1) && pipe_contex->cap_info_->sub_stream_enable_) {
+		out_width = input_width;
+		out_height = input_height;
+		if ((pipe_contex->cap_info_->rotation_ == 90.0) || (pipe_contex->cap_info_->rotation_ == 270.0)) {
+			int out_tmp = out_width;
+			out_width = out_height;
+			out_height = out_tmp;
+		}
+	}
     gdc_settings_t gdc_setting = {0};
 	uint32_t hw_id = 0;
 	ret = hbn_vnode_open(HB_GDC, hw_id, AUTO_ALLOC_ID, &pipe_contex->gdc_node_handle);
@@ -1693,12 +2069,301 @@ int HobotMipiCapIml::create_gdc_node(std::shared_ptr<pipe_contex_t> pipe_contex)
 	hbn_buf_alloc_attr_t alloc_attr = {0};
 	alloc_attr.buffers_num = 3;
 	alloc_attr.is_contig = 1;
+	// GDC输出缓冲须为物理连续(GRAPHIC_CONTIGUOUS)：GDC被PYM2/下游硬件节点DMA消费时，
+	// 非连续缓冲会导致下游M2M拉流静默失败(实测GDC出帧但PYM2从不请求,POLLHUP)
 	alloc_attr.flags = HB_MEM_USAGE_CPU_READ_OFTEN |
 					HB_MEM_USAGE_CPU_WRITE_OFTEN |
-					HB_MEM_USAGE_CACHED;
+					HB_MEM_USAGE_CACHED |
+					HB_MEM_USAGE_GRAPHIC_CONTIGUOUS_BUF;
 	ret = hbn_vnode_set_ochn_buf_attr(pipe_contex->gdc_node_handle, chn_id, &alloc_attr);
 	ERR_CON_EQ(ret, 0);
 	pipe_contex->gdc_init_valid = 1;
+
+	return 0;
+}
+
+// 创建GDC(矫正)/GDC_r(旋转)/GDC后PYM/PYM节点(pym_cfg存在时，由create_and_run_vflow与create_and_run_vflow_step2共用)。
+// GDC后PYM(PYM2)做主/子码流分流：任一GDC生效，且非"stream_mode_==1仅标定"
+// (该场景子码流取GDC前PYM1的group1，即当前mode-2行为)
+int HobotMipiCapIml::create_gdc_pym_nodes(std::shared_ptr<pipe_contex_t> pipe_contex) {
+	if (pipe_contex == nullptr) {
+		return -1;
+	}
+	int ret = 0;
+	pipeline_channel_info_t *ch_info = &pipe_contex->pipe_info_;
+
+	if (cap_info_.gdc_enable_) {
+		create_gdc_node(pipe_contex);
+	}
+	create_gdc_node_r(pipe_contex);
+
+	// GDC后PYM(PYM2)做主/子码流分流(stream_mode_==0双码流矫正,及旋转相关链路)：
+	// PYM2输入=上游GDC输出，主码流=group0(基底层直通)、子码流=group1(缩放)
+	bool need_post_pym = cap_info_.sub_stream_enable_ &&
+		((pipe_contex->gdc_init_valid == 1) || (pipe_contex->gdc_init_valid_r == 1)) &&
+		!((cap_info_.stream_mode_ == 1) && (pipe_contex->gdc_init_valid == 1) && (pipe_contex->gdc_init_valid_r == 0));
+	// 启动校验(先于PYM节点创建，避免被PYM金字塔ROI表的模糊报错掩盖)：
+	// PYM(金字塔ROI)只能降采样；mode-0主码流取PYM2 group0(缩放到cap)，
+	// cap朝向须与GDC输出朝向一致(X5以gdc_resize_enable特例处理朝向不匹配，S100明确报错)
+	if (need_post_pym) {
+		// PYM2输入=上游GDC输出(硬件契约)=源分辨率±旋转交换(与create_gdc_node/create_gdc_node_r
+		// 输出同基准)：mode-0为主GDC 1:1矫正输出、旋转链(双GDC或仅旋转)为GDC_r纯旋转输出
+		int post_src_width = pipe_contex->cap_info_->width;
+		int post_src_height = pipe_contex->cap_info_->height;
+		if (pipe_contex->sensor_config.pym_cfg != nullptr) {
+			post_src_width = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_width;
+			post_src_height = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height;
+		} else if (pipe_contex->sensor_config.isp_cfg != nullptr) {
+			post_src_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+			post_src_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+		}
+		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+			int post_src_tmp = post_src_width;
+			post_src_width = post_src_height;
+			post_src_height = post_src_tmp;
+		}
+		if (cap_info_.stream_mode_ != 1) {
+			if ((cap_info_.width > post_src_width) || (cap_info_.height > post_src_height)) {
+				RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+					"main stream cap %dx%d exceeds GDC output %dx%d, PYM cannot upscale; "
+					"use stream_mode 1 (terminal gdc scaling) or reduce cap size",
+					cap_info_.width, cap_info_.height, post_src_width, post_src_height);
+				return -1;
+			}
+			
+			// if (((cap_info_.width > cap_info_.height) != (post_src_width > post_src_height)) &&
+			// 	(cap_info_.width != cap_info_.height) && (post_src_width != post_src_height)) {
+			// 	RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+			// 		"cap %dx%d orientation mismatch with rotated source %dx%d "
+			// 		"(X5 handles this via gdc_resize, S100 does not), check image size vs rotation",
+			// 		cap_info_.width, cap_info_.height, post_src_width, post_src_height);
+			// 	return -1;
+			// }
+		}
+		if ((cap_info_.sub_width > post_src_width) || (cap_info_.sub_height > post_src_height)) {
+			RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),
+				"sub stream %dx%d exceeds GDC output %dx%d, PYM cannot upscale, check sub image size",
+				cap_info_.sub_width, cap_info_.sub_height, post_src_width, post_src_height);
+			return -1;
+		}
+	}
+
+	// PYM1先于GDC后PYM2创建：在线链PYM(ISP/YNR/PYM同slot,MANUAL模式)需先创建，
+	// 否则其set_attr报ILLEGAL_ATTR(-10)；PYM1总是配置group1，
+	// PYM2失败时子码流自动回退PYM1 group1(未矫正)，成功时子码流取PYM2 group1
+	ret = create_pym_node(pipe_contex, ch_info->pym_hw_id, ch_info->pym_slot_id, ch_info->pym_mode);
+	ERR_CON_EQ(ret, 0);
+
+	if (need_post_pym) {
+		int post_src_width = pipe_contex->cap_info_->width;
+		int post_src_height = pipe_contex->cap_info_->height;
+		if (pipe_contex->sensor_config.pym_cfg != nullptr) {
+			post_src_width = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_width;
+			post_src_height = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height;
+		} else if (pipe_contex->sensor_config.isp_cfg != nullptr) {
+			post_src_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+			post_src_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+		}
+		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+			int post_src_tmp = post_src_width;
+			post_src_width = post_src_height;
+			post_src_height = post_src_tmp;
+		}
+		// PYM2用独立PYM硬件实例(与PYM1不同hw)：同一PYM hw上混用MANUAL(在线链)与
+		// M2M(DDR输入)两种pym_mode，后创建者set_attr报ILLEGAL_ATTR(-10)(S100实测)
+		int post_pym_hw = (ch_info->pym_hw_id == 0) ? 1 : 0;
+		ret = create_pym_node_post(pipe_contex, post_pym_hw, isp0_next_slot_id++, PYM_M2M_MODE,
+			post_src_width, post_src_height);
+		if (ret != 0) {
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+				"create post pym node failed, ret:%d, main stream falls back to GDC output %dx%d "
+				"(!= cap %dx%d, image dims will mismatch camera_info), sub stream falls back to pre-gdc PYM group output",
+				ret, post_src_width, post_src_height, cap_info_.width, cap_info_.height);
+			// PYM2失败时子码流回退PYM1 group1(PYM1已先建且总是配置group1)，恢复其有效标志
+			pipe_contex->sub_stream_valid = true;
+		}
+	}
+
+	return 0;
+}
+
+// 将GDC/PYM节点加入flow并按场景绑定链路、选择应用码流(pym_cfg存在时，由create_and_run_vflow与create_and_run_vflow_step2共用)。链路规则：
+//   stream_mode_==1双GDC(场景5)：PYM1→GDC_r(主flow,纯旋转)→[PYM2主/子分流(post flow)]→GDC(同post flow,矫正+缩放)，
+//     PYM2由GDC_r桥接喂帧、其ochn流内bind到末端GDC；主码流=GDC输出(已矫正)，子码流=PYM2 group1(已旋转未矫正)
+//   仅旋转：PYM1→GDC_r(1:1旋转)→[PYM2分流]，PYM2生效时主码流=PYM2 group0(已旋转,源分辨率,X5语义)
+//   矫正(stream_mode_==0)：PYM1→GDC(1:1矫正+旋转,源分辨率)→PYM2分流，
+//     主码流=PYM2 group0(已矫正+缩放到cap)，子码流=PYM2 group1(已矫正+缩放)；
+//     PYM2失效时主码流回退GDC输出(源分辨率,与cap不符仅WARN)、子码流回退PYM1 group1(未矫正)
+//   无GDC：PYM1即应用码流(group0主/group1子)
+int HobotMipiCapIml::bind_gdc_pym_stream(std::shared_ptr<pipe_contex_t> pipe_contex) {
+	if (pipe_contex == nullptr) {
+		return -1;
+	}
+	int ret = 0;
+	int scene_type = pipe_contex->sensor_type_;
+	pipeline_channel_info_t *ch_info = &pipe_contex->pipe_info_;
+
+	// 1. 添加node到flow(PYM2在独立vflow_post_fd中，见create_pym_node_post，此处不添加)
+	if (pipe_contex->gdc_init_valid_r == 1) {
+		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+							pipe_contex->gdc_node_handle_r);
+		ERR_CON_EQ(ret, 0);
+	}
+	if (pipe_contex->gdc_init_valid == 1) {
+		// 场景5(PYM2分流生效)：cal GDC不入主flow，随PYM2放入post flow——同flow两个GDC
+		// 实例驱动不为第二个分配slot(实测S65535伪slot、bin不map、不出帧)，
+		// 每flow一个GDC(与D2每pipe一个GDC同款)；见下方场景5bind
+		bool cal_gdc_in_post = (cap_info_.stream_mode_ == 1) &&
+			(pipe_contex->gdc_init_valid_r == 1) && pipe_contex->pym_post_valid;
+		if (!cal_gdc_in_post) {
+			ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+								pipe_contex->gdc_node_handle);
+			ERR_CON_EQ(ret, 0);
+		}
+	}
+
+	ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+							pipe_contex->pym_node_handle);
+	ERR_CON_EQ(ret, 0);
+	// 2. 场景链路绑定(至PYM1)
+	if(scene_type == PIPELINE_SCENE_ISP_BYPASS){
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+								pipe_contex->vin_node_handle,
+								ch_info->is_online_vin_pym,
+								pipe_contex->pym_node_handle,
+								0);
+		ERR_CON_EQ(ret, 0);
+
+	}else if(scene_type == PIPELINE_SCENE_ISP_ONLY){
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+								pipe_contex->vin_node_handle,
+								ch_info->is_online_vin_isp,
+								pipe_contex->isp_node_handle,
+								0);
+		ERR_CON_EQ(ret, 0);
+
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->isp_node_handle,
+							ch_info->is_online_isp_pym,
+							pipe_contex->pym_node_handle,
+							0);
+		ERR_CON_EQ(ret, 0);
+
+	}else if(scene_type == PIPELINE_SCENE_ISP_YNR){
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+								pipe_contex->vin_node_handle,
+								ch_info->is_online_vin_isp,
+								pipe_contex->isp_node_handle,
+								0);
+		ERR_CON_EQ(ret, 0);
+
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->isp_node_handle,
+							ch_info->is_online_isp_ynr,
+							pipe_contex->ynr_node_handle,
+							0);
+		ERR_CON_EQ(ret, 0);
+
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->ynr_node_handle,
+							ch_info->is_online_ynr_pym,
+							pipe_contex->pym_node_handle,
+							0);
+		ERR_CON_EQ(ret, 0);
+
+	}else{
+		//error
+	}
+	// 3. 默认应用码流=PYM1 group输出
+	pipe_contex->stream_handle = pipe_contex->pym_node_handle;
+	pipe_contex->stream_group = 1;
+
+	// 4. GDC链路绑定与码流选择
+	if ((cap_info_.stream_mode_ == 1) && (pipe_contex->gdc_init_valid_r == 1) && (pipe_contex->gdc_init_valid == 1)) {
+		// 场景5(stream_mode_==1双GDC)：主码流=GDC矫正输出，子码流=PYM2 group1(已旋转未矫正)
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "start gdc rotation then gdc cal (dual gdc chain).\n");
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->pym_node_handle,
+							0,
+							pipe_contex->gdc_node_handle_r,
+							0);
+		ERR_CON_EQ(ret, 0);
+		if (pipe_contex->pym_post_valid) {
+			// 契约链路：PYM1→GDC_r(主flow,1:1纯旋转)→PYM2(post flow,桥接sendframe喂帧,
+			// group0直通+group1子码流)→GDC(post flow,末端矫正+缩放到cap)。
+			// cal GDC与PYM2同post flow(同flow双GDC实例驱动不分配slot,见上方add注释)，
+			// PYM ochn→GDC ichn的流内bind可拉流(D2的PYM1→GDC同款；GDC→PYM方向不拉流故桥接保留)
+			ret = hbn_vflow_add_vnode(pipe_contex->vflow_post_fd,
+								pipe_contex->gdc_node_handle);
+			ERR_CON_EQ(ret, 0);
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_post_fd,
+								pipe_contex->pym_node_handle_post,
+								0,
+								pipe_contex->gdc_node_handle,
+								0);
+			ERR_CON_EQ(ret, 0);
+			// GDC_r→PYM(M2M)：PYM2由CPU桥接sendframe喂帧，此处仅记录源节点
+			pipe_contex->pym_post_src_handle = pipe_contex->gdc_node_handle_r;
+		} else {
+			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+								pipe_contex->gdc_node_handle_r,
+								0,
+								pipe_contex->gdc_node_handle,
+								0);
+			ERR_CON_EQ(ret, 0);
+		}
+		pipe_contex->stream_handle = pipe_contex->gdc_node_handle;
+		pipe_contex->stream_group = 0;
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+			"PYM->GDC_r->PYM->GDC dual gdc streams active: main %dx%d rectified, sub %dx%d rotated",
+			pipe_contex->cap_info_->width, pipe_contex->cap_info_->height,
+			pipe_contex->cap_info_->sub_width, pipe_contex->cap_info_->sub_height);
+	} else if (pipe_contex->gdc_init_valid_r == 1) {
+		// 仅旋转：PYM1→GDC_r(纯旋转)→[PYM2分流(主=group0,子=group1)]
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc rotation.\n");
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->pym_node_handle,
+							0,
+							pipe_contex->gdc_node_handle_r,
+							0);
+		ERR_CON_EQ(ret, 0);
+		if (pipe_contex->pym_post_valid) {
+			// GDC_r→PYM(M2M)：PYM2在独立flow中由CPU桥接sendframe喂帧，此处仅记录源节点
+			pipe_contex->pym_post_src_handle = pipe_contex->gdc_node_handle_r;
+			pipe_contex->stream_handle = pipe_contex->pym_node_handle_post;
+			pipe_contex->stream_group = 1;
+		} else {
+			pipe_contex->stream_handle = pipe_contex->gdc_node_handle_r;
+			pipe_contex->stream_group = 0;
+		}
+	} else if (pipe_contex->gdc_init_valid == 1) {
+		// 矫正(stream_mode_==0)：PYM1→GDC(矫正+旋转+缩放)→PYM2分流(主=group0,子=group1)
+		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc cal.\n");
+		ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
+							pipe_contex->pym_node_handle,
+							0,
+							pipe_contex->gdc_node_handle,
+							0);
+		ERR_CON_EQ(ret, 0);
+		if (pipe_contex->pym_post_valid) {
+			// GDC→PYM(M2M)：PYM2在独立flow中由CPU桥接线程sendframe喂帧
+			// (本驱动上GDC→PYM的bind拉流不生效且与sendframe互斥，故不bind，见create_pym_node_post)
+			pipe_contex->pym_post_src_handle = pipe_contex->gdc_node_handle;
+			pipe_contex->stream_handle = pipe_contex->pym_node_handle_post;
+			pipe_contex->stream_group = 1;
+			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+				"PYM+GDC+PYM streams active: pym -> gdc -> post pym (main %dx%d, sub %dx%d), gdc->pym by cpu bridge",
+				pipe_contex->cap_info_->width, pipe_contex->cap_info_->height,
+				pipe_contex->cap_info_->sub_width, pipe_contex->cap_info_->sub_height);
+		} else {
+			pipe_contex->stream_handle = pipe_contex->gdc_node_handle;
+			pipe_contex->stream_group = 0;
+		}
+	} else {
+		RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+			"PYM selected as app stream, no GDC bind, vflow:%ld, pym:%p, stream:%p, stream_group:%d",
+			pipe_contex->vflow_fd, pipe_contex->pym_node_handle, pipe_contex->stream_handle, pipe_contex->stream_group);
+	}
 
 	return 0;
 }
@@ -1722,6 +2387,7 @@ int HobotMipiCapIml::create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_co
 				attr.period = fps_rate;
 				attr.enable = 1;
 			}
+			pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.skip_frame = 0;
 		} else {
 			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
 			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
@@ -1729,6 +2395,8 @@ int HobotMipiCapIml::create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_co
 			for (auto& attr : pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.lpwm_chn_attr) {
 				attr.enable = 0;
 			}
+			pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.skip_frame = 1;
+			pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.output_fps = pipe_contex->cap_info_->fps;
 		}
 	} else {
 		//	pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
@@ -1762,11 +2430,7 @@ int HobotMipiCapIml::create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_co
 	}
 
 	if (pipe_contex->sensor_config.pym_cfg) {
-		if (cap_info_.gdc_enable_) {
-			create_gdc_node(pipe_contex);
-		}
-		create_gdc_node_r(pipe_contex);
-		ret = create_pym_node(pipe_contex, ch_info->pym_hw_id, ch_info->pym_slot_id, ch_info->pym_mode);
+		ret = create_gdc_pym_nodes(pipe_contex);
 		ERR_CON_EQ(ret, 0);
 	}
 	// 2. 添加node 到 flow
@@ -1793,98 +2457,8 @@ int HobotMipiCapIml::create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_co
 	}
 
 	if (pipe_contex->sensor_config.pym_cfg) {
-		if (pipe_contex->gdc_init_valid_r == 1) {
-			ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
-								pipe_contex->gdc_node_handle_r);
-			ERR_CON_EQ(ret, 0);
-		}
-		if (pipe_contex->gdc_init_valid == 1) {
-			ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
-								pipe_contex->gdc_node_handle);
-			ERR_CON_EQ(ret, 0);
-		}
-
-		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
-								pipe_contex->pym_node_handle);
+		ret = bind_gdc_pym_stream(pipe_contex);
 		ERR_CON_EQ(ret, 0);
-		// 3. 绑定 Flow 中的Node
-		if(scene_type == PIPELINE_SCENE_ISP_BYPASS){
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-									pipe_contex->vin_node_handle,
-									ch_info->is_online_vin_pym,
-									pipe_contex->pym_node_handle,
-									0);
-			ERR_CON_EQ(ret, 0);
-
-		}else if(scene_type == PIPELINE_SCENE_ISP_ONLY){
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-									pipe_contex->vin_node_handle,
-									ch_info->is_online_vin_isp,
-									pipe_contex->isp_node_handle,
-									0);
-			ERR_CON_EQ(ret, 0);
-
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-							pipe_contex->isp_node_handle,
-							ch_info->is_online_isp_pym,
-							pipe_contex->pym_node_handle,
-							0);
-			ERR_CON_EQ(ret, 0);
-
-		}else if(scene_type == PIPELINE_SCENE_ISP_YNR){
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-									pipe_contex->vin_node_handle,
-									ch_info->is_online_vin_isp,
-									pipe_contex->isp_node_handle,
-									0);
-			ERR_CON_EQ(ret, 0);
-
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-							pipe_contex->isp_node_handle,
-							ch_info->is_online_isp_ynr,
-							pipe_contex->ynr_node_handle,
-							0);
-			ERR_CON_EQ(ret, 0);
-
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-							pipe_contex->ynr_node_handle,
-							ch_info->is_online_ynr_pym,
-							pipe_contex->pym_node_handle,
-							0);
-			ERR_CON_EQ(ret, 0);
-
-		}else{
-			//error
-		}
-		pipe_contex->stream_handle = pipe_contex->pym_node_handle;
-		pipe_contex->stream_group = 1;
-
-
-		if (pipe_contex->gdc_init_valid_r == 1) {
-			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc rotation.\n");
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-								pipe_contex->pym_node_handle,
-								0,
-								pipe_contex->gdc_node_handle_r,
-								0);
-			ERR_CON_EQ(ret, 0);
-			pipe_contex->stream_handle = pipe_contex->gdc_node_handle_r;
-			pipe_contex->stream_group = 0;
-		} else if (pipe_contex->gdc_init_valid == 1) {
-			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc cal.\n");
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-								pipe_contex->pym_node_handle,
-								0,
-								pipe_contex->gdc_node_handle,
-								0);
-			ERR_CON_EQ(ret, 0);
-			pipe_contex->stream_handle = pipe_contex->gdc_node_handle;
-			pipe_contex->stream_group = 0;
-		} else {
-			RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
-				"PYM selected as app stream, no GDC bind, vflow:%ld, pym:%p, stream:%p, stream_group:%d",
-				pipe_contex->vflow_fd, pipe_contex->pym_node_handle, pipe_contex->stream_handle, pipe_contex->stream_group);
-		}	
 	} else {
 		// 3. 绑定 Flow 中的Node
 		if(scene_type == PIPELINE_SCENE_ISP_BYPASS){
@@ -2043,13 +2617,16 @@ int HobotMipiCapIml::create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> p
 	}else{
 		//do nothing
 	}
-	if (cap_info_.gdc_enable_) {
-		create_gdc_node(pipe_contex);
-	}
-	create_gdc_node_r(pipe_contex);
 	if (pipe_contex->sensor_config.pym_cfg) {
-		ret = create_pym_node(pipe_contex, ch_info->pym_hw_id, ch_info->pym_slot_id, ch_info->pym_mode);
+		// pym链路：创建GDC(矫正)/GDC_r(旋转)/GDC后PYM/PYM节点(与MIPI直连路径共用，含PYM2分流)
+		ret = create_gdc_pym_nodes(pipe_contex);
 		ERR_CON_EQ(ret, 0);
+	} else {
+		// 无pym传感器：仅创建GDC节点并直接绑定到流上(保持GMSL既有行为)
+		if (cap_info_.gdc_enable_) {
+			create_gdc_node(pipe_contex);
+		}
+		create_gdc_node_r(pipe_contex);
 	}
 	if(scene_type == PIPELINE_SCENE_ISP_ONLY){
 		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
@@ -2064,97 +2641,23 @@ int HobotMipiCapIml::create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> p
 		ERR_CON_EQ(ret, 0);
 	}
 
-	if (pipe_contex->gdc_init_valid_r == 1) {
-		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
-							pipe_contex->gdc_node_handle_r);
-		ERR_CON_EQ(ret, 0);
-	}
-	if (pipe_contex->gdc_init_valid == 1) {
-		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
-							pipe_contex->gdc_node_handle);
-		ERR_CON_EQ(ret, 0);
-	}
-
-	pipe_contex->stream_handle = pipe_contex->vin_node_handle;
-	pipe_contex->stream_group = 0;
-
 	if (pipe_contex->sensor_config.pym_cfg) {
-		ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
-								pipe_contex->pym_node_handle);
+		// 添加GDC/PYM节点到flow并按场景绑定链路、选择应用码流(与MIPI直连路径共用)
+		ret = bind_gdc_pym_stream(pipe_contex);
 		ERR_CON_EQ(ret, 0);
-		// 3. 绑定 Flow 中的Node
-		if(scene_type == PIPELINE_SCENE_ISP_BYPASS){
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-									pipe_contex->vin_node_handle,
-									ch_info->is_online_vin_pym,
-									pipe_contex->pym_node_handle,
-									0);
-			ERR_CON_EQ(ret, 0);
-
-		}else if(scene_type == PIPELINE_SCENE_ISP_ONLY){
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-									pipe_contex->vin_node_handle,
-									ch_info->is_online_vin_isp,
-									pipe_contex->isp_node_handle,
-									0);
-			ERR_CON_EQ(ret, 0);
-
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-							pipe_contex->isp_node_handle,
-							ch_info->is_online_isp_pym,
-							pipe_contex->pym_node_handle,
-							0);
-			ERR_CON_EQ(ret, 0);
-
-		}else if(scene_type == PIPELINE_SCENE_ISP_YNR){
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-									pipe_contex->vin_node_handle,
-									ch_info->is_online_vin_isp,
-									pipe_contex->isp_node_handle,
-									0);
-			ERR_CON_EQ(ret, 0);
-
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-							pipe_contex->isp_node_handle,
-							ch_info->is_online_isp_ynr,
-							pipe_contex->ynr_node_handle,
-							0);
-			ERR_CON_EQ(ret, 0);
-
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-							pipe_contex->ynr_node_handle,
-							ch_info->is_online_ynr_pym,
-							pipe_contex->pym_node_handle,
-							0);
-			ERR_CON_EQ(ret, 0);
-
-		}
-		pipe_contex->stream_handle = pipe_contex->pym_node_handle;
-		pipe_contex->stream_group = 1;
-
-
-		if (pipe_contex->gdc_init_valid_r == 1) {
-			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc rotation.\n");
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-								pipe_contex->pym_node_handle,
-								0,
-								pipe_contex->gdc_node_handle_r,
-								0);
-			ERR_CON_EQ(ret, 0);
-			pipe_contex->stream_handle = pipe_contex->gdc_node_handle_r;
-			pipe_contex->stream_group = 0;
-		} else if (pipe_contex->gdc_init_valid == 1) {
-			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"), "X5 start gdc cal.\n");
-			ret = hbn_vflow_bind_vnode(pipe_contex->vflow_fd,
-								pipe_contex->pym_node_handle,
-								0,
-								pipe_contex->gdc_node_handle,
-								0);
-			ERR_CON_EQ(ret, 0);
-			pipe_contex->stream_handle = pipe_contex->gdc_node_handle;
-			pipe_contex->stream_group = 0;
-		}
 	} else {
+		if (pipe_contex->gdc_init_valid_r == 1) {
+			ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+								pipe_contex->gdc_node_handle_r);
+			ERR_CON_EQ(ret, 0);
+		}
+		if (pipe_contex->gdc_init_valid == 1) {
+			ret = hbn_vflow_add_vnode(pipe_contex->vflow_fd,
+								pipe_contex->gdc_node_handle);
+			ERR_CON_EQ(ret, 0);
+		}
+		pipe_contex->stream_handle = pipe_contex->vin_node_handle;
+		pipe_contex->stream_group = 0;
 		// 3. 绑定 Flow 中的Node
 		if(scene_type == PIPELINE_SCENE_ISP_BYPASS){
 			pipe_contex->stream_handle = pipe_contex->vin_node_handle;
@@ -2492,31 +2995,66 @@ int HobotMipiCapIml::create_gsml_gdc_bin(std::shared_ptr<pipe_contex_t> pipe_con
 	if (cap_info_.gdc_enable_) {
 		if (cam_info_.size() > 0 && gdc_bin_buf_.empty()) {
 			sensor_msgs::msg::CameraInfo cal_cam_info;
-			if (cal_tpye_ == 0) {
-				auto gdc_bin = gen_gdc_bin(pipe_contex->sensor_config.isp_cfg->isp_attr.size.width, pipe_contex->sensor_config.isp_cfg->isp_attr.size.height,
-						cap_info_.width, cap_info_.height, &cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_);
-				//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
-				if (gdc_bin) {
-					gdc_bin_buf_.push_back(gdc_bin);
-					pipe_contex->gdc_bin = gdc_bin;
-					cal_cam_info_.push_back(cal_cam_info);
+			// stream_mode_==1且需旋转(场景5)：先在源分辨率生成纯旋转bin(GDC_r)，矫正bin以pre_rotation
+			// 作用于已旋转图像；mode-0的旋转折入矫正bin(不生成GDC_r)；矫正bin失败时旋转bin不入队
+			// (gsml路径)，走下方源分辨率回退重新生成
+			std::shared_ptr<GdcBinBuf_ST> rot_bin = nullptr;
+			if ((cap_info_.stream_mode_ == 1) && (cap_info_.rotation_ != 0)) {
+				rot_bin = gen_gdc_bin_rotation(pipe_contex->sensor_config.isp_cfg->isp_attr.size.width,
+						pipe_contex->sensor_config.isp_cfg->isp_attr.size.height,
+						pipe_contex->sensor_config.isp_cfg->isp_attr.size.width,
+						pipe_contex->sensor_config.isp_cfg->isp_attr.size.height, cap_info_.rotation_);
+			}
+			int cal_in_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+			int cal_in_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+			if ((rot_bin != nullptr) && ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0))) {
+				cal_in_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+				cal_in_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+			}
+			// mode-1：末端GDC矫正+缩放，out=cap；mode-0(与X5 mode-0一致)：GDC 1:1(旋转折入矫正bin)，
+			// out=源分辨率(90/270交换)，主码流缩放由GDC后PYM2 group0完成(硬件契约：喂PYM的GDC不缩放)；
+			// sub码流未启用时无PYM2，GDC即链路末端，保持缩放到cap(契约允许末端GDC缩放)
+			int cal_out_width = cap_info_.width;
+			int cal_out_height = cap_info_.height;
+			if ((cap_info_.stream_mode_ != 1) && cap_info_.sub_stream_enable_) {
+				cal_out_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+				cal_out_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+				if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+					cal_out_width = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
+					cal_out_height = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
 				}
+			}
+			auto gdc_bin = gen_gdc_bin(cal_in_width, cal_in_height,
+					cal_out_width, cal_out_height, &cam_info_[0], &cal_cam_info, cap_info_.rotation_, cap_info_.cal_rotation_,
+					0.0, rot_bin != nullptr);
+			//auto gdc_bin = gen_gdc_bin_json("./gdc_bin_custom_config.json");
+			if (gdc_bin) {
+				if (rot_bin != nullptr) {
+					// 旋转bin入缓存，供后续link的pipe复用(与矫正bin的复用逻辑一致)
+					gdc_bin_buf_r_.push_back(rot_bin);
+					pipe_contex->gdc_bin_r = rot_bin;
+				}
+				gdc_bin_buf_.push_back(gdc_bin);
+				pipe_contex->gdc_bin = gdc_bin;
+				cal_cam_info_.push_back(cal_cam_info);
 			}
 		} else if (!gdc_bin_buf_.empty()) {
 			pipe_contex->gdc_bin = gdc_bin_buf_[0];
 		}
 	}
+	// 无矫正bin的纯旋转回退：以源分辨率1:1旋转(PYM1直通层喂GDC_r，gen_gdc_bin_rotation内部
+	// 90/270自动把输出交换为旋转后尺寸，out参数被覆盖)
 	if ((cap_info_.rotation_ != 0) && (gdc_bin_buf_.size() == 0) && (gdc_bin_buf_r_.empty())) {
-		int width;
-		int height;
-		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
-			width = cap_info_.height;
-			height = cap_info_.width;
-		} else {
-			width = cap_info_.width;
-			height = cap_info_.height;
+		int src_w = 0, src_h = 0;
+		if (pipe_contex->sensor_config.pym_cfg != nullptr) {
+			src_w = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_width;
+			src_h = pipe_contex->sensor_config.pym_cfg->chn_ctrl.src_in_height;
+		} else if (pipe_contex->sensor_config.isp_cfg != nullptr) {
+			src_w = pipe_contex->sensor_config.isp_cfg->isp_attr.size.width;
+			src_h = pipe_contex->sensor_config.isp_cfg->isp_attr.size.height;
 		}
-		auto gdc_bin = gen_gdc_bin_rotation(width, height, cap_info_.width, cap_info_.height, cap_info_.rotation_);
+		std::shared_ptr<GdcBinBuf_ST> gdc_bin = (src_w > 0 && src_h > 0) ?
+			gen_gdc_bin_rotation(src_w, src_h, cap_info_.width, cap_info_.height, cap_info_.rotation_) : nullptr;
 		if (gdc_bin) {
 			gdc_bin_buf_r_.push_back(gdc_bin);
 			pipe_contex->gdc_bin_r = gdc_bin;
@@ -2543,11 +3081,11 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::create_gsml_gdc_bin_
 		return result;
 	}
 
-	if (!cap_info_.gdc_enable_ || cal_tpye_ != 0)
+	if (!cap_info_.gdc_enable_)
 	{
 		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
-						">>> create_gsml_gdc_bin_stereo: gdc_enable=%d, cal_type=%d, skip",
-						cap_info_.gdc_enable_, cal_tpye_);
+						">>> create_gsml_gdc_bin_stereo: gdc_enable=%d, skip",
+						cap_info_.gdc_enable_);
 		return result;
 	}
 
@@ -2583,19 +3121,51 @@ std::vector<std::shared_ptr<GdcBinBuf_ST>> HobotMipiCapIml::create_gsml_gdc_bin_
 					">>> create_gsml_gdc_bin_stereo: src=%dx%d, dst=%dx%d, rotation=%.1f, cal_rotation=%.1f",
 					src_width, src_height, cap_info_.width, cap_info_.height,
 					cap_info_.rotation_, cap_info_.cal_rotation_);
+	// stream_mode_==1且需旋转(场景5)：先在源分辨率生成纯旋转bin(GDC_r)，矫正bin以pre_rotation
+	// 作用于已旋转图像；mode-0的旋转折入矫正bin(不生成GDC_r)；矫正bin失败时旋转bin不生效，
+	// 由调用方走源分辨率回退重新生成
+	std::shared_ptr<GdcBinBuf_ST> rot_bin = nullptr;
+	if ((cap_info_.stream_mode_ == 1) && (cap_info_.rotation_ != 0)) {
+		rot_bin = gen_gdc_bin_rotation(src_width, src_height, src_width, src_height, cap_info_.rotation_);
+	}
+	int cal_in_width = src_width;
+	int cal_in_height = src_height;
+	if ((rot_bin != nullptr) && ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0))) {
+		cal_in_width = src_height;
+		cal_in_height = src_width;
+	}
+	// mode-1：末端GDC矫正+缩放，out=cap；mode-0(与X5 mode-0一致)：GDC 1:1(旋转折入矫正bin)，
+	// out=源分辨率(90/270交换)，主码流缩放由GDC后PYM2 group0完成(硬件契约：喂PYM的GDC不缩放)；
+	// sub码流未启用时无PYM2，GDC即链路末端，保持缩放到cap(契约允许末端GDC缩放)
+	int cal_out_width = cap_info_.width;
+	int cal_out_height = cap_info_.height;
+	if ((cap_info_.stream_mode_ != 1) && cap_info_.sub_stream_enable_) {
+		cal_out_width = src_width;
+		cal_out_height = src_height;
+		if ((cap_info_.rotation_ == 90.0) || (cap_info_.rotation_ == 270.0)) {
+			cal_out_width = src_height;
+			cal_out_height = src_width;
+		}
+	}
 	std::vector<sensor_msgs::msg::CameraInfo> cal_pair;
 	auto gdc_bins = gen_gdc_bin_stereo(
-		 src_width, src_height,
-		 cap_info_.width, cap_info_.height,
+		 cal_in_width, cal_in_height,
+		 cal_out_width, cal_out_height,
 		 *cam_pair,
 		 cal_pair,
 		 cap_info_.rotation_,
-		 cap_info_.cal_rotation_);
+		 cap_info_.cal_rotation_,
+		 0.0,
+		 rot_bin != nullptr);
 	if (gdc_bins.size() == 2)
 	{
 		for (auto &ci : cal_pair)
 		{
 			cal_cam_info_.push_back(ci);
+		}
+		if (rot_bin != nullptr) {
+			// 场景5：双GDC链的旋转bin(源分辨率纯旋转)，由调用方传播到同link的第二路pipe
+			pipe_contex->gdc_bin_r = rot_bin;
 		}
 		result = gdc_bins;
 	}

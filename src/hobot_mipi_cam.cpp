@@ -491,6 +491,7 @@ bool MipiCamIml::getCamCalibration(sensor_msgs::msg::CameraInfo &cam_info,
     RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "get calibration camera info");
     const sensor_msgs::msg::CameraInfo& cameraInfo = cal_v_ptr->at(0);
     cam_info = cameraInfo;
+    scaleSubStreamCamInfo(cam_info, cap_info_.width, cap_info_.height);
     return true;
   } else {
     return mipi_calibration::GetInstance().getCamCalibrationIml_single(cam_info, file_path);

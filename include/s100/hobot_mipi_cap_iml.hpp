@@ -90,6 +90,12 @@ typedef struct pipe_contex_s {
   int main_stream_group_idx = 0;
   int sub_stream_group_idx = 1;
   bool sub_stream_valid = false;
+  // GDC生效时的GDC后PYM节点(PYM2)：主/子码流经PYM2的group0/1分流
+  hbn_vflow_handle_t vflow_post_fd = 0; //PYM2所在的独立vflow(M2M节点独立成flow,由CPU桥接sendframe喂帧,hobot_cv同款)
+  hbn_vnode_handle_t pym_node_handle_post = 0; //GDC后PYM节点
+  pym_cfg_t *pym_cfg_post = nullptr; //GDC后PYM的独立配置副本(输入=GDC输出,group0=主,group1=子)
+  bool pym_post_valid = false; //PYM+GDC+PYM流程生效(任一GDC生效且非"stream_mode_==1仅标定")
+  hbn_vnode_handle_t pym_post_src_handle = 0; //PYM2的输入源GDC节点(桥接线程getframe后sendframe喂入PYM2)
   MIPI_CAP_INFO_ST *cap_info_;
   pipeline_channel_info_t pipe_info_;
   pipeline_usage_scene_type_t sensor_type_;
@@ -167,6 +173,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int selectSensor(std::string &sensor, int &host, int &i2c_bus);
 
   void multiFrameTask();
+  void gdcToPymBridgeTask(int pipe_idx); //GDC输出→PYM2(M2M)的CPU桥接线程(每pipe一个)：getframe(GDC)→sendframe(PYM2)→releaseframe(零拷贝句柄传递)
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
   int getVnodeFrameGroup(hbn_vnode_handle_t handle, int group_idx, std::shared_ptr<VideoBuffer> buff_ptr);
   int copyGroupFrameToBuffer(const hbn_vnode_image_group_t &out_img, int group_idx, std::shared_ptr<VideoBuffer> buff_ptr);
@@ -174,6 +181,10 @@ class HobotMipiCapIml : public HobotMipiCap {
   int create_and_run_vflow_step1(std::shared_ptr<pipe_contex_t> pipe_contex);
   int create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> pipe_contex);
   int create_pym_node(std::shared_ptr<pipe_contex_t> pipe_contex, int hw_id, int slot_id, int pym_mode);
+  int create_pym_node_post(std::shared_ptr<pipe_contex_t> pipe_contex, int hw_id, int slot_id, int pym_mode,
+      int in_width, int in_height); //GDC后PYM: 输入上游GDC输出(in_width/in_height),group0主/group1子分流
+  int create_gdc_pym_nodes(std::shared_ptr<pipe_contex_t> pipe_contex); //创建GDC(矫正)/GDC_r(旋转)/GDC后PYM/PYM节点
+  int bind_gdc_pym_stream(std::shared_ptr<pipe_contex_t> pipe_contex); //添加GDC/PYM节点到flow并按场景绑定链路、选择应用码流
   int create_isp_node(std::shared_ptr<pipe_contex_t> pipe_contex, int hw_id, int slot_id, int mode, int is_online);
   int create_ynr_node(std::shared_ptr<pipe_contex_t> pipe_contex, int slot_id, int work_mode);
   int create_vin_node(std::shared_ptr<pipe_contex_t> pipe_contex, int is_online, int link_port);
