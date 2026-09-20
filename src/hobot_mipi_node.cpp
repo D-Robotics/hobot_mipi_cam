@@ -156,6 +156,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     "\n                 image_height: %d" \
     "\n               sub_image_width: %d" \
     "\n              sub_image_height: %d" \
+    "\n              sub_stream_enable: %s" \
     "\n                    framerate: %d" \
     "\n                    sub_framerate: %d" \
     "\n                     rotation: %f" \
@@ -187,6 +188,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
               nodePare_->image_height_,
               nodePare_->sub_image_width_,
               nodePare_->sub_image_height_,
+              (nodePare_->sub_stream_enable_ ? "true" : "false"),
               nodePare_->framerate_,
               nodePare_->sub_framerate_,
               nodePare_->rotation_,

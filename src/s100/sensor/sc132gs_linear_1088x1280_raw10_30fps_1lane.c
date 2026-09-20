@@ -132,6 +132,10 @@ static vin_attr_t sc132gs_vin_attr = {
                 .enable_frame_id = 1,
                 .set_init_frame_id = 1,
                 .enable_pattern = 0,
+                .skip_frame = 1,//0: disable, 1: soft skip frame, 2: drop frist few frame
+                .input_fps = SENSOE_FPS, 
+                .output_fps = SENSOE_FPS,
+                .skip_nums = 1, //drop frist frame
             },
             .rdma_input = {
                 .rdma_en = 0,

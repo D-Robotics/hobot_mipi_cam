@@ -30,7 +30,7 @@ def generate_launch_description():
 
     mipi_lpwm_enable_arg = DeclareLaunchArgument(
         'mipi_lpwm_enable',
-        default_value='True',
+        default_value='False',
         description='mipi lpwm enable')
     
     mipi_camera_calibration_file_path_arg = DeclareLaunchArgument(
@@ -40,27 +40,27 @@ def generate_launch_description():
     
     mipi_image_width_arg = DeclareLaunchArgument(
         'mipi_image_width',
-        default_value='1280',
+        default_value='1088',
         description='mipi width')
 
     mipi_image_height_arg = DeclareLaunchArgument(
         'mipi_image_height',
-        default_value='1088',
+        default_value='1280',
         description='mipi height')
 
     mipi_sub_image_width_arg = DeclareLaunchArgument(
         'mipi_sub_image_width',
-        default_value='640',
+        default_value='544',
         description='mipi camera out image width')
 
     mipi_sub_image_height_arg = DeclareLaunchArgument(
         'mipi_sub_image_height',
-        default_value='544',
+        default_value='640',
         description='mipi camera out image height')
 
     mipi_rotation_arg = DeclareLaunchArgument(
         'mipi_rotation',
-        default_value='90.0',
+        default_value='0.0',
         description='mipi camera out image rotation')
 
     mipi_cal_rotation_arg = DeclareLaunchArgument(
