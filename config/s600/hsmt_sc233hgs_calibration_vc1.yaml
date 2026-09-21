@@ -1,0 +1,23 @@
+# HSMT sc233hgs VC1 单目标定（来源：模组 EEPROM 读出，4 路暂为同一份 golden 数据）
+# 格式与 config/s600/F37_calibration.yaml 一致，由 getCamCalibrationIml_single（yaml-cpp）解析
+# 鱼眼（equidistant）4 系数；1920x1200
+image_width: 1920
+image_height: 1200
+camera_name: hsmt_sc233hgs_vc1
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [398.314, 0.0, 961.130, 0.0, 398.241, 638.091, 0.0, 0.0, 1.0]
+distortion_model: equidistant
+distortion_coefficients:
+  rows: 4
+  cols: 1
+  data: [-0.034298, 0.027249, -0.016888, 0.002709]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [398.314, 0.0, 961.130, 0.0, 0.0, 398.241, 638.091, 0.0, 0.0, 0.0, 1.0, 0.0]

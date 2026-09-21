@@ -113,6 +113,7 @@ typedef struct {
 
 typedef struct {
   std::string deserial_name;
+  std::string deserial_type; // 可选："hsmt"表示解串器由sensor驱动库自管理，vflow不创建deserial节点
   std::vector<LINK_CONFIG_ST> link;
 } GSML_CONFIG_ST;
 
@@ -137,6 +138,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   int init(MIPI_CAP_INFO_ST &info);
   int mipi_init(MIPI_CAP_INFO_ST &info);
   int gsml_init(MIPI_CAP_INFO_ST &info);
+  int gsml_init_hsmt(const GSML_CONFIG_ST &gsml_cfg);
 
   // 反初始化相关sensor的VIO pipeline ；
   // 返回值：0，反初始化成功；-1，反初始化失败。
@@ -181,6 +183,7 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   int create_gsml_gdc_bin(std::shared_ptr<pipe_contex_t> pipe_contex);
   std::vector<std::shared_ptr<GdcBinBuf_ST>> create_gsml_gdc_bin_stereo(std::shared_ptr<pipe_contex_t> pipe_contex, std::vector<sensor_msgs::msg::CameraInfo> *cam_pair);
+  std::shared_ptr<GdcBinBuf_ST> create_gsml_gdc_bin_single(std::shared_ptr<pipe_contex_t> pipe_contex, sensor_msgs::msg::CameraInfo *cam_info);
   bool read_gsml_config(std::string gsml_cfg_file);
 
   void pipeline_connect_param_init(std::shared_ptr<pipe_contex_t> pipe_contex);

@@ -1460,6 +1460,326 @@ std::shared_ptr<GdcBinBuf_ST> HobotMipiCap::gen_gdc_bin(int in_width, int in_hei
 	return gdc_bin_ptr;
 }
 
+/* 单目鱼眼(EQUIDISTANT)GDC bin生成（gen_gdc_bin_stereo 鱼眼分支的单目版）：
+ * 用 cv::fisheye::initUndistortRectifyMap 生成映射；target_hfov<=0 自动搜索映射全有效的最大水平FOV，>0 指定目标水平FOV(度)；
+ * 映射点上下界都clamp防GDC越界采样。仅供新增单目链路调用，不改动既有行为。 */
+std::shared_ptr<GdcBinBuf_ST> HobotMipiCap::gen_gdc_bin_mono_fisheye(int in_width, int in_height,int out_width, int out_height,
+       sensor_msgs::msg::CameraInfo *cam_info, sensor_msgs::msg::CameraInfo *cal_cam_info,
+	   double rotation, double cal_rotate, double target_hfov) {
+	if (in_width <= 0 || in_height<= 0 || out_width <= 0 || out_height <= 0 ||  cam_info == nullptr || cal_cam_info == nullptr) {
+		return nullptr;
+	}
+	if (!((rotation == 0.0) || (rotation == 90.0) || (rotation == 180.0) || (rotation == 270.0) ||
+	   (cal_rotate == 0.0) || (cal_rotate == 90.0) || (cal_rotate == 180.0) || (cal_rotate == 270.0))) {
+		return nullptr;
+	}
+	float gdc_width_scale, gdc_height_scale;
+	int in_gdc_width, in_gdc_height;
+
+	double rotation_diff = rotation > cal_rotate ? rotation - cal_rotate : 360 + rotation - cal_rotate;
+	int out_gdc_width, out_gdc_height;
+
+	if ((cal_rotate == 90.0) || (cal_rotate == 270.0)) {
+		in_gdc_width = in_height;
+		in_gdc_height = in_width;
+	} else {
+		in_gdc_width = in_width;
+		in_gdc_height = in_height;
+	}
+
+	if ((rotation_diff == 90.0) || (rotation_diff == 270.0)) {
+		out_gdc_width = out_height;
+		out_gdc_height = out_width;
+	} else {
+		out_gdc_width = out_width;
+		out_gdc_height = out_height;
+	}
+
+	gdc_width_scale = in_gdc_width / static_cast<float>(cam_info->width);
+	gdc_height_scale = in_gdc_height / static_cast<float>(cam_info->height);
+	cv::Mat K, D;
+	D = cv::Mat(1, cam_info->d.size(), CV_64F, cam_info->d.data()).clone();
+	K = cv::Mat(3, 3, CV_64F, cam_info->k.data()).clone();
+	K.at<double>(0, 0) *= gdc_width_scale;
+	K.at<double>(0, 2) *= gdc_width_scale;
+	K.at<double>(1, 1) *= gdc_height_scale;
+	K.at<double>(1, 2) *= gdc_height_scale;
+
+	RCLCPP_INFO_STREAM(rclcpp::get_logger("mipi_cap"),"===mono fisheye calibration==="
+		<< "\ngdc_width_scale : " << gdc_width_scale
+		<< "\ngdc_height_scale : " << gdc_height_scale
+		<< "\nK : \n" << K
+		<< "\nD : \n" << D
+		<< "\n===================="
+	);
+
+	// 按指定水平FOV(度)构造矫正后新相机矩阵并生成鱼眼映射
+	auto build_map = [&](double hfov_deg, cv::Mat &map1, cv::Mat &map2) -> cv::Mat {
+		double fx = (out_gdc_width / 2.0) / std::tan(hfov_deg * CV_PI / 360.0);
+		cv::Mat K_new = cv::Mat::zeros(3, 3, CV_64F);
+		K_new.at<double>(0, 0) = fx;
+		K_new.at<double>(1, 1) = fx;
+		K_new.at<double>(0, 2) = out_gdc_width / 2.0;
+		K_new.at<double>(1, 2) = out_gdc_height / 2.0;
+		K_new.at<double>(2, 2) = 1.0;
+		cv::Mat P_new = cv::Mat::zeros(3, 4, CV_64F);
+		K_new.copyTo(P_new(cv::Rect(0, 0, 3, 3)));
+		cv::fisheye::initUndistortRectifyMap(K, D, cv::Mat::eye(3, 3, CV_64F), P_new,
+			cv::Size(out_gdc_width, out_gdc_height), CV_32FC1, map1, map2);
+		return K_new;
+	};
+	// 统计映射点落在输入图有效范围之外的像素数（对照 find_best_fov_scale 的判据）
+	auto count_invalid = [&](const cv::Mat &map1, const cv::Mat &map2) -> int {
+		int invalid = 0;
+		for (int y = 0; y < map1.rows; y++) {
+			const float *px = map1.ptr<float>(y);
+			const float *py = map2.ptr<float>(y);
+			for (int x = 0; x < map1.cols; x++) {
+				float sx = px[x];
+				float sy = py[x];
+				if (!std::isfinite(sx) || !std::isfinite(sy) ||
+					sx < 1 || sx >= in_gdc_width - 2 ||
+					sy < 1 || sy >= in_gdc_height - 2) {
+					invalid++;
+				}
+			}
+		}
+		return invalid;
+	};
+
+	cv::Mat new_K;
+	cv::Mat undistmap1, undistmap2;
+	double used_hfov = 0.0;
+	if (target_hfov > 0.0) {
+		new_K = build_map(target_hfov, undistmap1, undistmap2);
+		used_hfov = target_hfov;
+		int invalid = count_invalid(undistmap1, undistmap2);
+		if (invalid > 0) {
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+					">>> gen_gdc_bin_mono_fisheye: target_hfov=%.1f deg has %d out-of-range map points (may sample masked region)",
+					target_hfov, invalid);
+		}
+	} else {
+		// 自动模式：从宽到窄找映射点全部有效的最大水平FOV
+		bool found = false;
+		int best_invalid = -1;
+		for (double hfov = 170.0; hfov >= 60.0; hfov -= 2.0) {
+			cv::Mat map1, map2;
+			cv::Mat K_try = build_map(hfov, map1, map2);
+			int invalid = count_invalid(map1, map2);
+			if (invalid == 0) {
+				new_K = K_try;
+				undistmap1 = map1;
+				undistmap2 = map2;
+				used_hfov = hfov;
+				found = true;
+				break;
+			}
+			if ((best_invalid < 0) || (invalid < best_invalid)) {
+				best_invalid = invalid;
+				new_K = K_try;
+				undistmap1 = map1;
+				undistmap2 = map2;
+				used_hfov = hfov;
+			}
+		}
+		if (!found) {
+			RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
+					">>> gen_gdc_bin_mono_fisheye: no fully valid FOV found, fallback hfov=%.1f deg, invalid=%d",
+					used_hfov, best_invalid);
+		}
+	}
+	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+			">>> gen_gdc_bin_mono_fisheye: in=%dx%d, out=%dx%d, used_hfov=%.1f deg, new_fx=%.2f",
+			in_width, in_height, out_gdc_width, out_gdc_height, used_hfov, new_K.at<double>(0, 0));
+
+	int rotation_diff_int = rotation_diff;
+	cv::Mat tmp;
+	cv::Mat rotation_1;
+	cv::Mat rotation_2;
+    switch(rotation_diff_int) {
+        case 90:
+			cv::transpose(undistmap1, tmp);
+			cv::flip(tmp, rotation_1, 1);
+			cv::transpose(undistmap2, tmp);
+			cv::flip(tmp, rotation_2, 1);
+            break;
+        case 180:
+			cv::flip(undistmap1, rotation_1, -1);
+			cv::flip(undistmap2, rotation_2, -1);
+			break;
+        case 270:
+			cv::transpose(undistmap1, tmp);
+			cv::flip(tmp, rotation_1, 0);
+			cv::transpose(undistmap2, tmp);
+			cv::flip(tmp, rotation_2, 0);
+			break;
+		default:
+			rotation_1 = undistmap1;
+			rotation_2 = undistmap2;
+			break;
+    }
+	std::vector<point_t> bin_map(out_width * out_height);
+	int width_tmp = in_width;
+	int heigh_tmp = in_height;
+	// 与 gen_gdc_bin 相同的旋转坐标换算，另加上下界clamp防越界采样
+	auto clamp_point = [width_tmp, heigh_tmp](double x, double y) {
+		point_t p;
+		p.x = x < 0 ? 0.0 : (x > width_tmp - 1 ? width_tmp - 1 : x);
+		p.y = y < 0 ? 0.0 : (y > heigh_tmp - 1 ? heigh_tmp - 1 : y);
+		return p;
+	};
+	int cal_rotate_int = cal_rotate;
+    switch(cal_rotate_int) {
+        case 90:
+            std::transform(rotation_1.ptr<float>(), rotation_1.ptr<float>() + rotation_1.total(),
+				rotation_2.ptr<float>(), bin_map.begin(),
+				[clamp_point, heigh_tmp](float x, float y) {
+					return clamp_point(static_cast<double>(y), heigh_tmp - static_cast<double>(x) - 1);
+				});
+            break;
+        case 180:
+			std::transform(rotation_1.ptr<float>(), rotation_1.ptr<float>() + rotation_1.total(),
+				rotation_2.ptr<float>(), bin_map.begin(),
+				[clamp_point, width_tmp, heigh_tmp](float x, float y) {
+					return clamp_point(width_tmp - static_cast<double>(x) - 1, heigh_tmp - static_cast<double>(y) - 1);
+				});
+			break;
+        case 270:
+			std::transform(rotation_1.ptr<float>(), rotation_1.ptr<float>() + rotation_1.total(),
+				rotation_2.ptr<float>(), bin_map.begin(),
+				[clamp_point, width_tmp](float x, float y) {
+					return clamp_point(width_tmp - static_cast<double>(y) - 1, static_cast<double>(x));
+				});
+			break;
+		default:
+			std::transform(rotation_1.ptr<float>(), rotation_1.ptr<float>() + rotation_1.total(),
+			rotation_2.ptr<float>(), bin_map.begin(),
+			[clamp_point](float x, float y) {
+				return clamp_point(static_cast<double>(x), static_cast<double>(y));
+			});
+			break;
+    }
+
+	param_t gdc_param;
+	memset(&gdc_param, 0, sizeof(param_t));
+	gdc_param.format = FMT_SEMIPLANAR_420;
+	gdc_param.in.w = in_width;
+	gdc_param.in.h = in_height;
+	gdc_param.out.w = out_width;
+	gdc_param.out.h = out_height;
+	gdc_param.x_offset = 0;
+	gdc_param.y_offset = 0;
+	gdc_param.diameter = in_height;
+	gdc_param.fov = 180;
+
+	window_t  wnds;
+	memset(&wnds, 0, sizeof(window_t));
+	wnds.strength = 1.0;
+	wnds.strengthY = 1.0;
+	wnds.angle = rotation;
+	wnds.elevation = 0;
+	wnds.azimuth = 0;
+	wnds.keep_ratio = 1;
+	wnds.FOV_h = 90;
+	wnds.FOV_w = 90;
+	wnds.cylindricity_y = 0;
+	wnds.cylindricity_x = 0;
+	wnds.trapezoid_left_angle = 90;
+	wnds.trapezoid_right_angle = 90;
+
+	wnds.out_r.x = 0;
+	wnds.out_r.y = 0;
+	wnds.out_r.w = out_width;
+	wnds.out_r.h = out_height;
+	wnds.input_roi_r.x = 0;
+	wnds.input_roi_r.y = 0;
+	wnds.input_roi_r.w = in_width;
+	wnds.input_roi_r.h = in_height;
+	wnds.pan = 0;
+	wnds.tilt = 0;
+	wnds.zoom = 1;
+	wnds.transform = CUSTOM;
+	wnds.custom.full_tile_calc = 1;
+	wnds.custom.tile_incr_x = 50;
+	wnds.custom.tile_incr_y = 50;
+	wnds.custom.w = out_width - 1;
+	wnds.custom.h = out_height - 1;
+	wnds.custom.centerx = out_width / 2 - 1;
+	wnds.custom.centery = out_height / 2 - 1;
+
+	wnds.custom.points = bin_map.data();
+
+	void *bin_buf_ptr = nullptr;
+	uint64_t bin_buf_size;
+	int64_t alloc_flags = 0;
+	int offset = 0;
+
+	auto ret = gen_gdc_cfg(&gdc_param, &wnds, 1, (void**)&bin_buf_ptr, &bin_buf_size);
+	if (ret != 0 || bin_buf_ptr == nullptr) {
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"gen_gdc_cfg failed, ret = %d\n", ret);
+		return nullptr;
+	}
+
+    hb_mem_common_buf_t *bin_buf = new hb_mem_common_buf_t;
+	memset(bin_buf, 0, sizeof(hb_mem_common_buf_t));
+	alloc_flags = HB_MEM_USAGE_MAP_INITIALIZED | HB_MEM_USAGE_PRIV_HEAP_2_RESERVERD | HB_MEM_USAGE_CPU_READ_OFTEN |
+				HB_MEM_USAGE_CPU_WRITE_OFTEN | HB_MEM_USAGE_CACHED;
+	ret = hb_mem_alloc_com_buf(bin_buf_size, alloc_flags, bin_buf);
+	if (ret != 0 || bin_buf->virt_addr == NULL) {
+        free_gdc_cfg(bin_buf_ptr);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hb_mem_alloc_com_buf for bin failed, ret = %d\n", ret);
+		return nullptr;
+	}
+	memcpy(bin_buf->virt_addr, bin_buf_ptr, bin_buf_size);
+	ret = hb_mem_flush_buf(bin_buf->fd, offset, bin_buf_size);
+	if (ret != 0 || bin_buf->virt_addr == NULL) {
+        free_gdc_cfg(bin_buf_ptr);
+		RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hb_mem_flush_buf for bin failed, ret = %d\n", ret);
+		return nullptr;
+	}
+	free_gdc_cfg(bin_buf_ptr);
+	auto gdc_bin_ptr = std::make_shared<GdcBinBuf_ST>();
+	gdc_bin_ptr->bin_buf = bin_buf;
+	gdc_bin_ptr->bin_buf_size = bin_buf_size;
+
+	cal_cam_info->width = out_width;
+    cal_cam_info->height = out_height;
+    cal_cam_info->d.resize(cam_info->d.size(),0.0);
+
+	double tmp_t = 0;
+    switch(rotation_diff_int) {
+        case 90:
+		case 270:
+			tmp_t = new_K.at<double>(0,0);
+			new_K.at<double>(0,0) = new_K.at<double>(1,1);
+			new_K.at<double>(1,1) = tmp_t;
+			tmp_t = new_K.at<double>(0,2);
+			new_K.at<double>(0,2) = out_height - new_K.at<double>(1,2);
+			new_K.at<double>(1,2) = tmp_t;
+            break;
+		default:
+			break;
+    }
+
+	std::copy(new_K.ptr<double>(0), new_K.ptr<double>(0) + new_K.total(), cal_cam_info->k.begin());
+
+	cal_cam_info->r[0] = 1.0;
+    cal_cam_info->r[1] = 0.0;
+    cal_cam_info->r[2] = 0.0;
+    cal_cam_info->r[3] = 0.0;
+    cal_cam_info->r[4] = 1.0;
+    cal_cam_info->r[5] = 0.0;
+    cal_cam_info->r[6] = 0.0;
+    cal_cam_info->r[7] = 0.0;
+    cal_cam_info->r[8] = 1.0;
+
+	cv::Mat RT = cv::Mat::eye(3, 4, CV_64F);
+	cv::Mat new_P = new_K * RT;
+	std::copy(new_P.ptr<double>(0), new_P.ptr<double>(0) + new_P.total(), cal_cam_info->p.begin());
+	return gdc_bin_ptr;
+}
+
 
 std::shared_ptr<GdcBinBuf_ST> HobotMipiCap::gen_gdc_bin_rotation(int gdc_width, int gdc_height,int out_width, int out_height,
        double rotation) {
