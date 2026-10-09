@@ -36,7 +36,10 @@ namespace imu_sensor
 
 static const std::string imu_devices[] = {
     "bmi08x",
-    "icm42688"
+    "icm42688",
+    "icm42688-gyro",
+    "icm42688-accel",
+    "icm42688-fsync"
 };
 
 int ImuManager::auto_detect_iio_devices() {
@@ -73,8 +76,11 @@ int ImuManager::auto_detect_iio_devices() {
                             device_info.sensor_type = device_name_str;
                             device_info.path = device_path;
                             device_info.d_name = ent->d_name;
-                            devices_map_[device].push_back(device_info);
-                            //devices_map_[strcspn(device_name, "\n")] = device_path;
+                            if (device_name_str.find("icm42688-") == 0) {
+                                devices_map_["icm42688"].push_back(device_info);
+                            } else {
+                                devices_map_[device].push_back(device_info);
+                            }
                         }
                     }
                 }
