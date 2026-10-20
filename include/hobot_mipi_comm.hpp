@@ -62,7 +62,6 @@ struct NodePara {
   bool sync_awb_;
   bool sync_ccm_;
   bool sync_ae_;
-  bool isp_sync_enable_;
   bool print_isp_log_;
 };
 
@@ -95,7 +94,6 @@ typedef struct {
   bool sync_awb_;
   bool sync_ccm_;
   bool sync_ae_;
-  bool isp_sync_enable_;
   bool print_isp_log_;
 } MIPI_CAP_INFO_ST;
 

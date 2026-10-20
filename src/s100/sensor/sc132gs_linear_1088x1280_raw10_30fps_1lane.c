@@ -2,7 +2,7 @@
 
 #define SENSOR_WIDTH  1088
 #define SENSOR_HEIGHT  1280
-#define SENSOE_FPS 30
+#define SENSOR_FPS 30
 #define RAW10 0x2B
 
 // sc132gs 的sample配置
@@ -12,7 +12,7 @@ static mipi_config_t sc132gs_mipi_config = {
         .phy = 0,
         .lane = 2,
         .datatype = RAW10,
-        .fps = SENSOE_FPS,
+        .fps = SENSOR_FPS,
         .mclk = 1,
         .mipiclk = 2400,
         .width = SENSOR_WIDTH,
@@ -39,7 +39,7 @@ static camera_config_t sc132gs_camera_config = {
         .eeprom_addr = 0x51,
         .serial_addr = 0x40,
         .sensor_mode = 1,
-        .fps = SENSOE_FPS,
+        .fps = SENSOR_FPS,
         .width = SENSOR_WIDTH,
         .height = SENSOR_HEIGHT,
         .extra_mode = 0,
@@ -132,9 +132,9 @@ static vin_attr_t sc132gs_vin_attr = {
                 .enable_frame_id = 1,
                 .set_init_frame_id = 1,
                 .enable_pattern = 0,
-                .skip_frame = 1,//0: disable, 1: soft skip frame, 2: drop frist few frame
-                .input_fps = SENSOE_FPS, 
-                .output_fps = SENSOE_FPS,
+                .skip_frame = 0,//0: disable, 1: soft skip frame, 2: drop frist few frame
+                .input_fps = SENSOR_FPS, 
+                .output_fps = SENSOR_FPS,
                 .skip_nums = 1, //drop frist frame
             },
             .rdma_input = {

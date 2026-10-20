@@ -70,10 +70,6 @@ def generate_launch_description():
         'mipi_frame_ts_type',
         default_value='sensor',
         description='mipi camera out image framerate')
-    isp_sync_enable_arg = DeclareLaunchArgument(
-        'isp_sync_enable',
-        default_value='False',
-        description='enable ISP master->slave peer bind sync (hbn_isp_sync_enable)')
     mipi_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -94,8 +90,7 @@ def generate_launch_description():
             'mipi_rotation': LaunchConfiguration('mipi_rotation'),
             'mipi_cal_rotation': LaunchConfiguration('mipi_cal_rotation'),
             'mipi_gdc_enable': LaunchConfiguration('mipi_gdc_enable'),
-            'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type'),
-            'isp_sync_enable': LaunchConfiguration('isp_sync_enable')
+            'mipi_frame_ts_type': LaunchConfiguration('mipi_frame_ts_type')
         }.items()
     )
 
@@ -142,7 +137,6 @@ def generate_launch_description():
         mipi_gdc_enable_arg,
         mipi_image_framerate_arg,
         mipi_frame_ts_type_arg,
-        isp_sync_enable_arg,
         shared_mem_node,
         # image publish
         mipi_node,

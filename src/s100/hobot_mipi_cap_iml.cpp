@@ -2395,8 +2395,10 @@ int HobotMipiCapIml::create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_co
 			for (auto& attr : pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.lpwm_chn_attr) {
 				attr.enable = 0;
 			}
-			pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.skip_frame = 1;
-			pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.output_fps = pipe_contex->cap_info_->fps;
+			if (pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.input_fps > pipe_contex->cap_info_->fps) {
+				pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.skip_frame = 1;
+				pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.output_fps = pipe_contex->cap_info_->fps;
+			}
 		}
 	} else {
 		//	pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
