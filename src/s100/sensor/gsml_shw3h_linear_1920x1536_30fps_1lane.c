@@ -63,6 +63,10 @@ static vin_attr_t gsml_shw3h_vin_attr = {
                 .enable_frame_id = 1,
                 .set_init_frame_id = 1,
                 .enable_pattern = 0,
+                .skip_frame = 0,//0: disable, 1: soft skip frame, 2: drop frist few frame
+                .input_fps = SENSOR_FPS, 
+                .output_fps = SENSOR_FPS,
+                .skip_nums = 1, //drop frist frame
             },
             .rdma_input = {
                 .rdma_en = 0,

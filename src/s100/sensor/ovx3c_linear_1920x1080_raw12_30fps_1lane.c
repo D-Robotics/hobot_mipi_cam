@@ -2,7 +2,7 @@
 
 #define SENSOR_WIDTH  1920
 #define SENSOR_HEIGHT  1080
-#define SENSOE_FPS 30
+#define SENSOR_FPS 30
 #define RAW10 0x2B
 
 static camera_config_t ovx3cstd_camera_config = {
@@ -61,6 +61,10 @@ static vin_attr_t ovx3cstd_vin_attr = {
                 .enable_frame_id = 1,
                 .set_init_frame_id = 1,
                 .enable_pattern = 0,
+                .skip_frame = 0,//0: disable, 1: soft skip frame, 2: drop frist few frame
+                .input_fps = SENSOR_FPS, 
+                .output_fps = SENSOR_FPS,
+                .skip_nums = 1, //drop frist frame
                 .lpwm_trig_sel = (int32_t)LPWM_CHN_INVALID,
             },
             .rdma_input = {
