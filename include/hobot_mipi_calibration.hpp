@@ -366,6 +366,30 @@ typedef struct opt_awb_config
 } Opt_Awb_Config;
 #pragma pack()
 
+//LSC网格常量（对应SDK SENSOR_OTP_LSC_*）
+#define LSC_GRID_SIZE 17
+#define LSC_GOLDEN_GRID_SIZE 33
+
+//LSC OTP数据（yuguang EEPROM LSC区域 0x0400..0x1618）
+#pragma pack(4)
+typedef struct opt_lsc_config
+{
+  // EEPROM LSC区域头部(0x0400..0x0408)，左右目共用
+  uint16_t width;
+  uint16_t height;
+  uint8_t pattern;     // 0x00 RGGB/0x01 GRBG/0x02 GBRG/0x03 BGGR
+  uint8_t bls_r;
+  uint8_t bls_gr;
+  uint8_t bls_gb;
+  uint8_t bls_b;
+  // 模组LSC数据 17x17 行主序
+  uint16_t r[LSC_GRID_SIZE * LSC_GRID_SIZE];
+  uint16_t gr[LSC_GRID_SIZE * LSC_GRID_SIZE];
+  uint16_t gb[LSC_GRID_SIZE * LSC_GRID_SIZE];
+  uint16_t b[LSC_GRID_SIZE * LSC_GRID_SIZE];
+} Opt_Lsc_Config;
+#pragma pack()
+
 //单例类
 class mipi_calibration {
 
@@ -381,9 +405,11 @@ class mipi_calibration {
     std::string eeprom_name_;
     int i2c_bus;
     double cal_rotation_;
-    std::vector<sensor_msgs::msg::CameraInfo> cam_info_;    
+    std::vector<sensor_msgs::msg::CameraInfo> cam_info_;
     std::vector<Imu_params> imu_info_;
     std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;
+    //LSC OTP数据: [0]=左目 [1]=右目；为空表示该批次无有效LSC数据
+    std::vector<std::shared_ptr<Opt_Lsc_Config>> lsc_otp_data_;
   };
 
   //返回结构体的const引用(零拷贝)
