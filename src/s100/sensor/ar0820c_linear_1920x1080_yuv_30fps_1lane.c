@@ -63,6 +63,10 @@ static vin_attr_t ar0820std_vin_attr = {
                 .enable_frame_id = 1,
                 .set_init_frame_id = 1,
                 .enable_pattern = 0,
+                .skip_frame = 0,//0: disable, 1: soft skip frame, 2: drop frist few frame
+                .input_fps = SENSOR_FPS, 
+                .output_fps = SENSOR_FPS,
+                .skip_nums = 1, //drop frist frame
                 .lpwm_trig_sel = (int32_t)LPWM_CHN_INVALID,
             },
             .rdma_input = {

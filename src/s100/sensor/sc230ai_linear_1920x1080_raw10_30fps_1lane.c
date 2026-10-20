@@ -2,7 +2,7 @@
 
 #define SENSOR_WIDTH  1920
 #define SENSOR_HEIGHT  1080
-#define SENSOE_FPS 30
+#define SENSOR_FPS 30
 #define RAW10 0x2B
 
 // sc230ai 的sample配置
@@ -12,7 +12,7 @@ static mipi_config_t sc230ai_mipi_config = {
         .phy = 0,
         .lane = 1,
         .datatype = RAW10,
-        .fps = SENSOE_FPS,
+        .fps = SENSOR_FPS,
         .mclk = 24,
         .mipiclk = 810,
         .width = SENSOR_WIDTH,
@@ -39,7 +39,7 @@ static camera_config_t sc230ai_camera_config = {
         .eeprom_addr = 0x51,
         .serial_addr = 0x40,
         .sensor_mode = 1,
-        .fps = SENSOE_FPS,
+        .fps = SENSOR_FPS,
         .width = SENSOR_WIDTH,
         .height = SENSOR_HEIGHT,
         .extra_mode = 0,
@@ -132,6 +132,10 @@ static vin_attr_t sc230ai_vin_attr = {
                 .enable_frame_id = 1,
                 .set_init_frame_id = 1,
                 .enable_pattern = 0,
+                .skip_frame = 0,//0: disable, 1: soft skip frame, 2: drop frist few frame
+                .input_fps = SENSOR_FPS, 
+                .output_fps = SENSOR_FPS,
+                .skip_nums = 1, //drop frist frame
                 .lpwm_trig_sel = (int32_t)LPWM_CHN_INVALID,
             },
             .rdma_input = {
