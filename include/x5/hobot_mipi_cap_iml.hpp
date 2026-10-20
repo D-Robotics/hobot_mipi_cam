@@ -21,8 +21,10 @@
 #include <queue>
 #include <thread>
 #include <mutex>
+#include <atomic>
 #include "hobot_mipi_cap.hpp"
 #include "hobot_mipi_comm.hpp"
+#include "hobot_mipi_diag.hpp"
 #include "hb_camera_interface.h"
 #include "hbn_api.h"
 #include "vp_sensors.h"
@@ -108,6 +110,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   void singleFrameTask();
   int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
   void sync_awb_ae_task();
+  void diagTask();
 
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
   int creat_vse_node(pipe_contex_t *pipe_contex);
@@ -136,6 +139,13 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::shared_ptr<std::thread> multi_frame_task_ = nullptr;
   std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
   std::shared_ptr<std::thread> awb_ae_sync_task_ = nullptr;
+  // 采集链路诊断：每条 pipe 一份统计，诊断线程周期输出。
+  std::vector<std::unique_ptr<diag::PipeDiag>> diag_pipes_;
+  std::vector<diag::PipeSnap> diag_prev_;
+  std::thread diag_thread_;
+  std::atomic<bool> diag_running_{false};
+  std::atomic<uint64_t> diag_select_timeout_{0};
+  std::atomic<uint64_t> diag_select_error_{0};
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
   std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;
 

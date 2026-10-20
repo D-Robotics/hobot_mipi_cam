@@ -221,6 +221,8 @@ int MipiCamIml::init(std::shared_ptr<struct NodePara> para) {
   cap_info_.sync_ccm_ = nodePare_->sync_ccm_;
   cap_info_.sync_ae_ = nodePare_->sync_ae_;
   cap_info_.print_isp_log_ = nodePare_->print_isp_log_;
+  cap_info_.diag_enable_ = nodePare_->diag_enable_;
+  cap_info_.diag_period_ms_ = nodePare_->diag_period_ms_;
   if (mipiCap_ptr_->initEnv() < 0) {
     RCLCPP_ERROR(rclcpp::get_logger("mipi_cam"),
                  "[%s]->init %s's mipi host and gpio failure: %s\r\n", __func__, board_type.c_str());

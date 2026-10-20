@@ -148,6 +148,18 @@ def generate_launch_description():
             default_value='False',
             description='print isp parameters log'),
         DeclareLaunchArgument(
+            'mipi_diag_enable',
+            default_value='True',
+            description='enable periodic capture diagnostics log'),
+        DeclareLaunchArgument(
+            'mipi_diag_period',
+            default_value='10000',
+            description='diagnostics log period in ms'),
+        DeclareLaunchArgument(
+            'mipi_diag_log_level',
+            default_value='info',
+            description='log level of the mipi_diag logger'),
+        DeclareLaunchArgument(
             'log_level',
             default_value='warn',
             description='log level'),
@@ -195,7 +207,10 @@ def generate_launch_description():
                 {"sync_ccm": LaunchConfiguration('sync_ccm')},
                 {"sync_ae": LaunchConfiguration('sync_ae')},
                 {"print_isp_log": LaunchConfiguration('print_isp_log')},
+                {"diag_enable": LaunchConfiguration('mipi_diag_enable')},
+                {"diag_period_ms": LaunchConfiguration('mipi_diag_period')},
             ],
-            arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
+            arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level'),
+                       '--log-level', ['mipi_diag:=', LaunchConfiguration('mipi_diag_log_level')]]
         )
     ])

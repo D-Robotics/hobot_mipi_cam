@@ -17,6 +17,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include "hobot_mipi_comm.hpp"
+#include "hobot_mipi_diag.hpp"
 #include "hobot_mipi_cam.hpp"
 #include "hobot_mipi_calibration.hpp"
 
@@ -45,9 +46,24 @@
 namespace mipi_cam
 {
 
+// 发布侧诊断统计：只由该通道的发布线程读写，无需原子。
+struct PubDiag {
+  uint64_t cons_ok = 0;
+  uint64_t cons_fail = 0;
+  uint64_t pub_ok = 0;
+  uint64_t pub_fail = 0;
+  uint64_t last_cons_ok = 0;
+  uint64_t last_cons_fail = 0;
+  uint64_t last_pub_ok = 0;
+  uint64_t last_pub_fail = 0;
+  int64_t last_ms = 0;
+  size_t last_subs = 0;
+};
+
 class Publisher_info_base {
   public:
   // shared image message
+  PubDiag diag_;
   sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info_ = nullptr;
   sensor_msgs::msg::CameraInfo::UniquePtr camera_calibration_info2_ = nullptr;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr info_pub_ = nullptr;
@@ -81,6 +97,8 @@ class MipiCamNode : public rclcpp::Node {
   void read_imu_data();
 
  private:
+  void pub_diag(const std::string &channel, const std::string &topic,
+                Publisher_info_base *info, size_t subs);
   void save_yuv(const builtin_interfaces::msg::Time stamp, void *data, int data_size);
   void save_jpg(const builtin_interfaces::msg::Time stamp, std::string encode, int w, int h, void *data);
   void init_publisher(std::shared_ptr<Publisher_info>  Pub_info, std::string topic, std::string topic_type,

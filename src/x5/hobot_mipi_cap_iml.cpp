@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <regex>
 #include <cmath>
+#include <cerrno>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -441,6 +442,32 @@ int HobotMipiCapIml::start() {
 	}
   }
   started_ = true;
+  // 采集链路诊断统计初始化（必须在采集线程创建前完成，避免线程读到未初始化的 vector）。
+  if (cap_info_.diag_enable_ && !pipe_contex.empty()) {
+    int64_t now = diag::now_ms();
+    diag_pipes_.clear();
+    diag_prev_.clear();
+    for (size_t idx = 0; idx < pipe_contex.size(); ++idx) {
+      auto dp = std::make_unique<diag::PipeDiag>();
+      dp->heartbeat_ms.store(now);
+      dp->last_fd_ready_ms.store(now);
+      int sensor_fps = 0;
+      if (pipe_contex[idx].sensor_config.camera_config) {
+        sensor_fps = pipe_contex[idx].sensor_config.camera_config->fps;
+      }
+      dp->sensor_fps = sensor_fps > 0 ? static_cast<double>(sensor_fps) : 0.0;
+      if (sensor_fps > 0 && cap_info_.fps > 0) {
+        dp->expected_fid_step = static_cast<uint32_t>((sensor_fps + cap_info_.fps - 1) / cap_info_.fps);
+        if (dp->expected_fid_step < 1) {
+          dp->expected_fid_step = 1;
+        }
+      }
+      diag_pipes_.push_back(std::move(dp));
+      diag::PipeSnap snap;
+      snap.last_report_ms = now;
+      diag_prev_.push_back(snap);
+    }
+  }
   if (!pipe_contex.empty()) {
 	  for(auto contex : pipe_contex) {
 		auto que_manger = std::make_shared<BuffQueueManage>();
@@ -485,6 +512,24 @@ int HobotMipiCapIml::start() {
     awb_ae_sync_task_ = std::make_shared<std::thread>(
         std::bind(&HobotMipiCapIml::sync_awb_ae_task, this));
   }
+  // 诊断线程在所有队列/采集线程就绪后启动，周期输出每 pipe 的取帧/入队/队列状态。
+  if (cap_info_.diag_enable_ && !diag_pipes_.empty()) {
+    int sensor_fps = 30;
+    if (pipe_contex[0].sensor_config.camera_config) {
+      sensor_fps = pipe_contex[0].sensor_config.camera_config->fps;
+    }
+    int vse_fps = 1;
+    if (sensor_fps > 0) {
+      vse_fps = (cap_info_.fps == 1) ? 1
+                                     : static_cast<int>(ceil(cap_info_.fps * 30.0 / sensor_fps));
+    }
+    RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
+                "diag cfg, app_fps:%d, sub_fps:%d, sensor_fps:%d, vse_fps:%d, lpwm:%d, period_ms:%d, pipes:%zu\n",
+                cap_info_.fps, cap_info_.sub_fps, sensor_fps, vse_fps,
+                cap_info_.lpwm_enable_ ? 1 : 0, cap_info_.diag_period_ms_, pipe_contex.size());
+    diag_running_ = true;
+    diag_thread_ = std::thread(&HobotMipiCapIml::diagTask, this);
+  }
   return 0;
 }
 
@@ -497,6 +542,10 @@ int HobotMipiCapIml::stop() {
   }
   // Safety cleanup: ensure threads are joined before destruction
   started_ = false;
+  diag_running_ = false;
+  if (diag_thread_.joinable()) {
+    diag_thread_.join();
+  }
   if (multi_frame_task_ && multi_frame_task_->joinable()) {
     multi_frame_task_->join();
   }
@@ -666,6 +715,9 @@ void HobotMipiCapIml::multiFrameTask() {
 	}
 
 	int pipe_num = pipe_contex.size();
+	if (cap_info_.diag_enable_) {
+		RCLCPP_INFO(rclcpp::get_logger("mipi_diag"), "diag multiFrameTask start, pipes:%d\n", pipe_num);
+	}
 	int ret = 0;
 	fd_set readfds;
 	struct timeval timeout;
@@ -677,13 +729,20 @@ void HobotMipiCapIml::multiFrameTask() {
 	std::vector<int> indices(pipe_num);
 
 	// 2. 填充递增序列：从 0 开始，后续元素依次加 1
-	std::iota(indices.begin(), indices.end(), 0); 
+	std::iota(indices.begin(), indices.end(), 0);
 
 	std::for_each(indices.begin(), indices.end(), [&](int i) {
 		hbn_vnode_get_fd(pipe_contex[i].stream_handle, 0, &ochn_fd[i]);
 	});
 
 	while (started_) {
+	  // 诊断心跳：每轮循环刷新一次，用于区分“线程退出”和“上游静默”。
+	  if (cap_info_.diag_enable_ && diag_pipes_.size() == static_cast<size_t>(pipe_num)) {
+		int64_t hb_ms = diag::now_ms();
+		for (int i = 0; i < pipe_num; ++i) {
+			diag_pipes_[i]->heartbeat_ms.store(hb_ms, std::memory_order_relaxed);
+		}
+	  }
 	  max_handle = 0;
 	  FD_ZERO(&readfds);
 	  std::for_each(indices.begin(), indices.end(), [&](int i) {
@@ -695,35 +754,207 @@ void HobotMipiCapIml::multiFrameTask() {
 	  timeout.tv_usec = 0;
 	  result = select(max_handle + 1, &readfds, nullptr, nullptr, &timeout);
 	  if (result == -1) {
+		  int select_errno = errno;
+		  if (cap_info_.diag_enable_) {
+			  diag_select_error_.fetch_add(1, std::memory_order_relaxed);
+		  }
+		  RCLCPP_ERROR(rclcpp::get_logger("mipi_diag"),
+			  "diag select failed, errno:%d, max_handle:%d, pipe_num:%d, fd0:%d, fd1:%d\n",
+			  select_errno, max_handle, pipe_num,
+			  pipe_num > 0 ? ochn_fd[0] : -1, pipe_num > 1 ? ochn_fd[1] : -1);
 		  std::cerr << "Select error" << std::endl;
 		  break;
 	  } else if (result == 0) {
 		  // 超时
+		  if (cap_info_.diag_enable_) {
+			  diag_select_timeout_.fetch_add(1, std::memory_order_relaxed);
+		  }
 		  std::cout << "Timeout occurred" << std::endl;
 		  continue;
 	  } else {
 		  for (int i = 0; i < ochn_fd.size(); i++) {
 			  //if (!rclcpp::ok()) break;
 			  if (FD_ISSET(ochn_fd[i], &readfds)) {
+				bool diag_on = cap_info_.diag_enable_ && i < static_cast<int>(diag_pipes_.size());
+				if (diag_on) {
+					diag_pipes_[i]->last_fd_ready_ms.store(diag::now_ms(), std::memory_order_relaxed);
+					diag_pipes_[i]->select_wake.fetch_add(1, std::memory_order_relaxed);
+				}
 				std::shared_ptr<VideoBuffer> buff_ptr = v_buff_que_manger_[i]->get_empty_buff();
 				if (buff_ptr) {
 					ret = getVnodeFrame(pipe_contex[i].stream_handle, 0, buff_ptr);
 					if (ret == 0) {
+						if (diag_on) {
+							diag_pipes_[i]->getframe.mark_ok();
+							uint32_t fid = buff_ptr->frame_id;
+							if (diag_pipes_[i]->fid_valid.load(std::memory_order_relaxed)) {
+								uint32_t last_fid = diag_pipes_[i]->last_frame_id.load(std::memory_order_relaxed);
+								uint32_t delta = fid - last_fid;
+								if (delta < 10000) {
+									diag_pipes_[i]->fid_advanced.fetch_add(delta, std::memory_order_relaxed);
+									// X5 的 frame_id 按 sensor 原始帧率递增，VSE 分频后输出；
+									// 只有超过“预期步长”的跳变才算驱动层丢帧。
+									uint32_t step = diag_pipes_[i]->expected_fid_step;
+									if (step < 1) {
+										step = 1;
+									}
+									if (delta > step) {
+										diag_pipes_[i]->fid_missing.fetch_add(delta - step, std::memory_order_relaxed);
+									}
+								}
+							}
+							diag_pipes_[i]->last_frame_id.store(fid, std::memory_order_relaxed);
+							diag_pipes_[i]->fid_valid.store(true, std::memory_order_relaxed);
+						}
 						if (combine_flag_) {
 							auto buff_tmp = std::make_shared<VideoBuffer>(*buff_ptr);
 							v_frame_que_[i]->push(buff_tmp);
 						}
 						buff_ptr->return_data_que();
+						if (diag_on) {
+							diag_pipes_[i]->push.fetch_add(1, std::memory_order_relaxed);
+						}
 					} else {
+						if (diag_on) {
+							diag_pipes_[i]->getframe.mark_fail();
+						}
 						RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", i,ret);
 						buff_ptr->return_empty_que();
 					}
+				} else if (diag_on) {
+					diag_pipes_[i]->empty_null.fetch_add(1, std::memory_order_relaxed);
 				}
 			  }
 		  }
 	  }
 	}
+	if (cap_info_.diag_enable_) {
+		if (started_) {
+			RCLCPP_ERROR(rclcpp::get_logger("mipi_diag"),
+				"diag multiFrameTask exit unexpectedly, select_error:%lu\n",
+				static_cast<unsigned long>(diag_select_error_.load(std::memory_order_relaxed)));
+		} else {
+			RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
+				"diag multiFrameTask exit, select_error:%lu\n",
+				static_cast<unsigned long>(diag_select_error_.load(std::memory_order_relaxed)));
+		}
+	}
 	return;
+}
+
+// 采集链路周期诊断：按固定周期输出每 pipe 的取帧/入队/队列状态，并做帧率对齐判定。
+// 只读取原子计数与队列水位，不参与、不干预采集流程。
+void HobotMipiCapIml::diagTask() {
+  if (!started_ || !cap_info_.diag_enable_) {
+    return;
+  }
+  int period_ms = cap_info_.diag_period_ms_ > 0 ? cap_info_.diag_period_ms_ : 10000;
+  // 停摆阈值独立于输出周期：不因降低日志频率而拖慢故障判定（最短 10s）。
+  int64_t stall_ms = period_ms > 10000 ? static_cast<int64_t>(period_ms) : 10000;
+  double cfg_fps = cap_info_.fps > 0 ? static_cast<double>(cap_info_.fps) : 30.0;
+  double tol = diag::fps_tolerance(cfg_fps);
+  std::vector<diag::DiagState> states(diag_pipes_.size(), diag::DiagState::kOk);
+
+  while (diag_running_ && started_) {
+    int slept = 0;
+    while (slept < period_ms && diag_running_ && started_) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      slept += 100;
+    }
+    if (!diag_running_ || !started_) {
+      break;
+    }
+    int64_t now = diag::now_ms();
+    for (size_t i = 0; i < diag_pipes_.size() && i < diag_prev_.size(); ++i) {
+      auto &d = *diag_pipes_[i];
+      diag::PipeSnap &p = diag_prev_[i];
+      int64_t elapsed = now - p.last_report_ms;
+      if (elapsed <= 0) {
+        elapsed = period_ms;
+      }
+      uint64_t wake = d.select_wake.load(std::memory_order_relaxed);
+      uint64_t gf_ok = d.getframe.ok.load(std::memory_order_relaxed);
+      uint64_t gf_fail = d.getframe.fail.load(std::memory_order_relaxed);
+      uint64_t empty_null = d.empty_null.load(std::memory_order_relaxed);
+      uint64_t push = d.push.load(std::memory_order_relaxed);
+      uint64_t fid_adv = d.fid_advanced.load(std::memory_order_relaxed);
+      uint64_t fid_miss = d.fid_missing.load(std::memory_order_relaxed);
+      int64_t hb_age = now - d.heartbeat_ms.load(std::memory_order_relaxed);
+      int64_t fd_age = now - d.last_fd_ready_ms.load(std::memory_order_relaxed);
+      size_t q_buff = 0;
+      size_t q_empty = 0;
+      if (i < v_buff_que_manger_.size() && v_buff_que_manger_[i]) {
+        q_buff = v_buff_que_manger_[i]->size_data();
+        q_empty = v_buff_que_manger_[i]->size_empty();
+      }
+      uint64_t d_gf = gf_ok - p.gf_ok;
+      uint64_t d_fid = fid_adv - p.fid_advanced;
+      uint64_t d_miss = fid_miss - p.fid_missing;
+      double fps_vnode = static_cast<double>(d_gf) * 1000.0 / static_cast<double>(elapsed);
+      double fps_fid = static_cast<double>(d_fid) * 1000.0 / static_cast<double>(elapsed);
+      // frame_id 推进速率对应的是 sensor 原始帧率（X5 经 VSE 分频后才等于输出帧率）。
+      double hw_fps = d.sensor_fps > 0 ? d.sensor_fps : cfg_fps;
+
+      diag::DiagState state = diag::DiagState::kOk;
+      if (hb_age > stall_ms) {
+        state = diag::DiagState::kThreadDead;
+      } else if (fd_age > stall_ms) {
+        state = diag::DiagState::kSourceSilent;
+      } else if (fps_vnode < cfg_fps - tol) {
+        state = (fps_fid < hw_fps - tol) ? diag::DiagState::kSourceSlow
+                                         : diag::DiagState::kAppDrop;
+      } else if (d_miss > 0) {
+        state = diag::DiagState::kHwDrop;
+      }
+      // 队列积压不在这里判定：采集层看不到订阅者，无消费者时 q_buff 长期为 3 是正常水位；
+      // 消费侧由节点层的 IDLE / CONSUMER_SLOW + 本行的 q_buff/q_empty 共同反映。
+
+      RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
+                  "diag pipe:%zu main, hb:%ldms, fd_age:%ldms, wake:%lu, to:%lu, err:%lu, "
+                  "gf_ok:%lu, gf_fail:%lu, empty_null:%lu, push:%lu, fid_fps:%.1f, miss:%lu, "
+                  "q_buff:%zu, q_empty:%zu, state:%s\n",
+                  i, static_cast<long>(hb_age), static_cast<long>(fd_age),
+                  static_cast<unsigned long>(wake),
+                  static_cast<unsigned long>(diag_select_timeout_.load(std::memory_order_relaxed)),
+                  static_cast<unsigned long>(diag_select_error_.load(std::memory_order_relaxed)),
+                  static_cast<unsigned long>(gf_ok), static_cast<unsigned long>(gf_fail),
+                  static_cast<unsigned long>(empty_null), static_cast<unsigned long>(push),
+                  fps_fid, static_cast<unsigned long>(fid_miss), q_buff, q_empty,
+                  diag::to_string(state));
+
+      if (state != states[i]) {
+        if (state == diag::DiagState::kOk) {
+          RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
+                      "diag pipe:%zu state %s -> %s, vnode:%.1ffps, cfg:%.1ffps, fid:%.1ffps, "
+                      "miss:%lu, empty_null:%lu, fd_age:%ldms\n",
+                      i, diag::to_string(states[i]), diag::to_string(state),
+                      fps_vnode, cfg_fps, fps_fid,
+                      static_cast<unsigned long>(fid_miss),
+                      static_cast<unsigned long>(empty_null),
+                      static_cast<long>(fd_age));
+        } else {
+          RCLCPP_ERROR(rclcpp::get_logger("mipi_diag"),
+                       "diag pipe:%zu state %s -> %s, vnode:%.1ffps, cfg:%.1ffps, fid:%.1ffps, "
+                       "miss:%lu, empty_null:%lu, fd_age:%ldms\n",
+                       i, diag::to_string(states[i]), diag::to_string(state),
+                       fps_vnode, cfg_fps, fps_fid,
+                       static_cast<unsigned long>(fid_miss),
+                       static_cast<unsigned long>(empty_null),
+                       static_cast<long>(fd_age));
+        }
+        states[i] = state;
+      }
+
+      p.wake = wake;
+      p.gf_ok = gf_ok;
+      p.gf_fail = gf_fail;
+      p.empty_null = empty_null;
+      p.push = push;
+      p.fid_advanced = fid_adv;
+      p.fid_missing = fid_miss;
+      p.last_report_ms = now;
+    }
+  }
 }
 
 void HobotMipiCapIml::subMultiFrameTask() {

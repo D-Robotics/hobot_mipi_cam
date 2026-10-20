@@ -63,6 +63,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->cal_alpha_ = 0.0; 
   nodePare_->stream_mode_ = 0; //0: slave stream can gdc; 1: slave stream can't gdc.
   nodePare_->sub_stream_enable_ = false;
+  nodePare_->diag_enable_ = true;
+  nodePare_->diag_period_ms_ = 10000;
   frame_id_ = "camera_link";
   io_method_name_ = "ros"; //shared_mem, ros;
   double framerate = 30.0;
@@ -99,6 +101,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
   this->declare_parameter<int>("stream_mode", nodePare_->stream_mode_);
   this->declare_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
+  this->declare_parameter<bool>("diag_enable", nodePare_->diag_enable_);
+  this->declare_parameter<int>("diag_period_ms", nodePare_->diag_period_ms_);
   this->declare_parameter<std::string>("imu_calib_file", "config/imu_calibration.yaml");
 
   this->get_parameter<std::string>("frame_id", frame_id_);
@@ -131,6 +135,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<double>("cal_alpha", nodePare_->cal_alpha_);
   this->get_parameter<int>("stream_mode", nodePare_->stream_mode_);
   this->get_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
+  this->get_parameter<bool>("diag_enable", nodePare_->diag_enable_);
+  this->get_parameter<int>("diag_period_ms", nodePare_->diag_period_ms_);
 
   nodePare_->framerate_ = static_cast<int>(framerate);
   nodePare_->sub_framerate_ = static_cast<int>(sub_framerate);
@@ -605,6 +611,71 @@ void MipiCamNode::init_DualCalibration_Sub(Publisher_info_base *Pub_info, Publis
   return;
 }
 
+// 发布侧周期诊断：只读统计量并打日志，不改变发布行为。
+void MipiCamNode::pub_diag(const std::string &channel, const std::string &topic,
+                           Publisher_info_base *info, size_t subs) {
+  if (!info || !nodePare_ || !nodePare_->diag_enable_) {
+    return;
+  }
+  // 本次只观测双目主码流；子码流通道暂不输出诊断行。
+  if (channel.rfind("sub_", 0) == 0) {
+    return;
+  }
+  int period_ms = nodePare_->diag_period_ms_ > 0 ? nodePare_->diag_period_ms_ : 10000;
+  PubDiag &d = info->diag_;
+  int64_t now = mipi_cam::diag::now_ms();
+  if (d.last_ms == 0) {
+    d.last_ms = now;
+    d.last_cons_ok = d.cons_ok;
+    d.last_cons_fail = d.cons_fail;
+    d.last_pub_ok = d.pub_ok;
+    d.last_pub_fail = d.pub_fail;
+    return;
+  }
+  // 订阅状态变化时重置统计窗口：避免把“无订阅/IDLE”的时间混进 fps 计算，
+  // 否则订阅刚建立或刚断开时会被误判为 CONSUMER_SLOW。
+  bool active = subs > 0;
+  bool was_active = d.last_subs > 0;
+  if (active != was_active) {
+    d.last_ms = now;
+    d.last_cons_ok = d.cons_ok;
+    d.last_cons_fail = d.cons_fail;
+    d.last_pub_ok = d.pub_ok;
+    d.last_pub_fail = d.pub_fail;
+    d.last_subs = subs;
+    return;
+  }
+  d.last_subs = subs;
+
+  int64_t elapsed = now - d.last_ms;
+  if (elapsed < period_ms) {
+    return;
+  }
+  double seconds = elapsed / 1000.0;
+  double cons_fps = (d.cons_ok - d.last_cons_ok) / seconds;
+  double pub_fps = (d.pub_ok - d.last_pub_ok) / seconds;
+  uint64_t fail = d.cons_fail - d.last_cons_fail;
+  double cfg_fps = static_cast<double>(nodePare_->framerate_);
+  double tol = mipi_cam::diag::fps_tolerance(cfg_fps);
+  const char *state = "OK";
+  if (subs == 0) {
+    state = "IDLE";
+  } else if (cons_fps < cfg_fps - tol) {
+    state = "CONSUMER_SLOW";
+  } else if (pub_fps < cons_fps - tol) {
+    state = "PUBLISH_FAIL";
+  }
+  RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
+              "diag channel:%s, topic:%s, subs:%zu, cons_fps:%.1f, pub_fps:%.1f, fail:%lu, state:%s\n",
+              channel.c_str(), topic.c_str(), subs, cons_fps, pub_fps,
+              static_cast<unsigned long>(fail), state);
+  d.last_ms = now;
+  d.last_cons_ok = d.cons_ok;
+  d.last_cons_fail = d.cons_fail;
+  d.last_pub_ok = d.pub_ok;
+  d.last_pub_fail = d.pub_fail;
+}
+
 void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
   if (mipiCam_ptr_ && mipiCam_ptr_->isCapturing() && (pub_info->image_pub_->get_subscription_count() > 0)) {
     auto img = std::make_unique<sensor_msgs::msg::Image>(rosidl_runtime_cpp::MessageInitialization::SKIP);
@@ -616,13 +687,20 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
                                 img->step,
                                 img->data,
                                 pub_info->topic_type)) {
+      pub_info->diag_.cons_fail++;
       auto time_after = std::chrono::system_clock::now();
       auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(time_after - pub_info->time_start_).count();
       if (interval > 3000) {
-        RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "grab failed");
+        RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                    "grab failed, channel:%s, topic:%s\n",
+                    pub_info->topic_type.c_str(),
+                    pub_info->image_pub_->get_topic_name());
       }
+      pub_diag(pub_info->topic_type, pub_info->image_pub_->get_topic_name(),
+               pub_info.get(), pub_info->image_pub_->get_subscription_count());
       return;
     }
+    pub_info->diag_.cons_ok++;
     save_jpg(img->header.stamp,img->encoding,img->width,img->height,(void *)&img->data[0]);
     save_yuv(img->header.stamp, (void *)&img->data[0], img->data.size());
     if (pub_info->info_pub_ && pub_info->camera_calibration_info_) {
@@ -642,12 +720,17 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
     auto frame_id = pub_info->frame_id;
     auto ts = img->header.stamp;
     pub_info->image_pub_->publish(std::move(img));
+    pub_info->diag_.pub_ok++;
     RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
       "Published image on channel: %s, frame_id: %s, ts: %d.%d, delay: %.3f sec",
       channel.c_str(), frame_id.c_str(),
       ts.sec, ts.nanosec, this->now().seconds() - rclcpp::Time(ts).seconds()
     );
+    pub_diag(pub_info->topic_type, pub_info->image_pub_->get_topic_name(),
+             pub_info.get(), pub_info->image_pub_->get_subscription_count());
   } else {
+    pub_diag(pub_info->topic_type, pub_info->image_pub_->get_topic_name(),
+             pub_info.get(), pub_info->image_pub_->get_subscription_count());
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 }
@@ -665,13 +748,20 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
                                      msg.data,
                                      msg.data_size,
                                      pub_info->topic_type)) {
+        pub_info->diag_.cons_fail++;
         auto time_after = std::chrono::system_clock::now();
         auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(time_after - pub_info->time_start_).count();
         if (interval > 3000) {
-          RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "hbmemUpdate grab img failed");
+          RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                      "hbmemUpdate grab img failed, channel:%s, topic:%s\n",
+                      pub_info->topic_type.c_str(),
+                      pub_info->publisher_hbmem_->get_topic_name());
         }
+        pub_diag(pub_info->topic_type, pub_info->publisher_hbmem_->get_topic_name(),
+                 pub_info.get(), pub_info->publisher_hbmem_->get_subscription_count());
         return;
       }
+      pub_info->diag_.cons_ok++;
       std::string encode(msg.encoding.begin(), msg.encoding.end());
       save_jpg(msg.time_stamp,encode,msg.width,msg.height,(void *)&msg.data);
       save_yuv(msg.time_stamp, (void *)&msg.data, msg.data_size);
@@ -685,12 +775,20 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
         pub_info->info_pub2_->publish(*pub_info->camera_calibration_info2_);
       }
       pub_info->publisher_hbmem_->publish(std::move(loanedMsg));
+      pub_info->diag_.pub_ok++;
+      pub_diag(pub_info->topic_type, pub_info->publisher_hbmem_->get_topic_name(),
+               pub_info.get(), pub_info->publisher_hbmem_->get_subscription_count());
 
     } else {
+      pub_info->diag_.pub_fail++;
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
                   "borrow_loaned_message failed");
+      pub_diag(pub_info->topic_type, pub_info->publisher_hbmem_->get_topic_name(),
+               pub_info.get(), pub_info->publisher_hbmem_->get_subscription_count());
     }
   } else {
+    pub_diag(pub_info->topic_type, pub_info->publisher_hbmem_->get_topic_name(),
+             pub_info.get(), pub_info->publisher_hbmem_->get_subscription_count());
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 }

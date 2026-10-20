@@ -63,6 +63,8 @@ struct NodePara {
   bool sync_ccm_;
   bool sync_ae_;
   bool print_isp_log_;
+  bool diag_enable_ = true;
+  int diag_period_ms_ = 10000;
 };
 
 typedef struct {
@@ -95,6 +97,8 @@ typedef struct {
   bool sync_ccm_;
   bool sync_ae_;
   bool print_isp_log_;
+  bool diag_enable_ = true;
+  int diag_period_ms_ = 10000;
 } MIPI_CAP_INFO_ST;
 
 typedef struct sensor_id {
@@ -153,6 +157,15 @@ class BuffQueueManage : public std::enable_shared_from_this<BuffQueueManage>{
       q_buff_.pop();
     }
     return buff_ptr;
+  }
+  // 诊断用只读水位（只加 getter，不改变队列行为）。
+  size_t size_data() {
+    std::unique_lock<std::mutex> lk(queue_mtx_);
+    return q_buff_.size();
+  }
+  size_t size_empty() {
+    std::unique_lock<std::mutex> lk(queue_mtx_);
+    return q_empty_.size();
   }
   void push_empty_que(std::shared_ptr<VideoBuffer> buff_ptr) {
     if (buff_ptr) {

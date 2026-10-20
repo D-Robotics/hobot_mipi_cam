@@ -112,6 +112,18 @@ def generate_launch_description():
             default_value='False',
             description='mipi sub stream enable'),
         DeclareLaunchArgument(
+            'mipi_diag_enable',
+            default_value='True',
+            description='enable periodic capture diagnostics log'),
+        DeclareLaunchArgument(
+            'mipi_diag_period',
+            default_value='10000',
+            description='diagnostics log period in ms'),
+        DeclareLaunchArgument(
+            'mipi_diag_log_level',
+            default_value='info',
+            description='log level of the mipi_diag logger'),
+        DeclareLaunchArgument(
             'log_level',
             default_value='warn',
             description='log level'),
@@ -149,7 +161,10 @@ def generate_launch_description():
                 {"link_port": LaunchConfiguration('mipi_link_port')},
                 {"cal_alpha": LaunchConfiguration('mipi_cal_alpha')},
                 {"sub_stream_enable": LaunchConfiguration('mipi_sub_stream_enable')},
+                {"diag_enable": LaunchConfiguration('mipi_diag_enable')},
+                {"diag_period_ms": LaunchConfiguration('mipi_diag_period')},
             ],
-            arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
+            arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level'),
+                       '--log-level', ['mipi_diag:=', LaunchConfiguration('mipi_diag_log_level')]]
         )
     ])
