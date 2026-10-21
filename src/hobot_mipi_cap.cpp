@@ -64,6 +64,146 @@ int32_t HobotMipiCap::gen_gdc_cfg(param_t *param, window_t *wnds, uint32_t wnd_n
 }
 
 long long TOLERANCE = 52*1000*1000; // ms
+
+// 同步诊断埋点：观察每侧队头 frame_id，变化即认为该侧仍在出帧（或丢帧推进）。
+// 必须放在同步循环内所有 continue 之前调用：某侧完全停摆时循环会一直提前
+// continue，埋点放在后面就永远观察不到"帧龄在增长"这一关键证据。
+void HobotMipiCap::sync_diag_peek(diag::SyncDiagStats &st,
+                                  std::vector<std::shared_ptr<FrameQueue>> &ques) {
+  if (!cap_info_.diag_enable_) {
+    return;
+  }
+  // 惰性初始化：与队列数量对齐（start() 的建序不保证 sides 先于线程启动）。
+  if (st.sides.size() != ques.size()) {
+    st.sides.clear();
+    st.snap.new_frames.assign(ques.size(), 0);
+    int64_t now = diag::now_ms();
+    for (size_t i = 0; i < ques.size(); ++i) {
+      st.sides.push_back(std::make_unique<diag::SyncSideDiag>());
+      st.sides.back()->last_new_ms.store(now, std::memory_order_relaxed);
+    }
+  }
+  int64_t now = diag::now_ms();
+  for (size_t i = 0; i < ques.size(); ++i) {
+    auto frame = ques[i]->peek();
+    if (!frame) {
+      continue;
+    }
+    auto &side = st.sides[i];
+    uint32_t fid = frame->frame_id;
+    if (side->fid_valid.load(std::memory_order_relaxed) &&
+        fid != side->last_frame_id.load(std::memory_order_relaxed)) {
+      side->new_frames.fetch_add(1, std::memory_order_relaxed);
+      side->last_new_ms.store(now, std::memory_order_relaxed);
+    }
+    side->last_frame_id.store(fid, std::memory_order_relaxed);
+    side->fid_valid.store(true, std::memory_order_relaxed);
+  }
+}
+
+// 同步诊断周期输出：每侧帧龄/帧率、同步成败累计、combine 队列水位，
+// 并做状态判定（SIDE_STALL / MISMATCH），跃迁时输出 ERROR（恢复为 INFO）。
+void HobotMipiCap::sync_diag_report(const char *tag, diag::SyncDiagStats &st, double cfg_fps,
+                                    std::shared_ptr<BuffQueueManage> &combine_que) {
+  if (!cap_info_.diag_enable_ || st.sides.empty()) {
+    return;
+  }
+  int period_ms = cap_info_.diag_period_ms_ > 0 ? cap_info_.diag_period_ms_ : 10000;
+  int64_t now = diag::now_ms();
+  if (st.snap.last_report_ms == 0) {
+    st.snap.last_report_ms = now;
+    return;
+  }
+  int64_t elapsed = now - st.snap.last_report_ms;
+  if (elapsed < period_ms) {
+    return;
+  }
+  if (elapsed <= 0) {
+    elapsed = period_ms;
+  }
+  // 帧龄停摆阈值：max(1s, 10 帧间隔)。秒级静默（如某侧帧被扣 5s 才放行）会立即命中。
+  double interval_ms = cfg_fps > 0 ? 1000.0 / cfg_fps : 1000.0;
+  int64_t stall_ms = static_cast<int64_t>(interval_ms * 10);
+  if (stall_ms < 1000) {
+    stall_ms = 1000;
+  }
+
+  uint64_t ok = st.sync_ok.load(std::memory_order_relaxed);
+  uint64_t fail = st.sync_fail.load(std::memory_order_relaxed);
+  uint64_t d_ok = ok - st.snap.sync_ok;
+  uint64_t d_fail = fail - st.snap.sync_fail;
+
+  // 判定：先看每侧帧龄，再在两侧都新鲜时看是否一直拼不出帧。
+  size_t stall_idx = st.sides.size();
+  int64_t stall_age = 0;
+  bool any_new = false;
+  std::string side_part;
+  std::vector<int64_t> ages(st.sides.size(), 0);
+  for (size_t i = 0; i < st.sides.size(); ++i) {
+    ages[i] = now - st.sides[i]->last_new_ms.load(std::memory_order_relaxed);
+    if (ages[i] > stall_ms && ages[i] > stall_age) {
+      stall_age = ages[i];
+      stall_idx = i;
+    }
+    uint64_t nf = st.sides[i]->new_frames.load(std::memory_order_relaxed);
+    uint64_t d_nf = nf - (i < st.snap.new_frames.size() ? st.snap.new_frames[i] : 0);
+    if (d_nf > 0) {
+      any_new = true;
+    }
+    char item[96];
+    snprintf(item, sizeof(item), "s%zu_age:%ldms, s%zu_fps:%.1f, ",
+             i, static_cast<long>(ages[i]), i,
+             static_cast<double>(d_nf) * 1000.0 / static_cast<double>(elapsed));
+    side_part += item;
+  }
+  diag::SyncDiagState state = diag::SyncDiagState::kOk;
+  if (stall_idx != st.sides.size()) {
+    state = diag::SyncDiagState::kSideStall;
+  } else if (d_ok == 0 && any_new) {
+    state = diag::SyncDiagState::kMismatch;
+  }
+
+  size_t q_combine = combine_que ? combine_que->size_data() : 0;
+  RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
+              "diag sync:%s, %sok:%lu, fail:%lu, q_combine:%zu, state:%s\n",
+              tag, side_part.c_str(),
+              static_cast<unsigned long>(ok), static_cast<unsigned long>(fail),
+              q_combine, diag::to_string(state));
+
+  if (!st.state_valid) {
+    // 首次报告只建立基线（视为 OK），不输出 "OK -> OK" 噪声行；
+    // 启动即异常时仍会走下方 "OK -> XXX" 跃迁输出。
+    st.state_valid = true;
+    st.last_state = diag::SyncDiagState::kOk;
+  }
+  if (state != st.last_state) {
+    if (state == diag::SyncDiagState::kOk) {
+      RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
+                  "diag sync:%s state %s -> %s, %sok:%lu, fail:%lu, q_combine:%zu\n",
+                  tag, diag::to_string(st.last_state), diag::to_string(state),
+                  side_part.c_str(),
+                  static_cast<unsigned long>(ok), static_cast<unsigned long>(fail),
+                  q_combine);
+    } else {
+      RCLCPP_ERROR(rclcpp::get_logger("mipi_diag"),
+                  "diag sync:%s state %s -> %s, side:%zu, thr:%ldms, %sok:%lu, fail:%lu, q_combine:%zu\n",
+                  tag, diag::to_string(st.last_state), diag::to_string(state),
+                  stall_idx, static_cast<long>(stall_ms), side_part.c_str(),
+                  static_cast<unsigned long>(ok), static_cast<unsigned long>(fail),
+                  q_combine);
+    }
+    st.last_state = state;
+    st.state_valid = true;
+  }
+
+  for (size_t i = 0; i < st.sides.size(); ++i) {
+    st.snap.new_frames[i] = st.sides[i]->new_frames.load(std::memory_order_relaxed);
+  }
+  st.snap.sync_ok = ok;
+  st.snap.sync_fail = fail;
+  st.snap.last_report_ms = now;
+}
+
 void HobotMipiCap::sync_task() {
 	TOLERANCE = 500000000 / cap_info_.fps;
 	using clock = std::chrono::steady_clock;
@@ -71,6 +211,12 @@ void HobotMipiCap::sync_task() {
 
 	while (rclcpp::ok()) {
 	  std::vector<std::shared_ptr<VideoBuffer>> frames;
+
+	  // 诊断埋点与周期输出放在所有 continue 之前：某侧停摆时循环会一直提前
+	  // continue，放后面就永远观察不到"帧龄在增长"这一关键证据。
+	  sync_diag_peek(sync_diag_, v_frame_que_);
+	  sync_diag_report("main", sync_diag_, static_cast<double>(cap_info_.fps),
+	                   combine_buff_que_manger_);
 
 	  std::for_each(v_frame_que_.begin(), v_frame_que_.end(), [&](auto &frame_que) {
 		auto frame = frame_que->peek();
@@ -156,11 +302,17 @@ void HobotMipiCap::sync_task() {
 			  });
 		}
 		buff_ptr->return_data_que();
+		if (cap_info_.diag_enable_) {
+		  sync_diag_.sync_ok.fetch_add(1, std::memory_order_relaxed);
+		}
+	  } else if (cap_info_.diag_enable_) {
+		// 两侧都有帧但时间戳容差判定失败：帧还在来，只是拼不出去。
+		sync_diag_.sync_fail.fetch_add(1, std::memory_order_relaxed);
 	  }
 	  std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
 }
-  
+
 void HobotMipiCap::sub_sync_task() {
 	TOLERANCE = 500000000 / cap_info_.fps;
 	using clock = std::chrono::steady_clock;
@@ -168,6 +320,11 @@ void HobotMipiCap::sub_sync_task() {
 
 	while (rclcpp::ok()) {
 	  std::vector<std::shared_ptr<VideoBuffer>> frames;
+
+	  // 同 sync_task：埋点与周期输出放在所有 continue 之前。
+	  sync_diag_peek(sub_sync_diag_, v_sub_frame_que_);
+	  sync_diag_report("sub", sub_sync_diag_, static_cast<double>(cap_info_.sub_fps),
+	                   sub_combine_buff_que_manger_);
 
 	  std::for_each(v_sub_frame_que_.begin(), v_sub_frame_que_.end(), [&](auto &frame_que) {
 		auto frame = frame_que->peek();
@@ -253,6 +410,11 @@ void HobotMipiCap::sub_sync_task() {
 			  });
 		}
 		buff_ptr->return_data_que();
+		if (cap_info_.diag_enable_) {
+		  sub_sync_diag_.sync_ok.fetch_add(1, std::memory_order_relaxed);
+		}
+	  } else if (cap_info_.diag_enable_) {
+		sub_sync_diag_.sync_fail.fetch_add(1, std::memory_order_relaxed);
 	  }
 	  std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}

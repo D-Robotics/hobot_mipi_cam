@@ -47,6 +47,7 @@ namespace mipi_cam
 {
 
 // 发布侧诊断统计：只由该通道的发布线程读写，无需原子。
+// last_state 用于状态跃迁判定：-1 未初始化，0 OK，1 IDLE，2 CONSUMER_SLOW，3 PUBLISH_FAIL。
 struct PubDiag {
   uint64_t cons_ok = 0;
   uint64_t cons_fail = 0;
@@ -58,6 +59,7 @@ struct PubDiag {
   uint64_t last_pub_fail = 0;
   int64_t last_ms = 0;
   size_t last_subs = 0;
+  int last_state = -1;
 };
 
 class Publisher_info_base {

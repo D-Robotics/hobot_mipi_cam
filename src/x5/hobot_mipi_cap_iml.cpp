@@ -527,6 +527,25 @@ int HobotMipiCapIml::start() {
                 "diag cfg, app_fps:%d, sub_fps:%d, sensor_fps:%d, vse_fps:%d, lpwm:%d, period_ms:%d, pipes:%zu\n",
                 cap_info_.fps, cap_info_.sub_fps, sensor_fps, vse_fps,
                 cap_info_.lpwm_enable_ ? 1 : 0, cap_info_.diag_period_ms_, pipe_contex.size());
+    // 自诊断（启动期配置核对，只读不改任何下发配置）：
+    // LPWM 使能时 create_and_run_vflow 会把 camera_config->fps 改写为
+    // max(fps, sub_fps)，而 creat_vse_node 的分频公式按原始 sensor 30fps 设计，
+    // 两者叠加会导致 vse 分频参数算错（如 app 6 / sub 8 时 vse_fps=23 而非 6）。
+    // 该行在启动时把算式与两处冲突直接暴露出来，不改配置、不影响采集行为。
+    if (cap_info_.lpwm_enable_) {
+      int max_fps = cap_info_.fps > cap_info_.sub_fps ? cap_info_.fps : cap_info_.sub_fps;
+      int vse_fps_formula = cap_info_.fps == 1 ? 1
+          : static_cast<int>(ceil(cap_info_.fps * 30.0 / max_fps));
+      int sub_vse_formula = cap_info_.sub_fps == 1 ? 1
+          : static_cast<int>(ceil(cap_info_.sub_fps * 30.0 / max_fps));
+      RCLCPP_WARN(rclcpp::get_logger("mipi_diag"),
+                  "diag selfcheck, lpwm rewrites sensor_fps to max(app,sub)=%d; "
+                  "vse_div(main)=%d/%d(exp=%d/%d), sensor_fps_cfg=%d -> mismatch:%s\n",
+                  max_fps, vse_fps_formula, sub_vse_formula,
+                  cap_info_.fps, cap_info_.sub_fps, sensor_fps,
+                  (vse_fps_formula != cap_info_.fps || sub_vse_formula != cap_info_.sub_fps)
+                      ? "yes" : "no");
+    }
     diag_running_ = true;
     diag_thread_ = std::thread(&HobotMipiCapIml::diagTask, this);
   }
@@ -904,7 +923,14 @@ void HobotMipiCapIml::diagTask() {
         state = (fps_fid < hw_fps - tol) ? diag::DiagState::kSourceSlow
                                          : diag::DiagState::kAppDrop;
       } else if (d_miss > 0) {
-        state = diag::DiagState::kHwDrop;
+        // HW_DROP 只在“本 pipe 输出帧率已达标”的前提下才成立：
+        // miss 依 frame_id 差值累计，若本 pipe 实际输出帧率本就高于主码流配置
+        // （如 LPWM 下 vin_fps 取了 max(fps, sub_fps)），每个周期都会产生
+        // 常态化的 miss 增量，属配置层帧率不匹配而非驱动丢帧，报 HW_DROP
+        // 会误导排查方向。这种情况降级为 OK，靠行内 miss 增量与 fid_fps
+        // 供人工判别；真丢帧（输出达标但 frame_id 跳变）不受影响。
+        state = (fps_fid > fps_vnode + tol) ? diag::DiagState::kOk
+                                            : diag::DiagState::kHwDrop;
       }
       // 队列积压不在这里判定：采集层看不到订阅者，无消费者时 q_buff 长期为 3 是正常水位；
       // 消费侧由节点层的 IDLE / CONSUMER_SLOW + 本行的 q_buff/q_empty 共同反映。

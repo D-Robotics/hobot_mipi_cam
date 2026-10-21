@@ -209,8 +209,10 @@ def generate_launch_description():
                 {"print_isp_log": LaunchConfiguration('print_isp_log')},
                 {"diag_enable": LaunchConfiguration('mipi_diag_enable')},
                 {"diag_period_ms": LaunchConfiguration('mipi_diag_period')},
+                {"diag_log_level": LaunchConfiguration('mipi_diag_log_level')},
             ],
-            arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level'),
-                       '--log-level', ['mipi_diag:=', LaunchConfiguration('mipi_diag_log_level')]]
+            # mipi_diag logger 的级别由节点内 diag_log_level 参数直接设置，
+            # 不再依赖 --log-level 传递（第三方 launch 全局 warn 时也能保证可见）。
+            arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         )
     ])

@@ -18,6 +18,9 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace mipi_cam {
 namespace diag {
@@ -109,6 +112,56 @@ inline double fps_tolerance(double cfg_fps) {
   double tol = cfg_fps * 0.10;
   return tol < 2.0 ? 2.0 : tol;
 }
+
+// ---- 双目同步链路诊断（sync_task / sub_sync_task 埋点用）----
+
+// 单侧队列的帧新鲜度：观察队头 frame_id，变化即认为该侧仍在出帧/丢帧推进。
+struct SyncSideDiag {
+  std::atomic<uint32_t> last_frame_id{0};  // 最近一次观察到的队头 frame_id
+  std::atomic<bool> fid_valid{false};
+  std::atomic<uint64_t> new_frames{0};     // 队头 frame_id 变化累计数
+  std::atomic<int64_t> last_new_ms{0};     // 队头 frame_id 最近一次变化时刻（steady ms）
+};
+
+// 同步线程私有：上一周期快照，用于算增量（new_frames 按侧分开）。
+struct SyncSnap {
+  std::vector<uint64_t> new_frames;  // 每侧上周期 new_frames 值
+  uint64_t sync_ok = 0;
+  uint64_t sync_fail = 0;
+  int64_t last_report_ms = 0;
+};
+
+// 同步链状态。SIDE_STALL 指某一侧队头长时间不推进（该侧上游停摆或被扣帧）；
+// MISMATCH 指两侧都还在出帧但时间戳容差判定一直失败，拼不出 combine 帧。
+enum class SyncDiagState {
+  kOk = 0,
+  kSideStall,
+  kMismatch
+};
+
+inline const char* to_string(SyncDiagState state) {
+  switch (state) {
+    case SyncDiagState::kOk:
+      return "OK";
+    case SyncDiagState::kSideStall:
+      return "SIDE_STALL";
+    case SyncDiagState::kMismatch:
+      return "MISMATCH";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+// 一条同步链（main 或 sub）的诊断汇总。写侧是对应同步线程，周期行与
+// 状态跃迁行也由该线程自己输出；原子量仅为兼容其他读者（如诊断线程）。
+struct SyncDiagStats {
+  std::vector<std::unique_ptr<SyncSideDiag>> sides;  // 每侧一份，按 v_frame_que_ 下标对齐
+  std::atomic<uint64_t> sync_ok{0};                  // 同步成功产出 combine 帧累计
+  std::atomic<uint64_t> sync_fail{0};                // 两侧有帧但时间戳判定失败累计
+  SyncSnap snap;                                     // 上周期快照
+  SyncDiagState last_state = SyncDiagState::kOk;
+  bool state_valid = false;
+};
 
 }  // namespace diag
 }  // namespace mipi_cam

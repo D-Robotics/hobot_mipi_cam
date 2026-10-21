@@ -30,6 +30,7 @@
 #include "gdc_bin_cfg.h"
 #endif  
 #include "hobot_mipi_comm.hpp"
+#include "hobot_mipi_diag.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "hobot_mipi_calibration.hpp"
 #include "opencv2/opencv.hpp"
@@ -117,8 +118,18 @@ class HobotMipiCap {
   std::shared_ptr<BuffQueueManage> sub_combine_buff_que_manger_;
   std::vector<std::shared_ptr<FrameQueue>> v_sub_frame_que_;
 
+  // 双目同步链路诊断：main / sub 各一份，埋点在 sync_task / sub_sync_task 中，
+  // 周期行与状态跃迁行由同步线程自己输出（不再依赖 x5 诊断线程）。
+  diag::SyncDiagStats sync_diag_;
+  diag::SyncDiagStats sub_sync_diag_;
+
   void free_gdc_cfg(void *buf_ptr);
   int32_t gen_gdc_cfg(param_t *param, window_t *wnds, uint32_t wnd_num, void **cfg_buf, uint64_t *cfg_size);
+  // 同步诊断埋点：观察每侧队头 frame_id 的新鲜度（放在循环内所有 continue 之前调用）。
+  void sync_diag_peek(diag::SyncDiagStats &st, std::vector<std::shared_ptr<FrameQueue>> &ques);
+  // 同步诊断周期输出：帧龄/帧率/同步计数/combine 队列水位 + 状态跃迁（进异常 ERROR、恢复 INFO）。
+  void sync_diag_report(const char *tag, diag::SyncDiagStats &st, double cfg_fps,
+                        std::shared_ptr<BuffQueueManage> &combine_que);
   virtual void sync_task();
   virtual void sub_sync_task();
   virtual bool isSynced(const std::vector<std::shared_ptr<VideoBuffer>> &frames, long long tolerance);

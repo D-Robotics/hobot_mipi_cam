@@ -16,6 +16,7 @@
 
 #include <sstream>
 #include <stdarg.h>
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -23,11 +24,42 @@
 #include <fstream>
 #include "rcpputils/env.hpp"
 #include "rcutils/env.h"
+#include "rcl/logging.h"
 #include "opencv2/opencv.hpp"
 #include "opencv2/imgcodecs.hpp"
 
 #define PUB_BUF_NUM 5
 namespace mipi_cam {
+
+// 在节点初始化时直接设置 mipi_diag logger 的级别。原因：第三方 launch（如
+// tros_vision_nav 的 bringup）用全局 log_level:=warn 启动本节点且不会传
+// --log-level mipi_diag:=info，诊断日志会被整体静音（真机复现即此情况）。
+// 这里按 diag_log_level 参数显式设置，保证诊断日志不依赖 launch 传参。
+// 注意：本设置晚于命令行 --log-level 生效，两者同传时以本参数为准。
+// 类型用 rcl_log_severity_t（rcl/logging.h 的 typedef）：本容器 sysroot 的
+// rcutils/logging.h 只有匿名枚举、set_logger_level 原型收 int，直接写
+// rcutils_log_severity_t 会编译失败。
+static void apply_diag_log_level(const std::string &level) {
+  rcl_log_severity_t sev = RCUTILS_LOG_SEVERITY_INFO;
+  std::string l = level;
+  std::transform(l.begin(), l.end(), l.begin(), ::tolower);
+  if (l == "debug") {
+    sev = RCUTILS_LOG_SEVERITY_DEBUG;
+  } else if (l == "warn" || l == "warning") {
+    sev = RCUTILS_LOG_SEVERITY_WARN;
+  } else if (l == "error") {
+    sev = RCUTILS_LOG_SEVERITY_ERROR;
+  } else if (l == "fatal") {
+    sev = RCUTILS_LOG_SEVERITY_FATAL;
+  } else if (l != "info") {
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                "invalid diag_log_level '%s', fallback to info\n", level.c_str());
+  }
+  if (RCUTILS_RET_OK != rcutils_logging_set_logger_level("mipi_diag", sev)) {
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                "set mipi_diag log level '%s' failed\n", level.c_str());
+  }
+}
 
 MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     : m_bIsInit(0),
@@ -103,6 +135,7 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
   this->declare_parameter<bool>("diag_enable", nodePare_->diag_enable_);
   this->declare_parameter<int>("diag_period_ms", nodePare_->diag_period_ms_);
+  this->declare_parameter<std::string>("diag_log_level", "info");
   this->declare_parameter<std::string>("imu_calib_file", "config/imu_calibration.yaml");
 
   this->get_parameter<std::string>("frame_id", frame_id_);
@@ -137,6 +170,13 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->get_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
   this->get_parameter<bool>("diag_enable", nodePare_->diag_enable_);
   this->get_parameter<int>("diag_period_ms", nodePare_->diag_period_ms_);
+  {
+    std::string diag_log_level = "info";
+    this->get_parameter<std::string>("diag_log_level", diag_log_level);
+    // 必须在 mipiCam_ptr_->start()（同步线程/采集线程启动）之前生效，
+    // 否则启动早期的诊断行仍会被全局级别过滤。
+    apply_diag_log_level(diag_log_level);
+  }
 
   nodePare_->framerate_ = static_cast<int>(framerate);
   nodePare_->sub_framerate_ = static_cast<int>(sub_framerate);
@@ -669,6 +709,40 @@ void MipiCamNode::pub_diag(const std::string &channel, const std::string &topic,
               "diag channel:%s, topic:%s, subs:%zu, cons_fps:%.1f, pub_fps:%.1f, fail:%lu, state:%s\n",
               channel.c_str(), topic.c_str(), subs, cons_fps, pub_fps,
               static_cast<unsigned long>(fail), state);
+  // 状态跃迁：进入 CONSUMER_SLOW / PUBLISH_FAIL 用 ERROR，恢复 OK 用 INFO——
+  // 保证在第三方 launch 的全局 warn 级别下也可见（IDLE 属正常无订阅，不报 ERROR）。
+  int state_code = 0;  // 0 OK, 1 IDLE, 2 CONSUMER_SLOW, 3 PUBLISH_FAIL
+  if (subs == 0) {
+    state_code = 1;
+  } else if (cons_fps < cfg_fps - tol) {
+    state_code = 2;
+  } else if (pub_fps < cons_fps - tol) {
+    state_code = 3;
+  }
+  if (d.last_state < 0) {
+    // 首次报告只建立基线（不输出 "? -> XXX" 噪声行）；启动即异常时
+    // 仍会走下方 "OK -> XXX" 跃迁输出。
+    d.last_state = state_code;
+  }
+  if (d.last_state != state_code) {
+    static const char *state_names[] = {"OK", "IDLE", "CONSUMER_SLOW", "PUBLISH_FAIL"};
+    if (state_code == 0 || state_code == 1) {
+      RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
+                  "diag channel:%s state %s -> %s, cons_fps:%.1f, pub_fps:%.1f, cfg:%.1f, fail:%lu\n",
+                  channel.c_str(),
+                  d.last_state >= 0 && d.last_state <= 3 ? state_names[d.last_state] : "?",
+                  state_names[state_code], cons_fps, pub_fps, cfg_fps,
+                  static_cast<unsigned long>(fail));
+    } else {
+      RCLCPP_ERROR(rclcpp::get_logger("mipi_diag"),
+                   "diag channel:%s state %s -> %s, cons_fps:%.1f, pub_fps:%.1f, cfg:%.1f, fail:%lu\n",
+                   channel.c_str(),
+                   d.last_state >= 0 && d.last_state <= 3 ? state_names[d.last_state] : "?",
+                   state_names[state_code], cons_fps, pub_fps, cfg_fps,
+                   static_cast<unsigned long>(fail));
+    }
+    d.last_state = state_code;
+  }
   d.last_ms = now;
   d.last_cons_ok = d.cons_ok;
   d.last_cons_fail = d.cons_fail;
