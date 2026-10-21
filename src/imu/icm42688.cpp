@@ -25,7 +25,6 @@
 #include <math.h>
 #include <iostream>
 #include "icm42688.hpp"
-#include "inv_icm42600.h"
 #include <cmath>
 
 namespace imu_sensor

@@ -200,7 +200,7 @@ add_library(${PROJECT_NAME}_plugin SHARED
   ${SRC_PLATFORM_FILE}
   src/imu/icm42688.cpp
   src/imu/imu_manager.cpp
-  src/imu/inv_icm42600.c
+  src/imu/event_device.cpp
 )
 target_link_libraries(${PROJECT_NAME}_plugin
   ${BASE_LIBRARIES} ${X3_HAPI_LIB} yaml-cpp

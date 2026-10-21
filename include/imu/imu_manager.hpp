@@ -22,6 +22,7 @@
 #include <memory>
 
 #include "imu_base.hpp"
+#include "event_device.hpp"
 
 #include "hobot_mipi_calibration.hpp"
 
@@ -49,10 +50,17 @@ class ImuManager {
 
 private:
   int auto_detect_iio_devices();
+  int auto_detect_input_devices();
+  int tryInitEvent();
+  // event 通道卡死后的 IIO 原方式兜底（read_sensor_data 降级路径调用）
+  void init_iio_fallback();
 
   //std::map<std::string,std::string> devices_map_;
   std::map<std::string,std::vector<DeviceInfo_T>> devices_map_;
   std::shared_ptr<imu_base> imu_handle;
+  // event 路径的实例（降级判断用；非 event 路径为空）
+  std::shared_ptr<event_device> event_handle_;
+  bool degraded_to_iio_ = false;
 
   Imu_params imu_calib_params_;
   bool has_valid_calibration_ = false;
