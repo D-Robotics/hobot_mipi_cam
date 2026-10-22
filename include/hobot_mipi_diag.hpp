@@ -121,11 +121,16 @@ struct SyncSideDiag {
   std::atomic<bool> fid_valid{false};
   std::atomic<uint64_t> new_frames{0};     // 队头 frame_id 变化累计数
   std::atomic<int64_t> last_new_ms{0};     // 队头 frame_id 最近一次变化时刻（steady ms）
+  // 队头时间戳观测：用于读取两侧时间戳差（ts_diff）与时间戳推进速率（ts_adv），
+  // 区分“frame_id 在走但时间戳冻结”的重复帧与真实丢帧。
+  std::atomic<uint64_t> last_ts{0};        // 最近一次观察到的队头 timestamp（ns）
+  std::atomic<uint64_t> ts_advanced{0};    // 队头 timestamp 累计推进量（ns，含跳变）
 };
 
 // 同步线程私有：上一周期快照，用于算增量（new_frames 按侧分开）。
 struct SyncSnap {
   std::vector<uint64_t> new_frames;  // 每侧上周期 new_frames 值
+  std::vector<uint64_t> ts_advanced;  // 每侧上周期 ts_advanced 值
   uint64_t sync_ok = 0;
   uint64_t sync_fail = 0;
   int64_t last_report_ms = 0;

@@ -77,6 +77,7 @@ void HobotMipiCap::sync_diag_peek(diag::SyncDiagStats &st,
   if (st.sides.size() != ques.size()) {
     st.sides.clear();
     st.snap.new_frames.assign(ques.size(), 0);
+    st.snap.ts_advanced.assign(ques.size(), 0);
     int64_t now = diag::now_ms();
     for (size_t i = 0; i < ques.size(); ++i) {
       st.sides.push_back(std::make_unique<diag::SyncSideDiag>());
@@ -98,6 +99,16 @@ void HobotMipiCap::sync_diag_peek(diag::SyncDiagStats &st,
     }
     side->last_frame_id.store(fid, std::memory_order_relaxed);
     side->fid_valid.store(true, std::memory_order_relaxed);
+    // 队头时间戳：累计推进量（向后推进为正；驱动时间戳回绕/复位时跳过一次，
+    // 避免负值污染累计量）。frame_id 换而时间戳不涨即为“重复帧”证据。
+    uint64_t ts = frame->timestamp;
+    if (side->fid_valid.load(std::memory_order_relaxed)) {
+      uint64_t last_ts = side->last_ts.load(std::memory_order_relaxed);
+      if (ts > last_ts) {
+        side->ts_advanced.fetch_add(ts - last_ts, std::memory_order_relaxed);
+      }
+    }
+    side->last_ts.store(ts, std::memory_order_relaxed);
   }
 }
 
@@ -150,11 +161,30 @@ void HobotMipiCap::sync_diag_report(const char *tag, diag::SyncDiagStats &st, do
     if (d_nf > 0) {
       any_new = true;
     }
-    char item[96];
-    snprintf(item, sizeof(item), "s%zu_age:%ldms, s%zu_fps:%.1f, ",
+    // 时间戳推进率（fps）：队头 timestamp 累计推进量按“配置帧间隔”归一化的等效帧率
+    // = d_ts / (elapsed × 帧间隔)。健康态 ≈ s_fps；明显偏低即时间戳推进慢于帧交付
+    // （冻结/重复帧）。d_ts 为 ns、elapsed 为 ms，帧间隔秒 = 1/cfg_fps：
+    // fps = (d_ts/1e9) / (elapsed/1000) / (1/cfg_fps) = d_ts × cfg_fps / (elapsed × 1e6)。
+    uint64_t ts_adv = st.sides[i]->ts_advanced.load(std::memory_order_relaxed);
+    uint64_t d_ts = ts_adv - (i < st.snap.ts_advanced.size() ? st.snap.ts_advanced[i] : 0);
+    double ts_fps = cfg_fps > 0
+                        ? static_cast<double>(d_ts) * cfg_fps / (static_cast<double>(elapsed) * 1e6)
+                        : 0.0;
+    char item[128];
+    snprintf(item, sizeof(item), "s%zu_age:%ldms, s%zu_fps:%.1f, s%zu_ts_adv:%.1f, ",
              i, static_cast<long>(ages[i]), i,
-             static_cast<double>(d_nf) * 1000.0 / static_cast<double>(elapsed));
+             static_cast<double>(d_nf) * 1000.0 / static_cast<double>(elapsed),
+             i, ts_fps);
     side_part += item;
+  }
+  // ts_diff：两侧队头时间戳的实时差（ns → ms）。正负号约定 s0 - s1；
+  // 双目同触发时应接近 0 且远小于 TOLERANCE，长期稳定偏移即时间戳系统性错位。
+  int64_t ts_diff_ms = 0;
+  if (st.sides.size() >= 2) {
+    uint64_t ts0 = st.sides[0]->last_ts.load(std::memory_order_relaxed);
+    uint64_t ts1 = st.sides[1]->last_ts.load(std::memory_order_relaxed);
+    ts_diff_ms = static_cast<int64_t>(ts0) - static_cast<int64_t>(ts1);
+    ts_diff_ms /= 1000000;
   }
   diag::SyncDiagState state = diag::SyncDiagState::kOk;
   if (stall_idx != st.sides.size()) {
@@ -165,8 +195,8 @@ void HobotMipiCap::sync_diag_report(const char *tag, diag::SyncDiagStats &st, do
 
   size_t q_combine = combine_que ? combine_que->size_data() : 0;
   RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
-              "diag sync:%s, %sok:%lu, fail:%lu, q_combine:%zu, state:%s\n",
-              tag, side_part.c_str(),
+              "diag sync:%s, %sts_diff:%ldms, ok:%lu, fail:%lu, q_combine:%zu, state:%s\n",
+              tag, side_part.c_str(), static_cast<long>(ts_diff_ms),
               static_cast<unsigned long>(ok), static_cast<unsigned long>(fail),
               q_combine, diag::to_string(state));
 
@@ -179,16 +209,17 @@ void HobotMipiCap::sync_diag_report(const char *tag, diag::SyncDiagStats &st, do
   if (state != st.last_state) {
     if (state == diag::SyncDiagState::kOk) {
       RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
-                  "diag sync:%s state %s -> %s, %sok:%lu, fail:%lu, q_combine:%zu\n",
+                  "diag sync:%s state %s -> %s, %sts_diff:%ldms, ok:%lu, fail:%lu, q_combine:%zu\n",
                   tag, diag::to_string(st.last_state), diag::to_string(state),
-                  side_part.c_str(),
+                  side_part.c_str(), static_cast<long>(ts_diff_ms),
                   static_cast<unsigned long>(ok), static_cast<unsigned long>(fail),
                   q_combine);
     } else {
       RCLCPP_ERROR(rclcpp::get_logger("mipi_diag"),
-                  "diag sync:%s state %s -> %s, side:%zu, thr:%ldms, %sok:%lu, fail:%lu, q_combine:%zu\n",
+                  "diag sync:%s state %s -> %s, side:%zu, thr:%ldms, %sts_diff:%ldms, ok:%lu, fail:%lu, q_combine:%zu\n",
                   tag, diag::to_string(st.last_state), diag::to_string(state),
                   stall_idx, static_cast<long>(stall_ms), side_part.c_str(),
+                  static_cast<long>(ts_diff_ms),
                   static_cast<unsigned long>(ok), static_cast<unsigned long>(fail),
                   q_combine);
     }
@@ -198,6 +229,9 @@ void HobotMipiCap::sync_diag_report(const char *tag, diag::SyncDiagStats &st, do
 
   for (size_t i = 0; i < st.sides.size(); ++i) {
     st.snap.new_frames[i] = st.sides[i]->new_frames.load(std::memory_order_relaxed);
+    if (i < st.snap.ts_advanced.size()) {
+      st.snap.ts_advanced[i] = st.sides[i]->ts_advanced.load(std::memory_order_relaxed);
+    }
   }
   st.snap.sync_ok = ok;
   st.snap.sync_fail = fail;
