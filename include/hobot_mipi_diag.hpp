@@ -121,19 +121,31 @@ struct SyncSideDiag {
   std::atomic<bool> fid_valid{false};
   std::atomic<uint64_t> new_frames{0};     // 队头 frame_id 变化累计数
   std::atomic<int64_t> last_new_ms{0};     // 队头 frame_id 最近一次变化时刻（steady ms）
-  // 队头时间戳观测：用于读取两侧时间戳差（ts_diff）与时间戳推进速率（ts_adv），
-  // 区分“frame_id 在走但时间戳冻结”的重复帧与真实丢帧。
+  // 队头时间戳：仅保存最新值供 ts_diff 计算（推进速率字段已证无观测价值，已移除）。
   std::atomic<uint64_t> last_ts{0};        // 最近一次观察到的队头 timestamp（ns）
-  std::atomic<uint64_t> ts_advanced{0};    // 队头 timestamp 累计推进量（ns，含跳变）
 };
 
 // 同步线程私有：上一周期快照，用于算增量（new_frames 按侧分开）。
 struct SyncSnap {
   std::vector<uint64_t> new_frames;  // 每侧上周期 new_frames 值
-  std::vector<uint64_t> ts_advanced;  // 每侧上周期 ts_advanced 值
+  std::vector<uint64_t> q_dropped;   // 每侧队列上周期累计丢弃数（直接读取队列计数）
   uint64_t sync_ok = 0;
   uint64_t sync_fail = 0;
   int64_t last_report_ms = 0;
+};
+
+// 周期内聚合统计：每次 peek（约 100Hz）采样一次两侧队头差，
+// 周期行只输出聚合结果，避免高频打印刷屏。
+// 直方图 4 桶：0=对齐，1=正错位(+1 输入帧位)，2=负错位(-1 输入帧位)，3=其他。
+struct DiffHist {
+  uint64_t ts_bin[4] = {0, 0, 0, 0};   // ts_diff 分布（时间加权）
+  uint64_t fid_bin[4] = {0, 0, 0, 0};  // fid_diff 分布（时间加权）
+  uint64_t samples = 0;                // 本周期采样点数
+  int64_t ts_min = INT64_MAX;          // ts_diff 最小值（ms）
+  int64_t ts_max = INT64_MIN;          // ts_diff 最大值（ms）
+  int64_t ts_sum = 0;                  // ts_diff 累加（ms），用于均值
+  int32_t fid_min = INT32_MAX;         // fid_diff 最小值
+  int32_t fid_max = INT32_MIN;         // fid_diff 最大值
 };
 
 // 同步链状态。SIDE_STALL 指某一侧队头长时间不推进（该侧上游停摆或被扣帧）；
@@ -163,6 +175,9 @@ struct SyncDiagStats {
   std::vector<std::unique_ptr<SyncSideDiag>> sides;  // 每侧一份，按 v_frame_que_ 下标对齐
   std::atomic<uint64_t> sync_ok{0};                  // 同步成功产出 combine 帧累计
   std::atomic<uint64_t> sync_fail{0};                // 两侧有帧但时间戳判定失败累计
+  std::atomic<uint64_t> empty_wait{0};               // 任一侧队列空、循环空转的轮次累计
+  std::atomic<uint64_t> dropped{0};                  // popUntil 实际丢弃的帧数累计
+  DiffHist hist;                                     // 周期内 ts_diff/fid_diff 聚合
   SyncSnap snap;                                     // 上周期快照
   SyncDiagState last_state = SyncDiagState::kOk;
   bool state_valid = false;

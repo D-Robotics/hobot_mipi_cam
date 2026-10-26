@@ -524,7 +524,7 @@ int HobotMipiCapIml::start() {
                                      : static_cast<int>(ceil(cap_info_.fps * 30.0 / sensor_fps));
     }
     RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
-                "diag cfg, app_fps:%d, sub_fps:%d, sensor_fps:%d, vse_fps:%d, lpwm:%d, period_ms:%d, pipes:%zu\n",
+                "diag cfg, app_fps:%d, sub_fps:%d, sensor_fps:%d, vse_fps:%d, lpwm:%d, period_ms:%d, pipes:%zu",
                 cap_info_.fps, cap_info_.sub_fps, sensor_fps, vse_fps,
                 cap_info_.lpwm_enable_ ? 1 : 0, cap_info_.diag_period_ms_, pipe_contex.size());
     // 自诊断（启动期配置核对，只读不改任何下发配置）：
@@ -533,18 +533,38 @@ int HobotMipiCapIml::start() {
     // 两者叠加会导致 vse 分频参数算错（如 app 6 / sub 8 时 vse_fps=23 而非 6）。
     // 该行在启动时把算式与两处冲突直接暴露出来，不改配置、不影响采集行为。
     if (cap_info_.lpwm_enable_) {
-      int max_fps = cap_info_.fps > cap_info_.sub_fps ? cap_info_.fps : cap_info_.sub_fps;
+      // 与 create_and_run_vflow 的改写逻辑保持一致：只有启用子码流时才把 sub_fps
+      // 纳入 vin_fps 计算（此前未判断 sub_stream_enable，子码流关闭时会误报）。
+      bool sub_on = cap_info_.sub_stream_enable_;
+      int max_fps = (sub_on && cap_info_.sub_fps > cap_info_.fps)
+                        ? cap_info_.sub_fps : cap_info_.fps;
       int vse_fps_formula = cap_info_.fps == 1 ? 1
           : static_cast<int>(ceil(cap_info_.fps * 30.0 / max_fps));
-      int sub_vse_formula = cap_info_.sub_fps == 1 ? 1
-          : static_cast<int>(ceil(cap_info_.sub_fps * 30.0 / max_fps));
+      int sub_vse_formula = (sub_on && cap_info_.sub_fps != 1)
+          ? static_cast<int>(ceil(cap_info_.sub_fps * 30.0 / max_fps))
+          : (sub_on ? 1 : 0);
+      // 判定改为“比例误差”：dst/src 是比例语义，实际输出 = 输入帧率 × dst / 30。
+      // 原判定 (vse_fps_formula != app_fps) 在 sensor 非 30fps 时恒成立
+      // （LPWM 改写后必然如此），会把设计内的比例映射误报为错误。
+      double in_fps = max_fps > 0 ? static_cast<double>(max_fps) : 0.0;
+      double out_main = in_fps * vse_fps_formula / 30.0;
+      double out_sub = sub_on ? in_fps * sub_vse_formula / 30.0 : 0.0;
+      bool main_ok = cap_info_.fps <= 0 ||
+                     std::abs(out_main - cap_info_.fps) <= cap_info_.fps * 0.10;
+      bool sub_ok = !sub_on || cap_info_.sub_fps <= 0 ||
+                    std::abs(out_sub - cap_info_.sub_fps) <= cap_info_.sub_fps * 0.10;
+      // 分频比不能被 30 整除（如 22/30）时选帧不均匀，双目存在相位风险，
+      // 单独标记 non_int_div，与“算错”（mismatch）区分。
+      bool non_int_div = (vse_fps_formula % 30 != 0) ||
+                         (sub_on && sub_vse_formula % 30 != 0);
       RCLCPP_WARN(rclcpp::get_logger("mipi_diag"),
-                  "diag selfcheck, lpwm rewrites sensor_fps to max(app,sub)=%d; "
-                  "vse_div(main)=%d/%d(exp=%d/%d), sensor_fps_cfg=%d -> mismatch:%s\n",
-                  max_fps, vse_fps_formula, sub_vse_formula,
-                  cap_info_.fps, cap_info_.sub_fps, sensor_fps,
-                  (vse_fps_formula != cap_info_.fps || sub_vse_formula != cap_info_.sub_fps)
-                      ? "yes" : "no");
+                  "diag selfcheck, lpwm rewrites sensor_fps to max(app,sub)=%d(sub_on:%d); "
+                  "vse_div(main)=%d/30 out:%.1ffps(exp:%d), sub_div=%d/30 out:%.1ffps(exp:%d), "
+                  "sensor_fps_cfg=%d -> mismatch:%s, non_int_div:%s",
+                  max_fps, sub_on ? 1 : 0, vse_fps_formula, out_main, cap_info_.fps,
+                  sub_on ? sub_vse_formula : 0, out_sub, cap_info_.sub_fps, sensor_fps,
+                  (!main_ok || !sub_ok) ? "yes" : "no",
+                  non_int_div ? "yes" : "no");
     }
     diag_running_ = true;
     diag_thread_ = std::thread(&HobotMipiCapIml::diagTask, this);
@@ -735,7 +755,7 @@ void HobotMipiCapIml::multiFrameTask() {
 
 	int pipe_num = pipe_contex.size();
 	if (cap_info_.diag_enable_) {
-		RCLCPP_INFO(rclcpp::get_logger("mipi_diag"), "diag multiFrameTask start, pipes:%d\n", pipe_num);
+		RCLCPP_INFO(rclcpp::get_logger("mipi_diag"), "diag multiFrameTask start, pipes:%d", pipe_num);
 	}
 	int ret = 0;
 	fd_set readfds;
@@ -778,7 +798,7 @@ void HobotMipiCapIml::multiFrameTask() {
 			  diag_select_error_.fetch_add(1, std::memory_order_relaxed);
 		  }
 		  RCLCPP_ERROR(rclcpp::get_logger("mipi_diag"),
-			  "diag select failed, errno:%d, max_handle:%d, pipe_num:%d, fd0:%d, fd1:%d\n",
+			  "diag select failed, errno:%d, max_handle:%d, pipe_num:%d, fd0:%d, fd1:%d",
 			  select_errno, max_handle, pipe_num,
 			  pipe_num > 0 ? ochn_fd[0] : -1, pipe_num > 1 ? ochn_fd[1] : -1);
 		  std::cerr << "Select error" << std::endl;
@@ -850,11 +870,11 @@ void HobotMipiCapIml::multiFrameTask() {
 	if (cap_info_.diag_enable_) {
 		if (started_) {
 			RCLCPP_ERROR(rclcpp::get_logger("mipi_diag"),
-				"diag multiFrameTask exit unexpectedly, select_error:%lu\n",
+				"diag multiFrameTask exit unexpectedly, select_error:%lu",
 				static_cast<unsigned long>(diag_select_error_.load(std::memory_order_relaxed)));
 		} else {
 			RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
-				"diag multiFrameTask exit, select_error:%lu\n",
+				"diag multiFrameTask exit, select_error:%lu",
 				static_cast<unsigned long>(diag_select_error_.load(std::memory_order_relaxed)));
 		}
 	}
@@ -935,24 +955,27 @@ void HobotMipiCapIml::diagTask() {
       // 队列积压不在这里判定：采集层看不到订阅者，无消费者时 q_buff 长期为 3 是正常水位；
       // 消费侧由节点层的 IDLE / CONSUMER_SLOW + 本行的 q_buff/q_empty 共同反映。
 
+      // vin_fps：VIN 捕获帧率（frame_id 推进率，LPWM 下应等于触发帧率）；
+      // vse_fps：VSE 实际输出帧率（wake 增量）。两者对比可直接判断
+      // VSE 分频是否按约定比例执行（vin × dst/src = vse）。
       RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
                   "diag pipe:%zu main, hb:%ldms, fd_age:%ldms, wake:%lu, to:%lu, err:%lu, "
-                  "gf_ok:%lu, gf_fail:%lu, empty_null:%lu, push:%lu, fid_fps:%.1f, miss:%lu, "
-                  "q_buff:%zu, q_empty:%zu, state:%s\n",
+                  "gf_ok:%lu, gf_fail:%lu, empty_null:%lu, push:%lu, vin_fps:%.1f, vse_fps:%.1f, "
+                  "miss:%lu, q_buff:%zu, q_empty:%zu, state:%s",
                   i, static_cast<long>(hb_age), static_cast<long>(fd_age),
                   static_cast<unsigned long>(wake),
                   static_cast<unsigned long>(diag_select_timeout_.load(std::memory_order_relaxed)),
                   static_cast<unsigned long>(diag_select_error_.load(std::memory_order_relaxed)),
                   static_cast<unsigned long>(gf_ok), static_cast<unsigned long>(gf_fail),
                   static_cast<unsigned long>(empty_null), static_cast<unsigned long>(push),
-                  fps_fid, static_cast<unsigned long>(fid_miss), q_buff, q_empty,
+                  fps_fid, fps_vnode, static_cast<unsigned long>(fid_miss), q_buff, q_empty,
                   diag::to_string(state));
 
       if (state != states[i]) {
         if (state == diag::DiagState::kOk) {
           RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
                       "diag pipe:%zu state %s -> %s, vnode:%.1ffps, cfg:%.1ffps, fid:%.1ffps, "
-                      "miss:%lu, empty_null:%lu, fd_age:%ldms\n",
+                      "miss:%lu, empty_null:%lu, fd_age:%ldms",
                       i, diag::to_string(states[i]), diag::to_string(state),
                       fps_vnode, cfg_fps, fps_fid,
                       static_cast<unsigned long>(fid_miss),
@@ -961,7 +984,7 @@ void HobotMipiCapIml::diagTask() {
         } else {
           RCLCPP_ERROR(rclcpp::get_logger("mipi_diag"),
                        "diag pipe:%zu state %s -> %s, vnode:%.1ffps, cfg:%.1ffps, fid:%.1ffps, "
-                       "miss:%lu, empty_null:%lu, fd_age:%ldms\n",
+                       "miss:%lu, empty_null:%lu, fd_age:%ldms",
                        i, diag::to_string(states[i]), diag::to_string(state),
                        fps_vnode, cfg_fps, fps_fid,
                        static_cast<unsigned long>(fid_miss),

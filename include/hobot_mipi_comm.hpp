@@ -19,6 +19,7 @@
 #include <mutex>
 #include <queue>
 #include <memory>
+#include <atomic>
 
 extern "C" {
 #include <string.h>
@@ -254,8 +255,9 @@ class FrameQueue {
   void push(std::shared_ptr<VideoBuffer> frame_ptr) {
     std::lock_guard<std::mutex> lock(mtx_);
     if (queue_.size() >= max_size_) {
-      // drop old frame
+      // drop old frame（计入累计丢弃，供诊断直接读取）
       queue_.pop_front();
+      dropped_total_.fetch_add(1, std::memory_order_relaxed);
     }
     queue_.push_back(frame_ptr);
   }
@@ -274,17 +276,31 @@ class FrameQueue {
     return queue_.front();
   }
 
-  void popUntil(long long ts) {
+  // 丢弃队头所有时间戳早于 ts 的帧，返回实际丢弃数量（诊断统计用；
+  // 原有调用点忽略返回值，行为不变）。
+  size_t popUntil(long long ts) {
     std::lock_guard<std::mutex> lock(mtx_);
+    size_t dropped = 0;
     while (!queue_.empty() && queue_.front()->timestamp < ts) {
       queue_.pop_front();
+      ++dropped;
     }
+    if (dropped > 0) {
+      dropped_total_.fetch_add(dropped, std::memory_order_relaxed);
+    }
+    return dropped;
+  }
+
+  // 累计丢弃帧数（满溢丢老帧 + popUntil 丢帧），诊断直接读取，无需推算。
+  uint64_t dropped_total() const {
+    return dropped_total_.load(std::memory_order_relaxed);
   }
 
  private:
   std::deque<std::shared_ptr<VideoBuffer>> queue_;
   std::mutex mtx_;
   size_t max_size_;
+  std::atomic<uint64_t> dropped_total_{0};
 };
 
 // popen运行cmd，并获取cmd返回结果

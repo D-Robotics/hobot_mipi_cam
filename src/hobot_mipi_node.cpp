@@ -706,7 +706,7 @@ void MipiCamNode::pub_diag(const std::string &channel, const std::string &topic,
     state = "PUBLISH_FAIL";
   }
   RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
-              "diag channel:%s, topic:%s, subs:%zu, cons_fps:%.1f, pub_fps:%.1f, fail:%lu, state:%s\n",
+              "diag channel:%s, topic:%s, subs:%zu, cons_fps:%.1f, pub_fps:%.1f, fail:%lu, state:%s",
               channel.c_str(), topic.c_str(), subs, cons_fps, pub_fps,
               static_cast<unsigned long>(fail), state);
   // 状态跃迁：进入 CONSUMER_SLOW / PUBLISH_FAIL 用 ERROR，恢复 OK 用 INFO——
@@ -728,14 +728,14 @@ void MipiCamNode::pub_diag(const std::string &channel, const std::string &topic,
     static const char *state_names[] = {"OK", "IDLE", "CONSUMER_SLOW", "PUBLISH_FAIL"};
     if (state_code == 0 || state_code == 1) {
       RCLCPP_INFO(rclcpp::get_logger("mipi_diag"),
-                  "diag channel:%s state %s -> %s, cons_fps:%.1f, pub_fps:%.1f, cfg:%.1f, fail:%lu\n",
+                  "diag channel:%s state %s -> %s, cons_fps:%.1f, pub_fps:%.1f, cfg:%.1f, fail:%lu",
                   channel.c_str(),
                   d.last_state >= 0 && d.last_state <= 3 ? state_names[d.last_state] : "?",
                   state_names[state_code], cons_fps, pub_fps, cfg_fps,
                   static_cast<unsigned long>(fail));
     } else {
       RCLCPP_ERROR(rclcpp::get_logger("mipi_diag"),
-                   "diag channel:%s state %s -> %s, cons_fps:%.1f, pub_fps:%.1f, cfg:%.1f, fail:%lu\n",
+                   "diag channel:%s state %s -> %s, cons_fps:%.1f, pub_fps:%.1f, cfg:%.1f, fail:%lu",
                    channel.c_str(),
                    d.last_state >= 0 && d.last_state <= 3 ? state_names[d.last_state] : "?",
                    state_names[state_code], cons_fps, pub_fps, cfg_fps,
