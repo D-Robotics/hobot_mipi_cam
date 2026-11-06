@@ -186,14 +186,17 @@ int mipi_calibration::detectEeprom_drobot(int i2c_bus, std::string &device, uint
 	std::string chip_type;
   
 	for (auto eeprom_id : eeprom_detect_list) {
-		if (readEeprom16(i2c_bus, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 8)) {
+		// 表项都是同一地址0x50：一次读失败(无应答/总线超时)就没必要再试后续表项，
+		// 卡死总线上每次失败读要耗时秒级
+		if (!readEeprom16(i2c_bus, eeprom_id.i2c_dev_addr, eeprom_id.det_reg, buf, 8)) {
+			break;
+		}
 		std::string buf_str = buf;
 		RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),"i2c bus: %d, EEPROM FLAG: %s\n", i2c_bus, buf_str.c_str());
 		if (eeprom_id.check_str == buf_str) {
 			i2c_addr = eeprom_id.i2c_dev_addr;
 			device = eeprom_id.device_name;
 			return 0;
-		}
 		}
 	}
     return -1;
@@ -273,14 +276,22 @@ bool mipi_calibration::getCamCalibrationFromEeprom() {
 	if (detectEeprom_drobot(i2c_bus, device, i2c_addr) == -1) {
 		continue;
 	}
+	bool parsed = false;
 	if (device == "yuguang") {
-		getCamCalibration_yugang(i2c_bus, i2c_addr);
+		parsed = getCamCalibration_yugang(i2c_bus, i2c_addr);
 	} else if (device == "union") {
-		getCamCalibration_union(i2c_bus, i2c_addr);
+		parsed = getCamCalibration_union(i2c_bus, i2c_addr);
 	} else if (device == "sz_abham") {
-		getCamCalibration_abham(i2c_bus, i2c_addr);
+		parsed = getCamCalibration_abham(i2c_bus, i2c_addr);
 	} else if (device == "szsyhtl") {
-		getCamCalibration_szsyhtl(i2c_bus, i2c_addr);
+		parsed = getCamCalibration_szsyhtl(i2c_bus, i2c_addr);
+	} else {
+		continue;
+	}
+	// 已成功解析到一个双目模组标定即可停止，
+	// 继续扫剩余总线会在异常总线(如SCL被拉死的HDMI总线)上阻塞数十秒
+	if (parsed) {
+		return true;
 	}
   }
   return true;
