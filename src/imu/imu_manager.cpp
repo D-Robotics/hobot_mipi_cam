@@ -171,7 +171,7 @@ int ImuManager::tryInitEvent() {
     ev->set_path(it->second);
     if (ev->init() == 0) {
         imu_handle = ev;
-        //event_handle_ = ev;
+        event_handle_ = ev;
         return 0;
     }
     RCLCPP_WARN(rclcpp::get_logger("imu_manager"),
@@ -290,7 +290,7 @@ void ImuManager::release_sensor() {
         imu_handle->deinit();
     } 
     imu_handle.reset();
-    //event_handle_.reset();
+    event_handle_.reset();
     degraded_to_iio_ = false;
 }
 

@@ -346,12 +346,14 @@ int event_device::set_path(std::vector<DeviceInfo_T> &dev_info) {
 //            类内不能用进程信号，eventfd 语义等价：退出事件也是普通 fd 事件）
 // 无数据时 epoll_wait 阻塞（带超时上限以驱动卡死检测），零轮询 CPU。
 
-#if 1
 void event_device::pollThread() {
   int index = 0, count = 0, last_count = -1;
   int16_t raw[6] = {0};
   uint64_t frame_time_us = 0;    // 帧采样时刻（帧内 ev.time 同值）
   struct input_event event;
+  // sync_time 与当前系统时间差值的窗口统计（诊断日志，见组帧处）
+  uint64_t sync_log_ns = 0;
+  int64_t sync_min_delta_us = 0, sync_max_delta_us = 0;
   // epoll：监听 input 设备 fd + 退出 eventfd
   ep_fd_ = epoll_create1(EPOLL_CLOEXEC);
   if (ep_fd_ < 0) {
@@ -466,6 +468,40 @@ void event_device::pollThread() {
         EventFrame f;
         memcpy(f.raw, raw, sizeof(f.raw));
         f.sync_time = frame_time_us * 1000ull;    // µs → ns
+
+        // 【诊断日志】sync_time（采样时刻）与当前系统时间的差值，节流 1s/条：
+        // ev.time 时钟域是 CLOCK_REALTIME（evdev client 默认 clk_type，
+        // 未经 EVIOCSCLOCKID 修改），须用同域 clock_gettime 对比；
+        // delta = 采样时刻 → 用户态组帧完成时刻的延迟（DRDY 中断 → 驱动
+        // 事件生成 → evdev 缓冲 → epoll 唤醒 → 线程调度）。正常应为
+        // 毫秒级且平稳；cur 突增说明事件在内核侧被积压后 burst 补发。
+        // 若 delta 巨大且 ≈ 系统已运行时长，说明时钟域判断有误。
+        {
+          struct timespec now;
+          clock_gettime(CLOCK_REALTIME, &now);
+          const uint64_t now_ns =
+              static_cast<uint64_t>(now.tv_sec) * 1000000000ull +
+              static_cast<uint64_t>(now.tv_nsec);
+          const int64_t delta_us =
+              static_cast<int64_t>(now_ns > f.sync_time
+                                       ? (now_ns - f.sync_time) / 1000
+                                       : -(f.sync_time - now_ns) / 1000);
+          if (sync_log_ns == 0) {    // 首帧开窗
+            sync_log_ns = now_ns;
+            sync_min_delta_us = sync_max_delta_us = delta_us;
+          } else {
+            if (delta_us < sync_min_delta_us) sync_min_delta_us = delta_us;
+            if (delta_us > sync_max_delta_us) sync_max_delta_us = delta_us;
+            if (now_ns - sync_log_ns >= 1000000000ull) {    // 每秒 1 条
+              RCLCPP_INFO(rclcpp::get_logger("event_device"),
+                          "sync_time delta vs now: cur=%" PRId64 " us, "
+                          "min=%" PRId64 " us, max=%" PRId64 " us",
+                          delta_us, sync_min_delta_us, sync_max_delta_us);
+              sync_log_ns = now_ns;
+              sync_min_delta_us = sync_max_delta_us = delta_us;
+            }
+          }
+        }
         pushFrame(f);
       }
     }
@@ -473,171 +509,6 @@ void event_device::pollThread() {
   close(ep_fd_);
   ep_fd_ = -1;
 }
-#else
-
-#define BMI088_MSC_DATA 0x04                // MSC code used by the driver (must match kernel)
-#define MSC_DATA_COUNT 9                    // MSC fields per frame: 6 axes + timestamp (2 words) + IRQ count
-#define ACC_X_IDX 0                         // accelerometer X index
-#define ACC_Y_IDX 1                         // accelerometer Y index
-#define ACC_Z_IDX 2                         // accelerometer Z index
-#define GYRO_X_IDX 3                        // gyroscope X index
-#define GYRO_Y_IDX 4                        // gyroscope Z index
-#define GYRO_Z_IDX 5                        // gyroscope Z index
-#define TS_HIGH_IDX 6                       // timestamp high 32 bits index
-#define TS_LOW_IDX 7                        // timestamp low 32 bits index
-#define IRQ_COUNT 8                         // IRQ count index
-
-
-void event_device::pollThread() {
-  int index = 0, count = 0, last_count = -1;
-  int16_t raw[6] = {0};
-  uint64_t frame_time_us = 0;    // 帧采样时刻（帧内 ev.time 同值）
-  struct input_event event;
-  // epoll：监听 input 设备 fd + 退出 eventfd
-  ep_fd_ = epoll_create1(EPOLL_CLOEXEC);
-  if (ep_fd_ < 0) {
-    RCLCPP_ERROR(rclcpp::get_logger("event_device"), "epoll_create1: %s",
-                 strerror(errno));
-    return;
-  }
-  struct epoll_event epev;
-  memset(&epev, 0, sizeof(epev));
-  epev.events = EPOLLIN;
-  epev.data.fd = event_fd_;
-  bool ep_ok = epoll_ctl(ep_fd_, EPOLL_CTL_ADD, event_fd_, &epev) == 0;
-  epev.data.fd = exit_fd_;
-  if (ep_ok) {
-    ep_ok = epoll_ctl(ep_fd_, EPOLL_CTL_ADD, exit_fd_, &epev) == 0;
-  }
-  if (!ep_ok) {
-    RCLCPP_ERROR(rclcpp::get_logger("event_device"), "epoll_ctl: %s",
-                 strerror(errno));
-    close(ep_fd_);
-    ep_fd_ = -1;
-    return;
-  }
-
-
-  int32_t msc_data[MSC_DATA_COUNT] = {0};
-  int msc_index = 0;  // Index of the next MSC field in the current frame
-  struct input_event ev;
-  // Parsed frame data
-  int16_t ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
-  uint64_t raw_timestamp = 0;  // Assembled 64-bit hardware timestamp (ns)
-  int irq_count = 0;
-
-  // Packet-loss detection state
-  int64_t diff, min_diff = INT64_MAX, max_diff = INT64_MIN;
-  uint64_t timestamp_ns_last = 0, lost_count = 0;
-  int frames = 0, event_count = 0;
-  while (is_running_) {
-    struct epoll_event events[2];
-    int nready = epoll_wait(ep_fd_, events, 2, -1);
-    if (nready < 0) {
-        if (errno == EINTR) {
-            continue;    // 被无关信号打断：回查 g_running
-        }
-        perror("epoll_wait");
-        break;    // epoll 真错误：跳出循环走清理
-    }
-    for (int i = 0; i < nready; ++i) {
-        if (events[i].data.fd == exit_fd_) {
-            // 读取并消费 signalfd 信号（SIGINT/SIGTERM → 置退出标志）
-            struct signalfd_siginfo si;
-            #if 0
-            while (read(exit_fd_, &si, sizeof(si)) == (ssize_t)sizeof(si)) {
-                if (si.ssi_signo == SIGINT || si.ssi_signo == SIGTERM) {
-                  is_running_ = 0;
-                }
-            }
-            #endif
-            is_running_ = 0;
-            continue;
-        }
-        if (events[i].events & EPOLLIN) {
-            ssize_t ret = read(event_fd_, &ev, sizeof(ev));
-            if (ret != sizeof(ev)) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                perror("read failed");
-                is_running_ = 0;    // fd 坏/EOF：跳出外层循环走清理
-                break;
-            }
-            ++event_count;
-
-            switch (ev.type) {
-            // Parse only EV_MSC events with BMI088_MSC_DATA
-            case EV_MSC:
-                if (ev.code == BMI088_MSC_DATA) {
-                    if (msc_index < MSC_DATA_COUNT) {
-                        msc_data[msc_index++] = ev.value;  // Store fields in order
-                    } else {
-                        // Overflow: too many MSC fields in this frame, reset
-                        printf("[WARN] MSC data overflow, reset index\n");
-                        msc_index = 0;
-                    }
-                }
-                break;
-
-            case EV_SYN:
-                if (ev.code == SYN_REPORT) {
-                    // End of frame: parse the cached MSC fields
-                    if (msc_index == MSC_DATA_COUNT) {
-                        // 1. Parse 6-axis raw data (int32 ev.value -> int16 sensor LSB)
-                        ax = (int16_t)msc_data[ACC_X_IDX];
-                        ay = (int16_t)msc_data[ACC_Y_IDX];
-                        az = (int16_t)msc_data[ACC_Z_IDX];
-                        gx = (int16_t)msc_data[GYRO_X_IDX];
-                        gy = (int16_t)msc_data[GYRO_Y_IDX];
-                        gz = (int16_t)msc_data[GYRO_Z_IDX];
-
-                        // 2. Assemble 64-bit timestamp: (high << 32) | low
-                        raw_timestamp = ((uint64_t)msc_data[TS_HIGH_IDX] << 32) | (uint32_t)msc_data[TS_LOW_IDX];
-
-                        irq_count = (int16_t)msc_data[IRQ_COUNT];
-
-                        // 3. Print one assembled frame (raw LSB + hardware timestamp)
-                        printf("ACC(%d,%d,%d) | GYRO(%d,%d,%d) | TS:%" PRIu64 " ns | Lost: %" PRIu64 " | EventCount: %d | up_count: %d | lower_count: - \n",
-                               ax, ay, az, gx, gy, gz, raw_timestamp, lost_count, event_count, irq_count);
-                        frames++;
-
-                        // 4. Detect packet loss from timestamp gaps
-                        if (timestamp_ns_last != 0 && raw_timestamp != 0) {
-                            diff = (int64_t)(raw_timestamp - timestamp_ns_last);
-                            if (diff > 3500000) {  // Threshold: 3.5 ms
-                                lost_count++;
-                                printf("[ERROR] IMU data lost: last ts %.6fs, current ts %.6fs, diff %.6fs\n",
-                                       timestamp_ns_last * 1e-9, raw_timestamp * 1e-9, diff * 1e-9);
-                            }
-                            if (diff < min_diff && diff > 0) min_diff = diff;
-                            if (diff > max_diff) max_diff = diff;
-                        }
-                        timestamp_ns_last = raw_timestamp;
-                    } else {
-                        // Incomplete frame: drop and wait for next SYN_REPORT
-                        printf("[WARN] MSC data incomplete (received %d/%d), skip\n", msc_index, MSC_DATA_COUNT);
-                    }
-
-                    // Reset cache for the next frame
-                    msc_index = 0;
-                    memset(msc_data, 0, sizeof(msc_data));
-                    event_count = 0;
-                }
-                break;
-
-            // EV_ABS is not used by this driver
-            default:
-                // Ignore other event types
-                break;
-          }
-        }    // end if EPOLLIN
-    }    // end for nready
-  }
-  close(ep_fd_);
-  ep_fd_ = -1;
-}
-#endif
 
 // 驱动 event 通道卡死时的自愈（只做安全动作）：
 //   重开 event fd 处理 evdev client 侧异常。
@@ -696,7 +567,7 @@ void event_device::pushFrame(const EventFrame &frame) {
     que_.pop_front();    // 溢出丢最旧（消费端慢于生产端时保实时性）
     dropped_frames_++;
     if (dropped_frames_ % 100 == 1) {
-      RCLCPP_WARN(rclcpp::get_logger("event_device"),
+      RCLCPP_INFO(rclcpp::get_logger("event_device"),
                   "queue full(%zu), dropped oldest (total %llu)",
                   kMaxQueueSize, static_cast<unsigned long long>(dropped_frames_));
     }
