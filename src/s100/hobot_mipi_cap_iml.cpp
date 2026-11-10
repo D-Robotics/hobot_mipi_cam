@@ -2374,13 +2374,17 @@ int HobotMipiCapIml::create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_co
 	}
 	pipe_contex->stream_group = 0;
 	int32_t ret = 0;
+	int vin_fps = pipe_contex->cap_info_->fps;
+	if (pipe_contex->cap_info_->sub_stream_enable_) {
+		vin_fps = std::max(vin_fps, pipe_contex->cap_info_->sub_fps);
+	}
 
     if (pipe_contex->sensor_config.sensor_type == SENSOR_TYPE_NORMAL) {
 		//pipe_contex->sensor_config.isp_attr->input_mode = 2;
 		if (pipe_contex->cap_info_->lpwm_enable_) {
-			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
-			int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
+			pipe_contex->sensor_config.camera_config->fps = vin_fps;
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = vin_fps;
+			int fps_rate = (1000000 / vin_fps);
 			pipe_contex->sensor_config.camera_config->sensor_mode = 6;
 			//pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.enable = 1;
 			for (auto& attr : pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.lpwm_chn_attr) {
@@ -2389,20 +2393,20 @@ int HobotMipiCapIml::create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_co
 			}
 			pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.skip_frame = 0;
 		} else {
-			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+			pipe_contex->sensor_config.camera_config->fps = vin_fps;
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = vin_fps;
 			pipe_contex->sensor_config.camera_config->sensor_mode = 1;
 			for (auto& attr : pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.lpwm_chn_attr) {
 				attr.enable = 0;
 			}
-			if (pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.input_fps > pipe_contex->cap_info_->fps) {
+			if (pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.input_fps > vin_fps) {
 				pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.skip_frame = 1;
-				pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.output_fps = pipe_contex->cap_info_->fps;
+				pipe_contex->sensor_config.vin_attr->vin_node_attr.cim_attr.func.output_fps = vin_fps;
 			}
 		}
 	} else {
-		//	pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-		//	pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+		//	pipe_contex->sensor_config.camera_config->fps = vin_fps;
+		//	pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = vin_fps;
 	}
 	// 创建pipeline中的每个node
 	ret = create_camera_node(pipe_contex, pipe_contex->gsml_link_port_);
@@ -2524,13 +2528,17 @@ int HobotMipiCapIml::create_and_run_vflow_step1(std::shared_ptr<pipe_contex_t> p
 	}
 	pipe_contex->stream_group = 0;
 	int32_t ret = 0;
+	int vin_fps = pipe_contex->cap_info_->fps;
+	if (pipe_contex->cap_info_->sub_stream_enable_) {
+		vin_fps = std::max(vin_fps, pipe_contex->cap_info_->sub_fps);
+	}
 
     if (pipe_contex->sensor_config.sensor_type == SENSOR_TYPE_NORMAL) {
 		//pipe_contex->sensor_config.isp_attr->input_mode = 2;
 		if (pipe_contex->cap_info_->lpwm_enable_) {
-			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
-			int fps_rate = (1000000 / pipe_contex->cap_info_->fps);
+			pipe_contex->sensor_config.camera_config->fps = vin_fps;
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = vin_fps;
+			int fps_rate = (1000000 / vin_fps);
 			pipe_contex->sensor_config.camera_config->sensor_mode = 6;
 			//pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.enable = 1;
 			for (auto& attr : pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.lpwm_chn_attr) {
@@ -2538,16 +2546,16 @@ int HobotMipiCapIml::create_and_run_vflow_step1(std::shared_ptr<pipe_contex_t> p
 				attr.enable = 1;
 			}
 		} else {
-			pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+			pipe_contex->sensor_config.camera_config->fps = vin_fps;
+			pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = vin_fps;
 			pipe_contex->sensor_config.camera_config->sensor_mode = 1;
 			for (auto& attr : pipe_contex->sensor_config.vin_attr->vin_node_attr.lpwm_attr.lpwm_chn_attr) {
 				attr.enable = 0;
 			}
 		}
 	} else {
-		//	pipe_contex->sensor_config.camera_config->fps = pipe_contex->cap_info_->fps;
-		//	pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = pipe_contex->cap_info_->fps;
+		//	pipe_contex->sensor_config.camera_config->fps = vin_fps;
+		//	pipe_contex->sensor_config.camera_config->mipi_cfg->rx_attr.fps = vin_fps;
 	}
 	// 创建pipeline中的每个node
 	ret = create_camera_node(pipe_contex, pipe_contex->gsml_link_port_);
