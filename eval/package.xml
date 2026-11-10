@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>mipi_cam_eval</name>
+  <version>0.1.0</version>
+  <description>
+    hobot_mipi_cam evaluation tooling: C++ receiver-side recorder, analysis
+    chain and eval cases. Nested package inside hobot_mipi_cam; no platform
+    (PLATFORM_*) dependency, same artifact for X5/S100/S600.
+  </description>
+  <maintainer email="tros@example.com">tros</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+
+  <!-- hbm_img_msgs 为可选依赖（CMake QUIET 探测）：缺失时 hbmem topic 订阅不编译，
+       板端（全量工作区构建）默认可用 -->
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
