@@ -13,6 +13,9 @@
 // limitations under the License.
 
 #include "hobot_mipi_node.hpp"
+#include "hobot_mipi_eval_log.hpp"
+using mipi_cam::eval::EVAL_EV_IMU_ERROR;
+using mipi_cam::eval::EVAL_EV_PUB_OUT;
 
 #include <sstream>
 #include <stdarg.h>
@@ -100,6 +103,9 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   this->declare_parameter<int>("stream_mode", nodePare_->stream_mode_);
   this->declare_parameter<bool>("sub_stream_enable", nodePare_->sub_stream_enable_);
   this->declare_parameter<std::string>("imu_calib_file", "config/imu_calibration.yaml");
+  // 评测埋点开关（默认关闭，见 hobot_mipi_eval_log.hpp 输出契约）
+  this->declare_parameter<bool>("eval_log_enable", false);
+  this->declare_parameter<std::string>("eval_log_events", "all");
 
   this->get_parameter<std::string>("frame_id", frame_id_);
   this->get_parameter<std::string>("io_method", io_method_name_);
@@ -136,6 +142,12 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->sub_framerate_ = static_cast<int>(sub_framerate);
 
   this->get_parameter<std::string>("imu_calib_file", imu_calib_file_path_);
+
+  // 配置评测埋点单例（平台后端经 EVAL_LOG 宏读取，零侵入：默认关闭）
+  mipi_cam::eval::EvalLog::instance().configure(
+      this->get_parameter("eval_log_enable").as_bool(),
+      mipi_cam::eval::eval_event_mask_from_names(
+          this->get_parameter("eval_log_events").as_string()));
 
   nodePare_->sync_awb_ = this->declare_parameter<bool>("sync_awb", false);
   nodePare_->sync_ccm_ = this->declare_parameter<bool>("sync_ccm", false);
@@ -492,6 +504,9 @@ void MipiCamNode::init() {
     }
     is_imu_running_ = true;
     imu_timer_.emplace_back(std::make_shared<std::thread>([this]() { while(rclcpp::ok()) {this->read_imu_data();}}));
+  } else if (!imu_type_.empty()) {
+    // 评测埋点：imu_error（指定了 imu_type 但初始化失败）
+    EVAL_LOG(EVAL_EV_IMU_ERROR, "err=imu_init_fail detail=type_%s", imu_type_.c_str());
   }
 
 }
@@ -711,6 +726,10 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
     auto frame_id = pub_info->frame_id;
     auto ts = img->header.stamp;
     pub_info->image_pub_->publish(std::move(img));
+    // 评测埋点：pub_out（发布完成时刻，帧 ts 见帧内时间戳）
+    EVAL_LOG(EVAL_EV_PUB_OUT, "topic=%s ts_frame=%lld",
+             pub_info->image_pub_->get_topic_name(),
+             static_cast<long long>(ts.sec) * 1000000000LL + ts.nanosec);
     RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
       "Published image on channel: %s, frame_id: %s, ts: %d.%d, delay: %.3f sec",
       channel.c_str(), frame_id.c_str(),
@@ -761,7 +780,15 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
         pub_info->camera_calibration_info2_->header.stamp = msg.time_stamp;
         pub_info->info_pub2_->publish(*pub_info->camera_calibration_info2_);
       }
+      // 评测埋点数据先取（publish 后 loanedMsg 已移交）
+      const uint32_t pub_seq = pub_info->mSendIdx - 1;
+      const int64_t pub_ts_ns =
+          static_cast<long long>(msg.time_stamp.sec) * 1000000000LL +
+          static_cast<long long>(msg.time_stamp.nanosec);
       pub_info->publisher_hbmem_->publish(std::move(loanedMsg));
+      // 评测埋点：pub_out（hbmem 通路，序号由订阅端校验连续性）
+      EVAL_LOG(EVAL_EV_PUB_OUT, "topic=%s seq=%u ts_frame=%lld",
+               pub_info->publisher_hbmem_->get_topic_name(), pub_seq, pub_ts_ns);
 
     } else {
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),

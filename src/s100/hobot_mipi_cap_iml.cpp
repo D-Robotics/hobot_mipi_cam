@@ -32,6 +32,11 @@
 
 #include "hobot_mipi_comm.hpp"
 #include "hobot_mipi_cap_iml.hpp"
+#include "hobot_mipi_eval_log.hpp"
+using mipi_cam::eval::EVAL_EV_ERROR;
+using mipi_cam::eval::EVAL_EV_FRAME_IN;
+using mipi_cam::eval::EVAL_EV_QUEUE_STAT;
+using mipi_cam::eval::EVAL_EV_STARTUP;
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/distortion_models.hpp"
 #include "opencv2/opencv.hpp"
@@ -777,6 +782,9 @@ int HobotMipiCapIml::start() {
 		}
 	}
   }
+  // 评测埋点：startup（首帧时刻由 multiFrameTask 的 first_frame 事件给出）
+  EVAL_LOG(EVAL_EV_STARTUP, "stage=started pipes=%zu sub_stream=%d",
+           pipe_contex.size(), cap_info_.sub_stream_enable_ ? 1 : 0);
   return 0;
 }
 
@@ -892,7 +900,8 @@ std::shared_ptr<VideoBuffer> HobotMipiCapIml::getFrame(std::string channel) {
 	return buff_ptr;
 }
 
-int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr) {
+int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr,
+                                   int eval_pipe, const char *eval_stream) {
 	
 	if (buff_ptr == nullptr) {
 		return -1;
@@ -959,11 +968,25 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::
 	buff_ptr->encode = "nv12";
 	memcpy(buff_ptr->buff.data(), out_img.buffer.virt_addr[0], out_img.buffer.size[0]);
 	memcpy(buff_ptr->buff.data() + out_img.buffer.size[0], out_img.buffer.virt_addr[1], out_img.buffer.size[1]);
+	// 评测埋点：frame_in（ts_frame 用内核帧时间戳，不受 realtime 换算影响；
+	// 曝光=tv−trig_tv，trig_tv 为 0（无触发）时 exp_valid=0，分析归入帧 ts 口径组）
+	if (eval_pipe >= 0 && eval_stream != nullptr) {
+		const int64_t exp_ns = static_cast<int64_t>(exposure_time);
+		const int exp_valid =
+		    ((out_img.info.trig_tv.tv_sec != 0 || out_img.info.trig_tv.tv_usec != 0) &&
+		     exp_ns >= 0 && exp_ns < 10000000000LL) ? 1 : 0;
+		EVAL_LOG(EVAL_EV_FRAME_IN,
+		         "pipe=%d stream=%s frame_id=%u ts_frame=%lld exp_us=%lld exp_valid=%d",
+		         eval_pipe, eval_stream, buff_ptr->frame_id,
+		         static_cast<long long>(out_img.info.timestamps),
+		         static_cast<long long>(exp_valid ? exp_ns / 1000 : 0), exp_valid);
+	}
 	hbn_vnode_releaseframe(handle, channel, &out_img);
 	return 0;
 }
 
-int HobotMipiCapIml::copyGroupFrameToBuffer(const hbn_vnode_image_group_t &out_img, int group_idx, std::shared_ptr<VideoBuffer> buff_ptr) {
+int HobotMipiCapIml::copyGroupFrameToBuffer(const hbn_vnode_image_group_t &out_img, int group_idx, std::shared_ptr<VideoBuffer> buff_ptr,
+                                            int eval_pipe, const char *eval_stream) {
 	if ((buff_ptr == nullptr) || (group_idx < 0) || (group_idx >= 6)) {
 		return -1;
 	}
@@ -997,6 +1020,20 @@ int HobotMipiCapIml::copyGroupFrameToBuffer(const hbn_vnode_image_group_t &out_i
 	buff_ptr->encode = "nv12";
 	memcpy(buff_ptr->buff.data(), graph.virt_addr[0], graph.size[0]);
 	memcpy(buff_ptr->buff.data() + graph.size[0], graph.virt_addr[1], graph.size[1]);
+	// 评测埋点：frame_in（group 路径，曝光在此补算：tv−trig_tv）
+	if (eval_pipe >= 0 && eval_stream != nullptr) {
+		const int64_t exp_ns =
+		    (static_cast<int64_t>(out_img.info.tv.tv_sec) - static_cast<int64_t>(out_img.info.trig_tv.tv_sec)) * 1000000000LL +
+		    (static_cast<int64_t>(out_img.info.tv.tv_usec) - static_cast<int64_t>(out_img.info.trig_tv.tv_usec)) * 1000LL;
+		const int exp_valid =
+		    ((out_img.info.trig_tv.tv_sec != 0 || out_img.info.trig_tv.tv_usec != 0) &&
+		     exp_ns >= 0 && exp_ns < 10000000000LL) ? 1 : 0;
+		EVAL_LOG(EVAL_EV_FRAME_IN,
+		         "pipe=%d stream=%s frame_id=%u ts_frame=%lld exp_us=%lld exp_valid=%d",
+		         eval_pipe, eval_stream, buff_ptr->frame_id,
+		         static_cast<long long>(out_img.info.timestamps),
+		         static_cast<long long>(exp_valid ? exp_ns / 1000 : 0), exp_valid);
+	}
 	RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
 		"capture pym group[%d], id:%d, width:%d, height:%d, stride:%d, ts:%lu",
 		group_idx, buff_ptr->frame_id, buff_ptr->width, buff_ptr->height, buff_ptr->stride, buff_ptr->timestamp);
@@ -1051,7 +1088,29 @@ void HobotMipiCapIml::multiFrameTask() {
 	});
 
 	int select_timeout_count = 0;
+	// 评测埋点：任务起始时刻/首帧标志/队列统计周期
+	const int64_t task_start_ns = static_cast<int64_t>(mipi_cam::eval::eval_now_mono_ns());
+	bool first_frame_logged = false;
+	int64_t last_qstat_mono_ns = 0;
 	while (started_) {
+	  // 评测埋点：queue_stat 周期汇总（1s，各队列数据水位）
+	  {
+	    const int64_t now_ns = static_cast<int64_t>(mipi_cam::eval::eval_now_mono_ns());
+	    if (now_ns - last_qstat_mono_ns >= 1000000000LL) {
+	      last_qstat_mono_ns = now_ns;
+	      for (size_t qi = 0; qi < pipe_contex.size(); qi++) {
+	        const size_t main_depth = (qi < v_buff_que_manger_.size())
+	            ? v_buff_que_manger_[qi]->q_buff_.size() : 0;
+	        const size_t sub_depth = (qi < v_sub_buff_que_manger_.size())
+	            ? v_sub_buff_que_manger_[qi]->q_buff_.size() : 0;
+	        const size_t combine_depth =
+	            (combine_buff_que_manger_ != nullptr) ? combine_buff_que_manger_->q_buff_.size() : 0;
+	        EVAL_LOG(EVAL_EV_QUEUE_STAT,
+	                 "pipe=%zu main_depth=%zu sub_depth=%zu combine_depth=%zu",
+	                 qi, main_depth, sub_depth, combine_depth);
+	      }
+	    }
+	  }
 	  max_handle = 0;
 	  FD_ZERO(&readfds);
 	  std::for_each(indices.begin(), indices.end(), [&](int i) {
@@ -1070,6 +1129,8 @@ void HobotMipiCapIml::multiFrameTask() {
 	  } else if (result == 0) {
 		  // 超时
 		  select_timeout_count++;
+		  EVAL_LOG(EVAL_EV_ERROR, "err=select_timeout pipe=-1 ret=%d detail=count_%d",
+		           result, select_timeout_count);
 		  RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
 			"select timeout, count:%d, max_handle:%d, pipe_num:%d, fd[0]:%d, fd[1]:%d",
 			select_timeout_count, max_handle, pipe_num,
@@ -1089,13 +1150,18 @@ void HobotMipiCapIml::multiFrameTask() {
 						hbn_vnode_image_group_t out_img;
 						ret = hbn_vnode_getframe_group(pipe_contex[i]->stream_handle, 0, 1000, &out_img);
 						if (ret == 0) {
-							ret = copyGroupFrameToBuffer(out_img, pipe_contex[i]->main_stream_group_idx, buff_ptr);
+							ret = copyGroupFrameToBuffer(out_img, pipe_contex[i]->main_stream_group_idx, buff_ptr, i, "main");
 							if (ret == 0) {
 								if (combine_flag_) {
 									auto buff_tmp = std::make_shared<VideoBuffer>(*buff_ptr);
 									v_frame_que_[i]->push(buff_tmp);
 								}
 								buff_ptr->return_data_que();
+								if (!first_frame_logged) {
+									first_frame_logged = true;
+									EVAL_LOG(EVAL_EV_STARTUP, "stage=first_frame dur_ms=%lld",
+									         static_cast<long long>((static_cast<int64_t>(mipi_cam::eval::eval_now_mono_ns()) - task_start_ns) / 1000000));
+								}
 							} else {
 								buff_ptr->return_empty_que();
 							}
@@ -1103,7 +1169,7 @@ void HobotMipiCapIml::multiFrameTask() {
 								(i < v_sub_buff_que_manger_.size())) {
 								auto sub_buff_ptr = v_sub_buff_que_manger_[i]->get_empty_buff();
 								if (sub_buff_ptr) {
-									int sub_ret = copyGroupFrameToBuffer(out_img, pipe_contex[i]->sub_stream_group_idx, sub_buff_ptr);
+									int sub_ret = copyGroupFrameToBuffer(out_img, pipe_contex[i]->sub_stream_group_idx, sub_buff_ptr, i, "sub");
 									if (sub_ret == 0) {
 										if (combine_flag_ && (i < v_sub_frame_que_.size())) {
 											auto buff_tmp = std::make_shared<VideoBuffer>(*sub_buff_ptr);
@@ -1117,17 +1183,23 @@ void HobotMipiCapIml::multiFrameTask() {
 							}
 							hbn_vnode_releaseframe_group(pipe_contex[i]->stream_handle, 0, &out_img);
 						} else {
+							EVAL_LOG(EVAL_EV_ERROR, "err=getframe_fail pipe=%d ret=%d detail=getframe_group", i, ret);
 							RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe_group PYM pipe = %d failed, ret = %d\n", i, ret);
 							buff_ptr->return_empty_que();
 						}
 					} else {
-						ret = getVnodeFrame(pipe_contex[i]->stream_handle, 0, buff_ptr);
+						ret = getVnodeFrame(pipe_contex[i]->stream_handle, 0, buff_ptr, i, "main");
 						if (ret == 0) {
 							if (combine_flag_) {
 								auto buff_tmp = std::make_shared<VideoBuffer>(*buff_ptr);
 								v_frame_que_[i]->push(buff_tmp);
 							}
 							buff_ptr->return_data_que();
+							if (!first_frame_logged) {
+								first_frame_logged = true;
+								EVAL_LOG(EVAL_EV_STARTUP, "stage=first_frame dur_ms=%lld",
+								         static_cast<long long>((static_cast<int64_t>(mipi_cam::eval::eval_now_mono_ns()) - task_start_ns) / 1000000));
+							}
 							// stream_group==0(主码流为GDC输出)的子码流来源：
 							// stream_mode_==1双GDC(场景5)时子码流来自GDC_r后PYM2的group1(已旋转未矫正)；
 							// stream_mode_==1仅标定或PYM2创建失败的回退时，子码流来自GDC前PYM1的group1(未矫正)
@@ -1142,7 +1214,7 @@ void HobotMipiCapIml::multiFrameTask() {
 									hbn_vnode_image_group_t out_img;
 									int sub_ret = hbn_vnode_getframe_group(sub_pym_handle, 0, 100, &out_img);
 									if (sub_ret == 0) {
-										sub_ret = copyGroupFrameToBuffer(out_img, pipe_contex[i]->sub_stream_group_idx, sub_buff_ptr);
+										sub_ret = copyGroupFrameToBuffer(out_img, pipe_contex[i]->sub_stream_group_idx, sub_buff_ptr, i, "sub");
 										hbn_vnode_releaseframe_group(sub_pym_handle, 0, &out_img);
 										if (sub_ret == 0) {
 											if (combine_flag_ && (i < v_sub_frame_que_.size())) {
@@ -1154,12 +1226,14 @@ void HobotMipiCapIml::multiFrameTask() {
 											sub_buff_ptr->return_empty_que();
 										}
 									} else {
+										EVAL_LOG(EVAL_EV_ERROR, "err=getframe_fail pipe=%d ret=%d detail=sub_stream", i, sub_ret);
 										RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe_group PYM sub stream pipe = %d failed, ret = %d\n", i, sub_ret);
 										sub_buff_ptr->return_empty_que();
 									}
 								}
 							}
 						} else {
+							EVAL_LOG(EVAL_EV_ERROR, "err=getframe_fail pipe=%d ret=%d detail=getframe", i, ret);
 							RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe channel = %d failed ,ret = %d\n", i,ret);
 							buff_ptr->return_empty_que();
 						}
@@ -1223,10 +1297,12 @@ void HobotMipiCapIml::gdcToPymBridgeTask(int pipe_idx) {
 				ret = hbn_vnode_sendframe(contex->pym_node_handle_post, 0, &img);
 				hbn_vnode_releaseframe(contex->pym_post_src_handle, 0, &img);
 				if (ret != 0) {
+					EVAL_LOG(EVAL_EV_ERROR, "err=bridge_fail pipe=%d ret=%d detail=sendframe", pipe_idx, ret);
 					RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
 						"gdc bridge sendframe pipe = %d failed, ret = %d", pipe_idx, ret);
 				}
 			} else {
+				EVAL_LOG(EVAL_EV_ERROR, "err=bridge_fail pipe=%d ret=%d detail=getframe", pipe_idx, ret);
 				RCLCPP_WARN(rclcpp::get_logger("mipi_cap"),
 					"gdc bridge getframe pipe = %d failed, ret = %d", pipe_idx, ret);
 			}

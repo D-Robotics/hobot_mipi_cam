@@ -174,9 +174,11 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   void multiFrameTask();
   void gdcToPymBridgeTask(int pipe_idx); //GDC输出→PYM2(M2M)的CPU桥接线程(每pipe一个)：getframe(GDC)→sendframe(PYM2)→releaseframe(零拷贝句柄传递)
-  int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
+  int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr,
+                    int eval_pipe = -1, const char *eval_stream = nullptr);
   int getVnodeFrameGroup(hbn_vnode_handle_t handle, int group_idx, std::shared_ptr<VideoBuffer> buff_ptr);
-  int copyGroupFrameToBuffer(const hbn_vnode_image_group_t &out_img, int group_idx, std::shared_ptr<VideoBuffer> buff_ptr);
+  int copyGroupFrameToBuffer(const hbn_vnode_image_group_t &out_img, int group_idx, std::shared_ptr<VideoBuffer> buff_ptr,
+                             int eval_pipe = -1, const char *eval_stream = nullptr);
   int create_and_run_vflow(std::shared_ptr<pipe_contex_t> pipe_contex);
   int create_and_run_vflow_step1(std::shared_ptr<pipe_contex_t> pipe_contex);
   int create_and_run_vflow_step2(std::shared_ptr<pipe_contex_t> pipe_contex);
