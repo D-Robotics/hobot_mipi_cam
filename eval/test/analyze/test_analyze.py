@@ -94,7 +94,8 @@ class TestMetrics(unittest.TestCase):
         m = topic_metrics(self.rows)
         img = m["/t/image_raw"]
         self.assertEqual(img["count"], 5)
-        self.assertAlmostEqual(img["fps_mean"], 5 / 0.132, delta=0.01)
+        # 无偏估计：(N-1)/时长 = 4/0.132
+        self.assertAlmostEqual(img["fps_mean"], 4 / 0.132, delta=0.01)
         self.assertEqual(img["stamp_monotonic_violations"], 0)
         self.assertEqual(img["stamp_duplicates"], 0)
         itv = img["recv_interval_ns"]
@@ -140,6 +141,31 @@ class TestMetrics(unittest.TestCase):
         self.assertIn("/t/image_raw", md)
         self.assertIn("曝光中点", md)
         self.assertIn("8.00", md)
+
+    def test_realtime_domain_exp_match(self):
+        # realtime 域：stamp = ts_frame + offset + 12ms 管线延迟 → 最近邻匹配仍命中曝光
+        stamps = [MONO_BASE + i * 33 * MS for i in range(3)]
+        csv = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding"]
+        eval_lines = []
+        for i, s in enumerate(stamps):
+            rt_stamp = s + CLOCK_OFFSET + 12 * MS
+            csv.append(f"/t/img_rt,,{rt_stamp},{s + 20 * MS},1920,1080,nv12")
+            eval_lines.append(f"[EVAL] ts_mono={s} event=frame_in pipe=0 stream=main "
+                              f"frame_id={i + 1} ts_frame={s} exp_us=10000 exp_valid=1")
+        rows, _ = parse_recorder_csv("\n".join(csv))
+        lat = latency_metrics(rows, parse_eval_log("\n".join(eval_lines)),
+                              "realtime", CLOCK_OFFSET)
+        # t0 = stamp−exp/2 → lat = 20 − 12(域差) + 5 = 13ms？见下：
+        # 归一后 stamp_mono = s+12ms，recv = s+20ms → lat=8ms；+exp/2 → 13ms
+        self.assertEqual(lat["/t/img_rt"]["exp_midpoint"]["count"], 3)
+        self.assertEqual(lat["/t/img_rt"]["exp_midpoint"]["p50_ms"], 13.0)
+
+    def test_domain_autodetect(self):
+        self.assertEqual(analyze(self.rows, "")["meta"]["image_domain"], "mono")
+        rt_rows, _ = parse_recorder_csv(
+            "topic,seq,stamp_ns,recv_mono_ns,width,height,encoding\n"
+            f"/t/x,,{RT_BASE},{MONO_BASE},1,1,nv12\n")
+        self.assertEqual(analyze(rt_rows, "")["meta"]["image_domain"], "realtime")
 
 
 if __name__ == "__main__":

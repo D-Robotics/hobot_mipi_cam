@@ -67,6 +67,23 @@ using mipi_cam::eval::EVAL_EV_STARTUP;
 #define ALIGN_16(x) (((x) + 15) & ~15)
 
 namespace mipi_cam {
+// 评测埋点辅助：frame_in 事件的曝光计算与输出（单帧/group 两路共用，int64 防 int32 溢出）
+static inline void eval_emit_frame_in(int pipe, const char *stream, uint32_t frame_id,
+                                      int64_t ts_frame_ns, const struct timeval &tv,
+                                      const struct timeval &trig_tv) {
+	int64_t exp_ns = (static_cast<int64_t>(tv.tv_sec) - static_cast<int64_t>(trig_tv.tv_sec)) * 1000000000LL +
+	                 (static_cast<int64_t>(tv.tv_usec) - static_cast<int64_t>(trig_tv.tv_usec)) * 1000LL;
+	const int exp_valid =
+	    ((trig_tv.tv_sec != 0 || trig_tv.tv_usec != 0) &&
+	     exp_ns >= 0 && exp_ns < 10000000000LL) ? 1 : 0;
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_FRAME_IN,
+	         "pipe=%d stream=%s frame_id=%u ts_frame=%lld exp_us=%lld exp_valid=%d",
+	         pipe, stream, frame_id, static_cast<long long>(ts_frame_ns),
+	         static_cast<long long>(exp_valid ? exp_ns / 1000 : 0), exp_valid);
+}
+}  // namespace mipi_cam
+
+namespace mipi_cam {
 
 int HobotMipiCapIml::initEnv() {
   std::vector<int> mipi_hosts;
@@ -971,15 +988,9 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::
 	// 评测埋点：frame_in（ts_frame 用内核帧时间戳，不受 realtime 换算影响；
 	// 曝光=tv−trig_tv，trig_tv 为 0（无触发）时 exp_valid=0，分析归入帧 ts 口径组）
 	if (eval_pipe >= 0 && eval_stream != nullptr) {
-		const int64_t exp_ns = static_cast<int64_t>(exposure_time);
-		const int exp_valid =
-		    ((out_img.info.trig_tv.tv_sec != 0 || out_img.info.trig_tv.tv_usec != 0) &&
-		     exp_ns >= 0 && exp_ns < 10000000000LL) ? 1 : 0;
-		EVAL_LOG(EVAL_EV_FRAME_IN,
-		         "pipe=%d stream=%s frame_id=%u ts_frame=%lld exp_us=%lld exp_valid=%d",
-		         eval_pipe, eval_stream, buff_ptr->frame_id,
-		         static_cast<long long>(out_img.info.timestamps),
-		         static_cast<long long>(exp_valid ? exp_ns / 1000 : 0), exp_valid);
+		eval_emit_frame_in(eval_pipe, eval_stream, buff_ptr->frame_id,
+		                   static_cast<int64_t>(out_img.info.timestamps),
+		                   out_img.info.tv, out_img.info.trig_tv);
 	}
 	hbn_vnode_releaseframe(handle, channel, &out_img);
 	return 0;
@@ -1022,17 +1033,9 @@ int HobotMipiCapIml::copyGroupFrameToBuffer(const hbn_vnode_image_group_t &out_i
 	memcpy(buff_ptr->buff.data() + graph.size[0], graph.virt_addr[1], graph.size[1]);
 	// 评测埋点：frame_in（group 路径，曝光在此补算：tv−trig_tv）
 	if (eval_pipe >= 0 && eval_stream != nullptr) {
-		const int64_t exp_ns =
-		    (static_cast<int64_t>(out_img.info.tv.tv_sec) - static_cast<int64_t>(out_img.info.trig_tv.tv_sec)) * 1000000000LL +
-		    (static_cast<int64_t>(out_img.info.tv.tv_usec) - static_cast<int64_t>(out_img.info.trig_tv.tv_usec)) * 1000LL;
-		const int exp_valid =
-		    ((out_img.info.trig_tv.tv_sec != 0 || out_img.info.trig_tv.tv_usec != 0) &&
-		     exp_ns >= 0 && exp_ns < 10000000000LL) ? 1 : 0;
-		EVAL_LOG(EVAL_EV_FRAME_IN,
-		         "pipe=%d stream=%s frame_id=%u ts_frame=%lld exp_us=%lld exp_valid=%d",
-		         eval_pipe, eval_stream, buff_ptr->frame_id,
-		         static_cast<long long>(out_img.info.timestamps),
-		         static_cast<long long>(exp_valid ? exp_ns / 1000 : 0), exp_valid);
+		eval_emit_frame_in(eval_pipe, eval_stream, buff_ptr->frame_id,
+		                   static_cast<int64_t>(out_img.info.timestamps),
+		                   out_img.info.tv, out_img.info.trig_tv);
 	}
 	RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
 		"capture pym group[%d], id:%d, width:%d, height:%d, stride:%d, ts:%lu",
@@ -1093,21 +1096,32 @@ void HobotMipiCapIml::multiFrameTask() {
 	bool first_frame_logged = false;
 	int64_t last_qstat_mono_ns = 0;
 	while (started_) {
-	  // 评测埋点：queue_stat 周期汇总（1s，各队列数据水位）
+	  // 评测埋点：queue_stat 周期汇总（1s，各队列数据水位）。
+	  // 零侵入：埋点未启用时完全不读队列；启用时读深度须持各队列锁（与消费线程互斥）。
 	  {
 	    const int64_t now_ns = static_cast<int64_t>(mipi_cam::eval::eval_now_mono_ns());
 	    if (now_ns - last_qstat_mono_ns >= 1000000000LL) {
 	      last_qstat_mono_ns = now_ns;
-	      for (size_t qi = 0; qi < pipe_contex.size(); qi++) {
-	        const size_t main_depth = (qi < v_buff_que_manger_.size())
-	            ? v_buff_que_manger_[qi]->q_buff_.size() : 0;
-	        const size_t sub_depth = (qi < v_sub_buff_que_manger_.size())
-	            ? v_sub_buff_que_manger_[qi]->q_buff_.size() : 0;
-	        const size_t combine_depth =
-	            (combine_buff_que_manger_ != nullptr) ? combine_buff_que_manger_->q_buff_.size() : 0;
-	        EVAL_LOG(EVAL_EV_QUEUE_STAT,
-	                 "pipe=%zu main_depth=%zu sub_depth=%zu combine_depth=%zu",
-	                 qi, main_depth, sub_depth, combine_depth);
+	      if (mipi_cam::eval::EvalLog::instance().enabled() &&
+	          mipi_cam::eval::EvalLog::instance().event_enabled(mipi_cam::eval::EVAL_EV_QUEUE_STAT)) {
+	        for (size_t qi = 0; qi < pipe_contex.size(); qi++) {
+	          size_t main_depth = 0, sub_depth = 0, combine_depth = 0;
+	          if (qi < v_buff_que_manger_.size()) {
+	            std::lock_guard<std::mutex> lk(v_buff_que_manger_[qi]->queue_mtx_);
+	            main_depth = v_buff_que_manger_[qi]->q_buff_.size();
+	          }
+	          if (qi < v_sub_buff_que_manger_.size()) {
+	            std::lock_guard<std::mutex> lk(v_sub_buff_que_manger_[qi]->queue_mtx_);
+	            sub_depth = v_sub_buff_que_manger_[qi]->q_buff_.size();
+	          }
+	          if (combine_buff_que_manger_ != nullptr) {
+	            std::lock_guard<std::mutex> lk(combine_buff_que_manger_->queue_mtx_);
+	            combine_depth = combine_buff_que_manger_->q_buff_.size();
+	          }
+	          EVAL_LOG(EVAL_EV_QUEUE_STAT,
+	                   "pipe=%zu main_depth=%zu sub_depth=%zu combine_depth=%zu",
+	                   qi, main_depth, sub_depth, combine_depth);
+	        }
 	      }
 	    }
 	  }

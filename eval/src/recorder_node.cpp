@@ -89,9 +89,11 @@ RecorderNode::RecorderNode(const rclcpp::NodeOptions &options)
     subs_.push_back(this->create_subscription<hbm_img_msgs::msg::HbmMsg1080P>(
         t, sensor_qos,
         [this, t](hbm_img_msgs::msg::HbmMsg1080P::ConstSharedPtr msg) {
+          // encoding 为定长数组（余量为 NUL），截到首个 NUL 避免 CSV 混入二进制
+          const auto *enc_raw = reinterpret_cast<const char *>(msg->encoding.data());
+          const std::string enc(enc_raw, strnlen(enc_raw, msg->encoding.size()));
           write_row(t, std::to_string(msg->index),
-                    stamp_to_ns(msg->time_stamp), msg->width, msg->height,
-                    std::string(msg->encoding.begin(), msg->encoding.end()));
+                    stamp_to_ns(msg->time_stamp), msg->width, msg->height, enc);
         }));
   }
 #endif

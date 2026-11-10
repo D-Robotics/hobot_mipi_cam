@@ -24,16 +24,21 @@ def main():
     ap = argparse.ArgumentParser(description="mipi_cam 评测分析链（基线模式）")
     ap.add_argument("--csv", required=True, help="recorder CSV 路径")
     ap.add_argument("--log", default=None, help="驱动日志（含 [EVAL] 行）路径")
-    ap.add_argument("--image-domain", choices=["mono", "realtime"], default="mono",
-                    help="图像 stamp 时钟域（frame_ts_type=sensor→mono，realtime→realtime）")
+    ap.add_argument("--image-domain", choices=["auto", "mono", "realtime"], default="auto",
+                    help="图像 stamp 时钟域（auto=按 stamp 量级自动识别；"
+                         "frame_ts_type=sensor→mono，realtime→realtime）")
     ap.add_argument("--out-md", default=None, help="输出 Markdown 报告路径")
     ap.add_argument("--out-json", default=None, help="输出指标 JSON 路径")
     args = ap.parse_args()
 
+    if args.log is not None and not os.path.exists(args.log):
+        print(f"error: --log 文件不存在：{args.log}", file=sys.stderr)
+        sys.exit(2)
+
     with open(args.csv, "r", encoding="utf-8") as f:
         rows, skipped = parse_recorder_csv(f.read())
     eval_text = ""
-    if args.log and os.path.exists(args.log):
+    if args.log:
         with open(args.log, "r", encoding="utf-8", errors="replace") as f:
             eval_text = f.read()
 
@@ -44,7 +49,8 @@ def main():
             off = parse_clock_sidecar(f.read())
             offset = off if off is not None else 0
 
-    result = run_analyze(rows, eval_text, image_domain=args.image_domain,
+    result = run_analyze(rows, eval_text,
+                         image_domain=None if args.image_domain == "auto" else args.image_domain,
                          clock_offset_ns=offset)
     result["meta"]["csv_skipped_rows"] = skipped
 

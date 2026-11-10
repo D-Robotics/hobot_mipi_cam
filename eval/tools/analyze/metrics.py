@@ -12,6 +12,12 @@ from typing import Dict, List, Optional
 
 from parsers import RecRow, parse_eval_log  # 同目录导入（脚本/测试均从此目录起）
 
+# 曝光匹配容差：realtime 域下图像 stamp 与内核 ts_frame 相差帧管线延迟+时钟漂移，
+# 用最近邻匹配（mono 域下精确命中，diff=0）
+EXP_MATCH_TOL_NS = 50 * 1000 * 1000
+# 域自动识别阈值：realtime 域 stamp ~1.7e18，monotonic 域 <1e17
+REALTIME_DETECT_NS = 10 ** 17
+
 
 def percentile(sorted_vals: List[float], p: float) -> Optional[float]:
     """线性插值分位数；输入须已升序。"""
@@ -56,10 +62,11 @@ def topic_metrics(rows: List[RecRow]) -> Dict[str, Dict]:
         mono_violations = sum(1 for a, b in zip(stamps, stamps[1:]) if b < a)
         dup_stamps = len(stamps) - len(set(stamps))
         duration_s = (recvs[-1] - recvs[0]) / 1e9 if len(recvs) > 1 else 0.0
+        # 无偏帧率估计：(N-1)/时长（时长只覆盖 N-1 个间隔）
         m = {
             "count": len(rs),
             "duration_s": round(duration_s, 3),
-            "fps_mean": round(len(rs) / duration_s, 3) if duration_s > 0 else None,
+            "fps_mean": round((len(rs) - 1) / duration_s, 3) if len(rs) > 1 else None,
             "recv_interval_ns": _interval_stats(recvs),
             "stamp_monotonic_violations": mono_violations,
             "stamp_duplicates": dup_stamps,
@@ -108,16 +115,31 @@ def pub_out_metrics(eval_events: List[Dict]) -> Dict[str, int]:
     return dict(out)
 
 
-def _exp_by_ts_frame(eval_events: List[Dict]) -> Dict[int, int]:
-    """ts_frame -> exp_us（exp_valid=1），供延迟 t0=曝光中点使用。"""
-    m = {}
+def _exp_pairs_sorted(eval_events: List[Dict]):
+    """[(ts_frame, exp_us)]（exp_valid=1，升序），供延迟 t0=曝光中点使用。"""
+    pairs = []
     for e in eval_events:
         if e["event"] != "frame_in":
             continue
         kv = e["kv"]
         if kv.get("exp_valid") == 1 and "ts_frame" in kv and "exp_us" in kv:
-            m[kv["ts_frame"]] = kv["exp_us"]
-    return m
+            pairs.append((kv["ts_frame"], kv["exp_us"]))
+    pairs.sort()
+    return pairs
+
+
+def _lookup_exp(stamp_ns: int, pairs, tol_ns: int) -> Optional[int]:
+    """最近邻曝光匹配（容差 tol_ns）"""
+    import bisect
+    ts_list = [p[0] for p in pairs]
+    i = bisect.bisect_left(ts_list, stamp_ns)
+    best = None
+    for j in (i - 1, i):
+        if 0 <= j < len(pairs):
+            d = abs(pairs[j][0] - stamp_ns)
+            if d <= tol_ns and (best is None or d < best[0]):
+                best = (d, pairs[j][1])
+    return best[1] if best else None
 
 
 def latency_metrics(rows: List[RecRow], eval_events: List[Dict],
@@ -125,9 +147,16 @@ def latency_metrics(rows: List[RecRow], eval_events: List[Dict],
     """端到端延迟（接收端视角）：t0=曝光中点（帧ts−exp/2），无曝光帧单独分组。
 
     image_domain: 图像 stamp 的时钟域（frame_ts_type=sensor -> mono；realtime -> realtime）
-    域归一：imu 行 stamp 恒为 realtime，减 offset 到 mono 轴；图像行按 image_domain。
+    域归一：imu 行 stamp 恒为 realtime，减 offset 到 mono 轴；图像行按 image_domain
+    归一到 mono 后与 frame_in 的 ts_frame（内核 monotonic ts）做最近邻曝光匹配。
     """
-    exp_map = _exp_by_ts_frame(eval_events)
+    exp_pairs = _exp_pairs_sorted(eval_events)
+    # 匹配容差：不超过半帧间隔（避免丢帧/无曝光帧"借"到邻帧曝光），
+    # 且不超过帧管线延迟上界（覆盖 realtime 域 stamp 与 ts_frame 的偏差）
+    tol_ns = EXP_MATCH_TOL_NS
+    if len(exp_pairs) >= 2:
+        gaps = [b[0] - a[0] for a, b in zip(exp_pairs, exp_pairs[1:])]
+        tol_ns = min(EXP_MATCH_TOL_NS, max(gaps) // 2)
     by_topic = defaultdict(list)
     for r in rows:
         if r.encoding in ("imu", "camera_info"):
@@ -139,7 +168,7 @@ def latency_metrics(rows: List[RecRow], eval_events: List[Dict],
         lat_mid, lat_ts = [], []
         for stamp, recv in pairs:
             lat = recv - stamp
-            exp_us = exp_map.get(stamp)
+            exp_us = _lookup_exp(stamp, exp_pairs, tol_ns)
             if exp_us is not None:
                 lat_mid.append(lat + exp_us * 1000 // 2)  # t0 = 帧ts − exp/2
             else:
@@ -223,10 +252,20 @@ def imu_sync_metrics(rows: List[RecRow], image_topic: str,
     }
 
 
-def analyze(rows: List[RecRow], eval_text: str, image_domain: str = "mono",
+def detect_image_domain(rows: List[RecRow]) -> str:
+    """域自动识别：图像 stamp 中位数超过 realtime 阈值则判为 realtime。"""
+    stamps = sorted(r.stamp_ns for r in rows if r.encoding not in ("imu", "camera_info"))
+    if not stamps:
+        return "mono"
+    return "realtime" if stamps[len(stamps) // 2] > REALTIME_DETECT_NS else "mono"
+
+
+def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = None,
             clock_offset_ns: int = 0) -> Dict:
-    """总入口：产出指标字典（报告/JSON 用）。"""
+    """总入口：产出指标字典（报告/JSON 用）。image_domain=None 时自动识别。"""
     events = parse_eval_log(eval_text)
+    if image_domain is None:
+        image_domain = detect_image_domain(rows)
     image_topics = sorted({r.topic for r in rows if r.encoding not in ("imu", "camera_info")})
     result = {
         "meta": {

@@ -73,7 +73,8 @@ inline bool eval_event_from_name(const std::string& name, uint32_t* ev) {
 }
 
 // 类别名列表 -> bitmask，用于解析 eval_log_events 参数。
-// "all" 或空串 -> 全部；逗号分隔逐项解析，未知项跳过；全未知 -> EVAL_EV_NONE。
+// "all" 或空串 -> 全部；逗号分隔逐项解析，未知项跳过；
+// 全部未知（疑似拼写错误）-> 告警并回退全部，避免静默零输出。
 inline uint32_t eval_event_mask_from_names(const std::string& names) {
   if (names.empty() || names == "all") {
     return EVAL_EV_ALL;
@@ -95,6 +96,12 @@ inline uint32_t eval_event_mask_from_names(const std::string& names) {
     }
     if (comma == names.size()) break;
     pos = comma + 1;
+  }
+  if (mask == EVAL_EV_NONE) {
+    fprintf(stderr,
+            "[EVAL] warning: no known event in eval_log_events='%s', fallback to all\n",
+            names.c_str());
+    return EVAL_EV_ALL;
   }
   return mask;
 }

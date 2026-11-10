@@ -109,7 +109,9 @@ TEST(EvalMaskParse, ListAndSpaces) {
 TEST(EvalMaskParse, UnknownSkipped) {
   using namespace mipi_cam::eval;
   EXPECT_EQ(EVAL_EV_FRAME_IN, eval_event_mask_from_names("foo,frame_in"));
-  EXPECT_EQ(EVAL_EV_NONE, eval_event_mask_from_names("foo"));
+  // 全未知（拼写错误场景）回退全部并告警，避免静默零输出
+  EXPECT_EQ(EVAL_EV_ALL, eval_event_mask_from_names("foo"));
+  EXPECT_EQ(EVAL_EV_ALL, eval_event_mask_from_names("ALL"));  // 大小写敏感
 }
 
 TEST(EvalLogGate, DisabledAndFilter) {
