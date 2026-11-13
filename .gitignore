@@ -1,0 +1,39 @@
+# 编辑器本地配置（不入库，各人环境不同）
+.vscode/
+CLAUDE.md
+# docs/ 默认不入库；评测总体方案作为交付物单独放行
+docs/*
+!docs/X5评测总体方案.md
+diagrams
+scene-tree.html
+
+# docs/ 下的调试遗留物（docs/ 内已跟踪文件不受影响，此规则只挡新增杂项）
+docs/*.log
+docs/*.deb
+docs/*.txt
+
+# colcon / ament 构建产物（在本仓库内构建时生成）
+build/
+build_*/
+install/
+install_*/
+log/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 编译中间产物
+*.o
+
+# 板端调试期间下载/复制到仓库根的临时包与产物
+vims-grab-repro-pkg
+vims-grab-repro-pkg.tar.gz
+install-vims-v0.0.7.tar.gz
+hobot-boot_3.1.0-20260514041708_arm64.deb
+hobot-dtb_3.0.8-20260514041655_arm64.deb
+hobot-kernel-headers_3.0.4-20260514041655_arm64.deb
+solver.bin
+
+# 交叉编译日志
+build_x5_diag_*.log

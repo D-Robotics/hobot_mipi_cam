@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from parsers import parse_clock_sidecar, parse_eval_log, parse_recorder_csv
-from metrics import analyze as run_analyze
+from metrics import analyze as run_analyze, expected_from_launch_args
 from report import render_baseline_report
 
 
@@ -29,6 +29,8 @@ def main():
                          "frame_ts_type=sensor→mono，realtime→realtime）")
     ap.add_argument("--out-md", default=None, help="输出 Markdown 报告路径")
     ap.add_argument("--out-json", default=None, help="输出指标 JSON 路径")
+    ap.add_argument("--meta", default=None,
+                    help="运行目录 meta.txt；默认取 CSV 同目录的 meta.txt")
     args = ap.parse_args()
 
     if args.log is not None and not os.path.exists(args.log):
@@ -49,10 +51,35 @@ def main():
             off = parse_clock_sidecar(f.read())
             offset = off if off is not None else 0
 
+    meta_path = args.meta or os.path.join(os.path.dirname(os.path.abspath(args.csv)), "meta.txt")
+    expected = None
+    expected_topics = None
+    if os.path.exists(meta_path):
+        with open(meta_path, "r", encoding="utf-8", errors="replace") as f:
+            meta_text = f.read()
+        expected = expected_from_launch_args(meta_text)
+        image_topics = info_topics = None
+        for line in meta_text.splitlines():
+            if line.startswith("image_topics="):
+                try:
+                    image_topics = json.loads(line.split("=", 1)[1])
+                except ValueError:
+                    pass
+            elif line.startswith("info_topics="):
+                try:
+                    info_topics = json.loads(line.split("=", 1)[1])
+                except ValueError:
+                    pass
+        expected_topics = (image_topics or []) + (info_topics or []) or None
+
     result = run_analyze(rows, eval_text,
                          image_domain=None if args.image_domain == "auto" else args.image_domain,
-                         clock_offset_ns=offset)
+                         clock_offset_ns=offset,
+                         expected=expected,
+                         expected_topics=expected_topics)
     result["meta"]["csv_skipped_rows"] = skipped
+    result["meta"]["expected_source"] = meta_path if expected else None
+    result["meta"]["expected_topics"] = expected_topics
 
     md = render_baseline_report(result)
     if args.out_md:

@@ -1,0 +1,47 @@
+{
+  "meta": {
+    "image_domain": "mono",
+    "clock_offset_ns": 946717354567791037,
+    "eval_events": 491,
+    "eval_by_event": {
+      "imu_error": 1,
+      "pub_out": 490
+    },
+    "csv_skipped_rows": 0
+  },
+  "topics": {
+    "/image_raw": {
+      "count": 489,
+      "duration_s": 16.257,
+      "fps_mean": 30.019,
+      "recv_interval_ns": {
+        "count": 489,
+        "mean": 33312570.264344264,
+        "p50": 33880935.5,
+        "p95": 34112966.45,
+        "p99": 34373362.92,
+        "max": 34904723,
+        "min": 23654294
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    }
+  },
+  "frame_in": {},
+  "pub_out": {
+    "/image_raw": 490
+  },
+  "latency": {
+    "/image_raw": {
+      "exp_midpoint": null,
+      "frame_ts": {
+        "count": 489,
+        "mean_ms": 2616.805,
+        "p50_ms": 2616.641,
+        "p95_ms": 2621.496,
+        "p99_ms": 2622.253,
+        "max_ms": 2623.49
+      }
+    }
+  }
+}

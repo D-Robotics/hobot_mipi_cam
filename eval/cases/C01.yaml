@@ -1,0 +1,43 @@
+# 单目主码流 + IMU（脚本保留；当前轮优先跑双目 C04）
+id: C01
+name: single-1088x1280-nv12-30
+run_label: single-1088x1280-nv12-30fps
+stage: foundation
+baseline: false
+
+launch: mipi_cam_eval_single.launch.py
+params:
+  device_mode: single
+  dual_combine: 0
+  sub_stream_enable: false
+  image_width: 1088
+  image_height: 1280
+  sub_image_width: 544
+  sub_image_height: 640
+  framerate: 30.0
+  sub_framerate: 15.0
+  out_format: nv12
+  io_method: ros
+  frame_ts_type: sensor
+  lpwm_enable: false
+  gdc_enable: true
+  rotation: 0.0
+  cal_rotation: 0.0
+  channel: 0
+  channel2: 2
+  imu_type: icm42688
+
+eval:
+  log_enable: true
+  # 单目脚本保留；当前轮只验证双目。单目 backend 子阶段打点待补，
+  # 现有 startup 只有 node 级 + create_vflow pipe=0 + first_frame/first_pub。
+  log_events: [startup, pub_out, imu_error]
+  duration_s: 30
+
+recorder:
+  image_topics: [/image_raw]
+  imu_topics: [/imu_data]
+  info_topics: [/image_raw/camera_info]
+
+# 基线定标后写回；本阶段为空
+thresholds: {}

@@ -19,6 +19,7 @@
 #include <mutex>
 #include <queue>
 #include <memory>
+#include <atomic>
 
 extern "C" {
 #include <string.h>
@@ -133,17 +134,34 @@ class BuffQueueManage : public std::enable_shared_from_this<BuffQueueManage>{
   std::mutex queue_mtx_;
   std::queue<std::shared_ptr<VideoBuffer>> q_empty_;
   std::queue<std::shared_ptr<VideoBuffer>> q_buff_;
+  // 评测用直接丢弃计数（不改变队列行为）：深度>=3 回收最旧帧、拿不到空 buffer
+  std::atomic<uint64_t> recycled_total_{0};
+  std::atomic<uint64_t> empty_null_total_{0};
   std::shared_ptr<VideoBuffer> get_empty_buff() {
     std::unique_lock<std::mutex> lk(queue_mtx_);
     std::shared_ptr<VideoBuffer> buff_ptr = nullptr;
     if (q_buff_.size() >= 3) {
       buff_ptr = q_buff_.front();
       q_buff_.pop();
+      recycled_total_.fetch_add(1, std::memory_order_relaxed);
     } else if (!q_empty_.empty()) {
       buff_ptr = q_empty_.front();
       q_empty_.pop();
     }
+    if (!buff_ptr) {
+      empty_null_total_.fetch_add(1, std::memory_order_relaxed);
+    }
     return buff_ptr;
+  }
+  size_t size_data() {
+    std::unique_lock<std::mutex> lk(queue_mtx_);
+    return q_buff_.size();
+  }
+  uint64_t recycled_total() const {
+    return recycled_total_.load(std::memory_order_relaxed);
+  }
+  uint64_t empty_null_total() const {
+    return empty_null_total_.load(std::memory_order_relaxed);
   }
   std::shared_ptr<VideoBuffer> get_data_buff() {
     std::unique_lock<std::mutex> lk(queue_mtx_);
@@ -241,8 +259,9 @@ class FrameQueue {
   void push(std::shared_ptr<VideoBuffer> frame_ptr) {
     std::lock_guard<std::mutex> lock(mtx_);
     if (queue_.size() >= max_size_) {
-      // drop old frame
+      // drop old frame（评测直接计数）
       queue_.pop_front();
+      dropped_full_.fetch_add(1, std::memory_order_relaxed);
     }
     queue_.push_back(frame_ptr);
   }
@@ -261,17 +280,36 @@ class FrameQueue {
     return queue_.front();
   }
 
-  void popUntil(long long ts) {
+  size_t popUntil(long long ts) {
     std::lock_guard<std::mutex> lock(mtx_);
+    size_t dropped = 0;
     while (!queue_.empty() && queue_.front()->timestamp < ts) {
       queue_.pop_front();
+      ++dropped;
     }
+    if (dropped > 0) {
+      dropped_expired_.fetch_add(dropped, std::memory_order_relaxed);
+    }
+    return dropped;
+  }
+
+  size_t size() {
+    std::lock_guard<std::mutex> lock(mtx_);
+    return queue_.size();
+  }
+  uint64_t dropped_full() const {
+    return dropped_full_.load(std::memory_order_relaxed);
+  }
+  uint64_t dropped_expired() const {
+    return dropped_expired_.load(std::memory_order_relaxed);
   }
 
  private:
   std::deque<std::shared_ptr<VideoBuffer>> queue_;
   std::mutex mtx_;
   size_t max_size_;
+  std::atomic<uint64_t> dropped_full_{0};
+  std::atomic<uint64_t> dropped_expired_{0};
 };
 
 // popen运行cmd，并获取cmd返回结果

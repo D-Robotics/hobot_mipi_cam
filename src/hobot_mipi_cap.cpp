@@ -44,8 +44,109 @@
 #include <rclcpp/rclcpp.hpp>
 #include <json/json.h>
 #include "hobot_mipi_cap.hpp"
+#include "hobot_mipi_eval_log.hpp"
 
 namespace mipi_cam {
+
+// 06-stereo-sync：配对点的直接证据。
+// - 成功：每配成一对一条；
+// - 失败：缺帧 / 超容差 / 无拼接缓冲，按 reason 分别限流 1 条/秒。
+// 注意：同步线程 100Hz 轮询、帧率 30fps，“两路都空”是正常帧间状态，不输出；
+// 单侧缺帧需持续 >=100ms（约 3 帧）才输出，避免把两路固有的 ~3ms 到达差
+// 误报成配对故障。
+namespace {
+
+enum SyncFailKind {
+  SYNC_FAIL_MISSING = 0,
+  SYNC_FAIL_DIFF = 1,
+  SYNC_FAIL_NOBUF = 2,
+};
+
+struct SyncFailGate {
+  uint64_t last_log_ns[3] = {0, 0, 0};
+  uint32_t missing_state = 0;
+  uint64_t missing_since_ns = 0;
+};
+
+void eval_log_sync_pair(const char *tag,
+                        const std::vector<std::shared_ptr<VideoBuffer>> &frames,
+                        long long tol_ns) {
+  if (frames.size() < 2) {
+    return;
+  }
+  long long ts_a = static_cast<long long>(frames[0]->timestamp);
+  long long ts_b = static_cast<long long>(frames[1]->timestamp);
+  long long diff = ts_a > ts_b ? ts_a - ts_b : ts_b - ts_a;
+  EVAL_LOG(mipi_cam::eval::EVAL_EV_SYNC_PAIR,
+           "tag=%s ok=1 n=%zu pipe_a=0 pipe_b=1 frame_id_a=%u frame_id_b=%u "
+           "ts_a=%lld ts_b=%lld diff_ns=%lld tol_ns=%lld",
+           tag, frames.size(), frames[0]->frame_id, frames[1]->frame_id,
+           ts_a, ts_b, diff, tol_ns);
+}
+
+// 07-combine：拼接产出点。记录合并帧的 stamp 拷贝来源、帧号来源、
+// 组合顺序与输出几何；打点在拼接拷贝之前，避免 memcpy 耗时污染 ts_mono。
+void eval_log_combine_out(const char *tag,
+                          const std::vector<std::shared_ptr<VideoBuffer>> &frames,
+                          const std::vector<int> &pipes,
+                          const std::shared_ptr<VideoBuffer> &out) {
+  if (out == nullptr || frames.size() < 2 || pipes.size() != frames.size()) {
+    return;
+  }
+  // order 取实际参与拼接的队列下标（不是常量），用于验证组合顺序
+  EVAL_LOG(mipi_cam::eval::EVAL_EV_COMBINE_OUT,
+           "tag=%s n=%zu order=%d,%d frame_id=%u frame_id_left=%u frame_id_right=%u "
+           "ts_combine=%lld ts_left=%lld ts_right=%lld width=%d height=%d",
+           tag, frames.size(), pipes[0], pipes[1], out->frame_id,
+           frames[0]->frame_id, frames[1]->frame_id,
+           static_cast<long long>(out->timestamp),
+           static_cast<long long>(frames[0]->timestamp),
+           static_cast<long long>(frames[1]->timestamp),
+           out->width, out->height);
+}
+
+void eval_log_sync_fail(const char *tag, const char *reason, SyncFailKind kind,
+                        uint32_t missing, size_t n_pipes,
+                        const std::vector<std::shared_ptr<VideoBuffer>> &frames,
+                        long long tol_ns, SyncFailGate *gate) {
+  if (!mipi_cam::eval::EvalLog::instance().event_enabled(
+          mipi_cam::eval::EVAL_EV_SYNC_PAIR)) {
+    return;
+  }
+  const uint64_t now = mipi_cam::eval::eval_now_mono_ns();
+  if (kind == SYNC_FAIL_MISSING) {
+    if (missing != gate->missing_state) {
+      gate->missing_state = missing;
+      gate->missing_since_ns = now;
+      return;   // 刚开始缺帧，先观察是否持续
+    }
+    if (gate->missing_since_ns == 0 ||
+        now - gate->missing_since_ns < 100000000ULL) {
+      return;
+    }
+  }
+  if (now - gate->last_log_ns[kind] < 1000000000ULL) {   // 按 reason 1 条/秒
+    return;
+  }
+  gate->last_log_ns[kind] = now;
+  if (frames.size() >= 2) {
+    const long long ts_a = static_cast<long long>(frames[0]->timestamp);
+    const long long ts_b = static_cast<long long>(frames[1]->timestamp);
+    const long long diff = ts_a > ts_b ? ts_a - ts_b : ts_b - ts_a;
+    EVAL_LOG(mipi_cam::eval::EVAL_EV_SYNC_PAIR,
+             "tag=%s ok=0 reason=%s missing=%u n=%zu pipe_a=0 pipe_b=1 "
+             "frame_id_a=%u frame_id_b=%u ts_a=%lld ts_b=%lld "
+             "diff_ns=%lld tol_ns=%lld",
+             tag, reason, missing, n_pipes, frames[0]->frame_id,
+             frames[1]->frame_id, ts_a, ts_b, diff, tol_ns);
+  } else {
+    EVAL_LOG(mipi_cam::eval::EVAL_EV_SYNC_PAIR,
+             "tag=%s ok=0 reason=%s missing=%u n=%zu tol_ns=%lld",
+             tag, reason, missing, n_pipes, tol_ns);
+  }
+}
+
+}  // namespace
 
 void HobotMipiCap::free_gdc_cfg(void *buf_ptr) {
     #if defined(PLATFORM_S100) || defined(PLATFORM_S600)
@@ -63,23 +164,40 @@ int32_t HobotMipiCap::gen_gdc_cfg(param_t *param, window_t *wnds, uint32_t wnd_n
     #endif  
 }
 
-long long TOLERANCE = 52*1000*1000; // ms
 void HobotMipiCap::sync_task() {
-	TOLERANCE = 500000000 / cap_info_.fps;
+	const long long tolerance = 500000000LL / (cap_info_.fps > 0 ? cap_info_.fps : 30);
+	const uint32_t full_mask = (v_frame_que_.size() >= 32)
+	                               ? 0xFFFFFFFFu
+	                               : ((1u << v_frame_que_.size()) - 1);
 	using clock = std::chrono::steady_clock;
 	auto last_time = clock::now();
+	SyncFailGate fail_gate;   // 06-stereo-sync：失败行按 reason 限流
 
 	while (rclcpp::ok()) {
 	  std::vector<std::shared_ptr<VideoBuffer>> frames;
+	  std::vector<int> frame_pipes;   // 与 frames 一一对应的队列下标
 
-	  std::for_each(v_frame_que_.begin(), v_frame_que_.end(), [&](auto &frame_que) {
-		auto frame = frame_que->peek();
-		if (frame) {
-			frames.push_back(frame);
+	  uint32_t missing = 0;
+	  {
+		size_t qi = 0;
+		for (auto &frame_que : v_frame_que_) {
+			auto frame = frame_que->peek();
+			if (frame) {
+				frames.push_back(frame);
+				frame_pipes.push_back(static_cast<int>(qi));
+			} else {
+				missing |= (1u << qi);
+			}
+			++qi;
 		}
-	  });
+	  }
 
 	  if (frames.size() != v_frame_que_.size()) {
+		if (missing != 0 && missing != full_mask) {   // 两路都空是帧间常态
+			eval_log_sync_fail("main", "missing_frame", SYNC_FAIL_MISSING,
+			                   missing, v_frame_que_.size(), frames,
+			                   tolerance, &fail_gate);
+		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		continue;
 	  }
@@ -91,39 +209,71 @@ void HobotMipiCap::sync_task() {
 
 	  // drop old frames
 	  std::for_each(v_frame_que_.begin(), v_frame_que_.end(), [&](auto &frame_que) {
-		frame_que->popUntil(target_ts - TOLERANCE);
-	  });
-  
-	  frames.clear();
-  
-	  // re-peek
-	  std::for_each(v_frame_que_.begin(), v_frame_que_.end(), [&](auto &frame_que) {
-		auto frame = frame_que->peek();
-		if (frame) {
-			frames.push_back(frame);
-		}
+		frame_que->popUntil(target_ts - tolerance);
 	  });
 
+	  frames.clear();
+
+	  // re-peek
+	  missing = 0;
+	  frame_pipes.clear();
+	  {
+		size_t qi = 0;
+		for (auto &frame_que : v_frame_que_) {
+			auto frame = frame_que->peek();
+			if (frame) {
+				frames.push_back(frame);
+				frame_pipes.push_back(static_cast<int>(qi));
+			} else {
+				missing |= (1u << qi);
+			}
+			++qi;
+		}
+	  }
+
 	  if (frames.size() != v_frame_que_.size()) {
+		if (missing != 0 && missing != full_mask) {
+			eval_log_sync_fail("main", "missing_after_drop", SYNC_FAIL_MISSING,
+			                   missing, v_frame_que_.size(), frames,
+			                   tolerance, &fail_gate);
+		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		continue;
 	  }
-  
-	  if (isSynced(frames, TOLERANCE)) {
+
+	  if (isSynced(frames, tolerance)) {
 		// sync, pop and save
 		frames.clear();
-		std::for_each(v_frame_que_.begin(), v_frame_que_.end(), [&](auto &frame_que) {
-			auto frame = frame_que->pop();
-			if (frame) {
-				frames.push_back(frame);
+		frame_pipes.clear();
+		{
+			size_t qi = 0;
+			for (auto &frame_que : v_frame_que_) {
+				auto frame = frame_que->pop();
+				if (frame) {
+					frames.push_back(frame);
+					frame_pipes.push_back(static_cast<int>(qi));
+				}
+				++qi;
 			}
-		});
+		}
 		if (frames.size() != v_frame_que_.size()) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			continue;
 		}
 
 		auto buff_ptr = combine_buff_que_manger_->get_empty_buff();
+		if (!buff_ptr) {
+			// 已配对但拿不到拼接缓冲：帧被消费且不产出，单独记 no_buff
+			eval_log_sync_fail("main", "no_buff", SYNC_FAIL_NOBUF, 0,
+			                   v_frame_que_.size(), frames, tolerance,
+			                   &fail_gate);
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			continue;
+		}
+
+		// 06-stereo-sync：配对成功（时间戳与 frame_id 均在配对点取）
+		fail_gate.missing_state = 0;
+		eval_log_sync_pair("main", frames, tolerance);
 
 		buff_ptr->timestamp = frames[0]->timestamp;
 		buff_ptr->frame_id = frames[0]->frame_id;
@@ -131,6 +281,10 @@ void HobotMipiCap::sync_task() {
 		buff_ptr->height = frames[0]->height * frames.size();
 		buff_ptr->stride = frames[0]->stride;
 		buff_ptr->encode = frames[0]->encode;
+
+		// 07-combine：拼接产出（拷贝前打点）
+		eval_log_combine_out("main", frames, frame_pipes, buff_ptr);
+
 		int buff_offset = 0;
 		int y_size = frames[0]->width * frames[0]->height;
 		int uv_size = y_size / 2;
@@ -156,27 +310,50 @@ void HobotMipiCap::sync_task() {
 			  });
 		}
 		buff_ptr->return_data_que();
+	  } else {
+		eval_log_sync_fail("main", "diff_over_tol", SYNC_FAIL_DIFF, 0,
+		                   v_frame_que_.size(), frames, tolerance, &fail_gate);
 	  }
 	  std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
 }
-  
+
 void HobotMipiCap::sub_sync_task() {
-	TOLERANCE = 500000000 / cap_info_.fps;
+	// 辅流容差必须按 sub_fps 算；原实现用主码流 fps，sub 15fps 时容差只有 16.7ms
+	const int sub_fps = cap_info_.sub_fps > 0 ? cap_info_.sub_fps : cap_info_.fps;
+	const long long tolerance = 500000000LL / (sub_fps > 0 ? sub_fps : 30);
+	const uint32_t full_mask = (v_sub_frame_que_.size() >= 32)
+	                               ? 0xFFFFFFFFu
+	                               : ((1u << v_sub_frame_que_.size()) - 1);
 	using clock = std::chrono::steady_clock;
 	auto last_time = clock::now();
+	SyncFailGate fail_gate;   // 06-stereo-sync：失败行按 reason 限流
 
 	while (rclcpp::ok()) {
 	  std::vector<std::shared_ptr<VideoBuffer>> frames;
+	  std::vector<int> frame_pipes;   // 与 frames 一一对应的队列下标
 
-	  std::for_each(v_sub_frame_que_.begin(), v_sub_frame_que_.end(), [&](auto &frame_que) {
-		auto frame = frame_que->peek();
-		if (frame) {
-			frames.push_back(frame);
+	  uint32_t missing = 0;
+	  {
+		size_t qi = 0;
+		for (auto &frame_que : v_sub_frame_que_) {
+			auto frame = frame_que->peek();
+			if (frame) {
+				frames.push_back(frame);
+				frame_pipes.push_back(static_cast<int>(qi));
+			} else {
+				missing |= (1u << qi);
+			}
+			++qi;
 		}
-	  });
+	  }
 
 	  if (frames.size() != v_sub_frame_que_.size()) {
+		if (missing != 0 && missing != full_mask) {
+			eval_log_sync_fail("sub", "missing_frame", SYNC_FAIL_MISSING,
+			                   missing, v_sub_frame_que_.size(), frames,
+			                   tolerance, &fail_gate);
+		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		continue;
 	  }
@@ -188,39 +365,70 @@ void HobotMipiCap::sub_sync_task() {
 
 	  // drop old frames
 	  std::for_each(v_sub_frame_que_.begin(), v_sub_frame_que_.end(), [&](auto &frame_que) {
-		frame_que->popUntil(target_ts - TOLERANCE);
-	  });
-  
-	  frames.clear();
-  
-	  // re-peek
-	  std::for_each(v_sub_frame_que_.begin(), v_sub_frame_que_.end(), [&](auto &frame_que) {
-		auto frame = frame_que->peek();
-		if (frame) {
-			frames.push_back(frame);
-		}
+		frame_que->popUntil(target_ts - tolerance);
 	  });
 
+	  frames.clear();
+
+	  // re-peek
+	  missing = 0;
+	  frame_pipes.clear();
+	  {
+		size_t qi = 0;
+		for (auto &frame_que : v_sub_frame_que_) {
+			auto frame = frame_que->peek();
+			if (frame) {
+				frames.push_back(frame);
+				frame_pipes.push_back(static_cast<int>(qi));
+			} else {
+				missing |= (1u << qi);
+			}
+			++qi;
+		}
+	  }
+
 	  if (frames.size() != v_sub_frame_que_.size()) {
+		if (missing != 0 && missing != full_mask) {
+			eval_log_sync_fail("sub", "missing_after_drop", SYNC_FAIL_MISSING,
+			                   missing, v_sub_frame_que_.size(), frames,
+			                   tolerance, &fail_gate);
+		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		continue;
 	  }
-  
-	  if (isSynced(frames, TOLERANCE)) {
+
+	  if (isSynced(frames, tolerance)) {
 		// sync, pop and save
 		frames.clear();
-		std::for_each(v_sub_frame_que_.begin(), v_sub_frame_que_.end(), [&](auto &frame_que) {
-			auto frame = frame_que->pop();
-			if (frame) {
-				frames.push_back(frame);
+		frame_pipes.clear();
+		{
+			size_t qi = 0;
+			for (auto &frame_que : v_sub_frame_que_) {
+				auto frame = frame_que->pop();
+				if (frame) {
+					frames.push_back(frame);
+					frame_pipes.push_back(static_cast<int>(qi));
+				}
+				++qi;
 			}
-		});
+		}
 		if (frames.size() != v_sub_frame_que_.size()) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			continue;
 		}
 
 		auto buff_ptr = sub_combine_buff_que_manger_->get_empty_buff();
+		if (!buff_ptr) {
+			eval_log_sync_fail("sub", "no_buff", SYNC_FAIL_NOBUF, 0,
+			                   v_sub_frame_que_.size(), frames, tolerance,
+			                   &fail_gate);
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			continue;
+		}
+
+		// 06-stereo-sync：辅流配对成功
+		fail_gate.missing_state = 0;
+		eval_log_sync_pair("sub", frames, tolerance);
 
 		buff_ptr->timestamp = frames[0]->timestamp;
 		buff_ptr->frame_id = frames[0]->frame_id;
@@ -228,6 +436,10 @@ void HobotMipiCap::sub_sync_task() {
 		buff_ptr->height = frames[0]->height * frames.size();
 		buff_ptr->stride = frames[0]->stride;
 		buff_ptr->encode = frames[0]->encode;
+
+		// 07-combine：辅流拼接产出（拷贝前打点）
+		eval_log_combine_out("sub", frames, frame_pipes, buff_ptr);
+
 		int buff_offset = 0;
 		int y_size = frames[0]->width * frames[0]->height;
 		int uv_size = y_size / 2;
@@ -253,6 +465,9 @@ void HobotMipiCap::sub_sync_task() {
 			  });
 		}
 		buff_ptr->return_data_que();
+	  } else {
+		eval_log_sync_fail("sub", "diff_over_tol", SYNC_FAIL_DIFF, 0,
+		                   v_sub_frame_que_.size(), frames, tolerance, &fail_gate);
 	  }
 	  std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}

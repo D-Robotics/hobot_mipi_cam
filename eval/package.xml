@@ -15,6 +15,9 @@
 
   <depend>rclcpp</depend>
   <depend>sensor_msgs</depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
 
   <!-- hbm_img_msgs 为可选依赖（CMake QUIET 探测）：缺失时 hbmem topic 订阅不编译，
        板端（全量工作区构建）默认可用 -->

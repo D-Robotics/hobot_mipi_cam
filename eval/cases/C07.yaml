@@ -1,0 +1,43 @@
+# 05-exposure：LPWM 触发路径
+# 与 C04 同配置，仅 lpwm_enable=true；核实 trig_valid/ts_trig/exp_us 是否可用。
+# 若 sensor_mode=6 在当前 sc132gs 驱动上不被支持，启动失败本身即为结论。
+id: C07
+name: dual-1088x1280-nv12-30-combine1-lpwm
+run_label: dual-1088x1280-nv12-30fps-combine1-lpwm
+stage: 05-exposure
+baseline: false
+
+launch: mipi_cam_eval_dual.launch.py
+params:
+  device_mode: dual
+  dual_combine: 1
+  sub_stream_enable: false
+  image_width: 1088
+  image_height: 1280
+  sub_image_width: 544
+  sub_image_height: 640
+  framerate: 30.0
+  sub_framerate: 15.0
+  out_format: nv12
+  io_method: ros
+  frame_ts_type: sensor
+  lpwm_enable: true
+  gdc_enable: true
+  rotation: 0.0
+  cal_rotation: 0.0
+  channel: 0
+  channel2: 2
+  imu_type: icm42688
+
+eval:
+  log_enable: true
+  log_events: [sync_pair, exposure, frame_in]
+  duration_s: 180
+
+recorder:
+  image_topics: [/image_left_raw, /image_right_raw, /image_combine_raw]
+  imu_topics: [/imu_data]
+  info_topics: [/image_left_raw/camera_info, /image_right_raw/camera_info,
+                /image_combine_raw/left/camera_info, /image_combine_raw/right/camera_info]
+
+thresholds: {}

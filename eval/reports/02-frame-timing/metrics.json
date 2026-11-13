@@ -1,0 +1,199 @@
+{
+  "meta": {
+    "image_domain": "mono",
+    "clock_offset_ns": 946717354567791037,
+    "eval_events": 25922,
+    "eval_by_event": {
+      "frame_in": 10371,
+      "imu_error": 1,
+      "pub_out": 15550
+    },
+    "csv_skipped_rows": 0
+  },
+  "topics": {
+    "/image_left_raw/camera_info": {
+      "count": 5183,
+      "duration_s": 172.759,
+      "fps_mean": 29.996,
+      "recv_interval_ns": {
+        "count": 5183,
+        "mean": 33338253.60382092,
+        "p50": 34532466.5,
+        "p95": 37102293.05,
+        "p99": 38151604.769999996,
+        "max": 65843799,
+        "min": 13576466
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/image_right_raw/camera_info": {
+      "count": 5181,
+      "duration_s": 172.732,
+      "fps_mean": 29.989,
+      "recv_interval_ns": {
+        "count": 5181,
+        "mean": 33346025.845173746,
+        "p50": 35126246.5,
+        "p95": 37570298.65,
+        "p99": 38606343.07,
+        "max": 73941303,
+        "min": 22287313
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/image_left_raw": {
+      "count": 5089,
+      "duration_s": 172.729,
+      "fps_mean": 29.457,
+      "recv_interval_ns": {
+        "count": 5089,
+        "mean": 33948289.437106915,
+        "p50": 34784616.5,
+        "p95": 37613566.0,
+        "p99": 61855552.29,
+        "max": 100320306,
+        "min": 18487420
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/image_right_raw": {
+      "count": 5090,
+      "duration_s": 172.727,
+      "fps_mean": 29.463,
+      "recv_interval_ns": {
+        "count": 5090,
+        "mean": 33941332.827274516,
+        "p50": 35080517.0,
+        "p95": 37334011.199999996,
+        "p99": 70261448.16,
+        "max": 108229223,
+        "min": 15902254
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/image_combine_raw": {
+      "count": 5146,
+      "duration_s": 172.722,
+      "fps_mean": 29.788,
+      "recv_interval_ns": {
+        "count": 5146,
+        "mean": 33570890.64800777,
+        "p50": 31498960.0,
+        "p95": 38486395.6,
+        "p99": 48967088.48000001,
+        "max": 81192376,
+        "min": 24520349
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    }
+  },
+  "frame_in": {
+    "pipe0/main": {
+      "count": 5186,
+      "dropped_by_frame_id": null,
+      "drop_rate": null,
+      "exp_valid_ratio": null,
+      "exp_us_mean": null
+    },
+    "pipe1/main": {
+      "count": 5185,
+      "dropped_by_frame_id": null,
+      "drop_rate": null,
+      "exp_valid_ratio": null,
+      "exp_us_mean": null
+    }
+  },
+  "pub_out": {
+    "/image_left_raw": 5183,
+    "/image_right_raw": 5184,
+    "/image_combine_raw": 5183
+  },
+  "latency": {
+    "/image_left_raw": {
+      "exp_midpoint": null,
+      "frame_ts": {
+        "count": 5089,
+        "mean_ms": 3659.954,
+        "p50_ms": 3659.379,
+        "p95_ms": 3666.261,
+        "p99_ms": 3667.888,
+        "max_ms": 3672.674
+      }
+    },
+    "/image_right_raw": {
+      "exp_midpoint": null,
+      "frame_ts": {
+        "count": 5090,
+        "mean_ms": 3660.706,
+        "p50_ms": 3660.71,
+        "p95_ms": 3665.609,
+        "p99_ms": 3666.681,
+        "max_ms": 3679.323
+      }
+    },
+    "/image_combine_raw": {
+      "exp_midpoint": null,
+      "frame_ts": {
+        "count": 5146,
+        "mean_ms": 3674.4,
+        "p50_ms": 3674.006,
+        "p95_ms": 3681.426,
+        "p99_ms": 3683.515,
+        "max_ms": 3687.574
+      }
+    }
+  },
+  "frame_timing": {
+    "pipe0/main": {
+      "count": 5186,
+      "duration_s": 172.829,
+      "fps_mean": 30.001,
+      "interval_p50_ns": 33333250.0,
+      "interval_p95_ns": 33345334.0,
+      "interval_p99_ns": 33353458.16,
+      "interval_max_ns": 33383166,
+      "interval_min_ns": 30320417,
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "pipe1/main": {
+      "count": 5185,
+      "duration_s": 172.799,
+      "fps_mean": 30.0,
+      "interval_p50_ns": 33333229.5,
+      "interval_p95_ns": 33349951.7,
+      "interval_p99_ns": 33358924.64,
+      "interval_max_ns": 33437291,
+      "interval_min_ns": 33216042,
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    }
+  },
+  "pairing": [
+    {
+      "topic_a": "/image_combine_raw",
+      "topic_b": "/image_left_raw",
+      "count_a": 5146,
+      "count_b": 5089,
+      "paired": 5058,
+      "pair_rate": 0.9829,
+      "diff_p99_ns": 0.0,
+      "diff_max_ns": 0
+    },
+    {
+      "topic_a": "/image_combine_raw",
+      "topic_b": "/image_right_raw",
+      "count_a": 5146,
+      "count_b": 5090,
+      "paired": 0,
+      "pair_rate": 0.0,
+      "diff_p99_ns": null,
+      "diff_max_ns": null
+    }
+  ]
+}

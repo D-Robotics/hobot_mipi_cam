@@ -46,6 +46,16 @@ enum EvalEvent : uint32_t {
   EVAL_EV_QUEUE_STAT = 1u << 3, // 队列水位周期汇总（main/sub/combine depth）
   EVAL_EV_ERROR = 1u << 4,      // 采集通路错误（err/pipe/ret）
   EVAL_EV_IMU_ERROR = 1u << 5,  // IMU 通路错误（err/detail）
+  EVAL_EV_FRAME_DROP = 1u << 6, // 采集/队列直接丢弃（reason/pipe/stream/ret）
+  // 曝光/触发原始量（trig_valid/ts_trig/ts_hw/exp/stamp_src）。
+  // 目前仅 X5 实现；trig_valid 沿用 X5 产品代码的 sec&&usec 判据
+  // （S100 的 exp_valid 是 sec||usec，跨平台口径待统一）。
+  EVAL_EV_EXPOSURE = 1u << 7,
+  // 双目/主辅配对点（tag/ok/pipe/frame_id/ts/diff/tol）；失败行限流 1 条/秒
+  EVAL_EV_SYNC_PAIR = 1u << 8,
+  // 拼接产出（tag/n/order/frame_id/frame_id_left/frame_id_right/
+  //           ts_combine/ts_left/ts_right/width/height）
+  EVAL_EV_COMBINE_OUT = 1u << 9,
   EVAL_EV_ALL = 0xFFFFFFFFu,
 };
 
@@ -58,6 +68,10 @@ inline const char* eval_event_name(uint32_t ev) {
     case EVAL_EV_QUEUE_STAT: return "queue_stat";
     case EVAL_EV_ERROR:      return "error";
     case EVAL_EV_IMU_ERROR:  return "imu_error";
+    case EVAL_EV_FRAME_DROP: return "frame_drop";
+    case EVAL_EV_EXPOSURE:   return "exposure";
+    case EVAL_EV_SYNC_PAIR:  return "sync_pair";
+    case EVAL_EV_COMBINE_OUT: return "combine_out";
     default:                 return "unknown";
   }
 }
@@ -69,6 +83,10 @@ inline bool eval_event_from_name(const std::string& name, uint32_t* ev) {
   if (name == "queue_stat")       { *ev = EVAL_EV_QUEUE_STAT; return true; }
   if (name == "error")            { *ev = EVAL_EV_ERROR; return true; }
   if (name == "imu_error")        { *ev = EVAL_EV_IMU_ERROR; return true; }
+  if (name == "frame_drop")       { *ev = EVAL_EV_FRAME_DROP; return true; }
+  if (name == "exposure")         { *ev = EVAL_EV_EXPOSURE; return true; }
+  if (name == "sync_pair")        { *ev = EVAL_EV_SYNC_PAIR; return true; }
+  if (name == "combine_out")      { *ev = EVAL_EV_COMBINE_OUT; return true; }
   return false;
 }
 

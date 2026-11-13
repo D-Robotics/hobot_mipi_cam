@@ -19,6 +19,7 @@
 #include "opencv2/opencv.hpp"
 
 #include "hobot_mipi_calibration.hpp"
+#include "hobot_mipi_eval_log.hpp"
 
 #include <string>
 #include <fstream>
@@ -26,6 +27,8 @@
 #include <unistd.h>
 #include <regex>
 #include <cmath>
+#include <cerrno>
+#include <chrono>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -107,6 +110,7 @@ int HobotMipiCapIml::initEnv() {
 }
 
 int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
+  EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=backend_init_enter pipe=-");
   int ret = 0;
   cap_info_ = info;
   std::vector<int> sensor_v;
@@ -121,12 +125,16 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
   hb_mem_module_open();
   vp_show_sensors_list();
   if (cap_info_.device_mode_.compare("dual") == 0) {
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=detect_sensors_begin pipe=-");
 	for (auto i : mipi_stoped_) {
 		ret = vp_sensor_detect_2(i, &host_info);
 		if (ret == 0) {
 			v_host_info_detect.push_back(host_info);
 		}
 	}
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+	         "stage=detect_sensors_end pipe=- detected=%zu", v_host_info_detect.size());
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=init_pre_vflow_begin pipe=-");
 	if (v_host_info_detect.size() < 2) {
 		RCLCPP_INFO(rclcpp::get_logger("mipi_cam"),
        		"The detected sensors are 2 less than expected.\n");
@@ -161,7 +169,10 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	pipe_contex[0].cap_info_ = &cap_info_;
 	pipe_contex[1].cap_info_ = &cap_info_;
 	memcpy(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index], sizeof(vp_sensor_config_t));
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=sensor_fixed_host_begin pipe=1");
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[1].host_num, &pipe_contex[1].sensor_config, &pipe_contex[1].csi_config);
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+	         "stage=sensor_fixed_host_end pipe=1 ret=%d", ret);
 	ERR_CON_EQ(ret, 0);
 	gdc_bin_buf_.clear();
 
@@ -182,6 +193,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 			pipe_contex[1].gdc_bin_r = gdc_bin;
 		}
 	}
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=calib_begin pipe=-");
 	mipi_calibration& calibration_instance = mipi_calibration::GetInstance();
     if (cam_info_.size() != 2) {
 		auto cal_params = mipi_calibration::GetInstance().getCalibrationParams();
@@ -195,8 +207,10 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 	if((cam_info_.size() != 2) && (strcasecmp(sensor_cof->sensor_name, "sc230ai-30fps") == 0)) {
 		calibration_instance.getDualCamCalibrationFromEeprom_230ai(cam_info_);
 	}
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=calib_end pipe=-");
 
 	if (cap_info_.gdc_enable_) {
+		EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=gdc_cfg_begin pipe=-");
 		std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin;
 		if (cap_info_.stream_mode_ == 1) {
 			vp_sensor_config_t *sensor_conf = &pipe_contex[1].sensor_config;
@@ -233,6 +247,7 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 			pipe_contex[0].gdc_bin = gdc_bin[0];
 			pipe_contex[1].gdc_bin = gdc_bin[1];
 		}
+		EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=gdc_cfg_end pipe=-");
 
 	} else if (cam_info_.size() == 2) {
 		cal_cam_info_.push_back(cam_info_[0]);
@@ -259,11 +274,18 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		pipe_contex[0].awb_otp_data = awb_otp_data_[0];
 		pipe_contex[1].awb_otp_data = awb_otp_data_[1];
 	}
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=init_pre_vflow_end pipe=-");
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=create_vflow_begin pipe=1");
 	ret = create_and_run_vflow(&pipe_contex[1]);
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+	         "stage=create_vflow_end pipe=1 ret=%d", ret);
 	ERR_CON_EQ(ret, 0);
 	//copy_config(&pipe_contex[1].sensor_config, vp_sensor_config_list[v_host_info[1].sensor_index]);
 	memcpy(&pipe_contex[0].sensor_config, vp_sensor_config_list[v_host_info[0].sensor_index], sizeof(vp_sensor_config_t));
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=sensor_fixed_host_begin pipe=0");
 	ret = vp_sensor_fixed_mipi_host_1(v_host_info[0].host_num, &pipe_contex[0].sensor_config, &pipe_contex[0].csi_config);
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+	         "stage=sensor_fixed_host_end pipe=0 ret=%d", ret);
 	ERR_CON_EQ(ret, 0);
 	if ((eeprom_name_ == "yuguang") && (strcasecmp(pipe_contex[0].sensor_config.sensor_name, "sc132gs-1280p") == 0)) {
 		std::string sensor_tuning = "/usr/hobot/bin/sc132gs_tuning_yg.json";
@@ -272,7 +294,10 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 			std::strcpy(pipe_contex[0].sensor_config.camera_config->calib_lname ,"sc132gs_tuning_yg.json");
 		}
 	}
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=create_vflow_begin pipe=0");
 	ret = create_and_run_vflow(&pipe_contex[0]);
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+	         "stage=create_vflow_end pipe=0 ret=%d", ret);
 	ERR_CON_EQ(ret, 0);
 	if ((cap_info_.dual_combine_ == 1) || (cap_info_.dual_combine_ == 2)) {
 		combine_flag_ = true;
@@ -398,12 +423,16 @@ int HobotMipiCapIml::init(MIPI_CAP_INFO_ST &info) {
 		}	
 	}
 
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=create_vflow_begin pipe=0");
 	ret = create_and_run_vflow(&pipe_contex[0]);
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+	         "stage=create_vflow_end pipe=0 ret=%d", ret);
 	ERR_CON_EQ(ret, 0);
   }
 
   cap_info_.sensor_type = pipe_contex[0].sensor_config.sensor_name;
 
+  EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=backend_init_exit pipe=-");
   m_inited_ = true;
 
   return ret;
@@ -429,9 +458,13 @@ int HobotMipiCapIml::deInit() {
 
 int HobotMipiCapIml::start() {
   int i = 0, ret = 0;
-  // 使能 vps
-  for(auto contex : pipe_contex){
-    ret = hbn_vflow_start(contex.vflow_fd);
+  // 使能 vps（[EVAL] startup: 逐 pipe 记录 vflow_start 起止）
+  for (size_t pi = 0; pi < pipe_contex.size(); ++pi) {
+    EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+             "stage=vflow_start_begin pipe=%zu", pi);
+    ret = hbn_vflow_start(pipe_contex[pi].vflow_fd);
+    EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+             "stage=vflow_start_end pipe=%zu ret=%d", pi, ret);
     ERR_CON_EQ(ret, 0);
   }
   for(auto contex : pipe_contex){
@@ -441,6 +474,8 @@ int HobotMipiCapIml::start() {
 	}
   }
   started_ = true;
+  first_main_frame_logged_.assign(pipe_contex.size(), false);
+  first_sub_frame_logged_.assign(pipe_contex.size(), false);
   if (!pipe_contex.empty()) {
 	  for(auto contex : pipe_contex) {
 		auto que_manger = std::make_shared<BuffQueueManage>();
@@ -485,6 +520,13 @@ int HobotMipiCapIml::start() {
     awb_ae_sync_task_ = std::make_shared<std::thread>(
         std::bind(&HobotMipiCapIml::sync_awb_ae_task, this));
   }
+  // 03-drop：仅在 queue_stat 事件开启时启动 1Hz 队列统计线程
+  if (!pipe_contex.empty() &&
+      mipi_cam::eval::EvalLog::instance().event_enabled(
+          mipi_cam::eval::EVAL_EV_QUEUE_STAT)) {
+    queue_stat_task_ = std::make_shared<std::thread>(
+        std::bind(&HobotMipiCapIml::queueStatTask, this));
+  }
   return 0;
 }
 
@@ -497,6 +539,9 @@ int HobotMipiCapIml::stop() {
   }
   // Safety cleanup: ensure threads are joined before destruction
   started_ = false;
+  if (queue_stat_task_ && queue_stat_task_->joinable()) {
+    queue_stat_task_->join();
+  }
   if (multi_frame_task_ && multi_frame_task_->joinable()) {
     multi_frame_task_->join();
   }
@@ -580,7 +625,8 @@ std::shared_ptr<VideoBuffer> HobotMipiCapIml::getFrame(std::string channel) {
 	return buff_ptr;
 }
 
-int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr) {
+int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr,
+                                   int pipe_idx, const char *stream_name) {
 
 	if (buff_ptr == nullptr) {
 
@@ -602,7 +648,24 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::
 	struct timespec ts;
 	clock_gettime(CLOCK_REALTIME, &ts);
 
-	int32_t exposure_time = (out_img.info.tv.tv_sec - out_img.info.trig_tv.tv_sec) * 1e9 + 
+	// 05-exposure：在 sys_timestamps 被回退修改之前抓取原始量。
+	// trig_valid 沿用产品代码的判据（sec 与 usec 同时非零），保证与时间戳分支完全一致。
+	const bool trig_valid =
+	    (out_img.info.trig_tv.tv_sec != 0 && out_img.info.trig_tv.tv_usec != 0);
+	const int64_t exp_ns_ev =
+	    (static_cast<int64_t>(out_img.info.tv.tv_sec) -
+	     static_cast<int64_t>(out_img.info.trig_tv.tv_sec)) * 1000000000LL +
+	    (static_cast<int64_t>(out_img.info.tv.tv_usec) -
+	     static_cast<int64_t>(out_img.info.trig_tv.tv_usec)) * 1000LL;
+	const uint64_t ts_hw_ns =
+	    static_cast<uint64_t>(out_img.info.tv.tv_sec) * 1000000000ULL +
+	    static_cast<uint64_t>(out_img.info.tv.tv_usec) * 1000ULL;
+	const uint64_t ts_trig_ns =
+	    static_cast<uint64_t>(out_img.info.trig_tv.tv_sec) * 1000000000ULL +
+	    static_cast<uint64_t>(out_img.info.trig_tv.tv_usec) * 1000ULL;
+	const uint64_t ts_sys_raw_ns = out_img.info.sys_timestamps;
+
+	int32_t exposure_time = (out_img.info.tv.tv_sec - out_img.info.trig_tv.tv_sec) * 1e9 +
 						(out_img.info.tv.tv_usec - out_img.info.trig_tv.tv_usec) * 1e3;  
 
 	if (out_img.info.trig_tv.tv_sec != 0 && 
@@ -628,8 +691,23 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::
 		buff_ptr->timestamp = out_img.info.sys_timestamps;
 	} else {
 		buff_ptr->timestamp = out_img.info.timestamps;
-	}                       
-						
+	}
+
+	// 05-exposure：曝光/触发直接证据。打点在 hbn_vnode_getframe 返回后、
+	// memcpy 之前，避免拷贝耗时污染硬件时戳；exp_us 用 int64 计算，
+	// trig 无效时按既有口径记 0（trig_valid 已单独给出）。
+	EVAL_LOG(mipi_cam::eval::EVAL_EV_EXPOSURE,
+	         "pipe=%d stream=%s frame_id=%u stamp_src=%s trig_valid=%d "
+	         "ts_trig_ns=%lld ts_hw_ns=%lld exp_us=%lld ts_sys_raw_ns=%llu ts_frame=%lld",
+	         pipe_idx, stream_name != nullptr ? stream_name : "-", buff_ptr->frame_id,
+	         ("realtime" == cap_info_.frame_ts_type_) ? "realtime" : "sensor",
+	         trig_valid ? 1 : 0,
+	         static_cast<long long>(ts_trig_ns),
+	         static_cast<long long>(ts_hw_ns),
+	         static_cast<long long>(trig_valid ? exp_ns_ev / 1000 : 0),
+	         static_cast<unsigned long long>(ts_sys_raw_ns),
+	         static_cast<long long>(buff_ptr->timestamp));
+
 	RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
 			"capture a frame, handle: %llu, id: %d, timestamps: %f, current uptime: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
 			"current timestamp: %f, laps ms: %fms, exposure_time: %fms.", 
@@ -695,10 +773,14 @@ void HobotMipiCapIml::multiFrameTask() {
 	  timeout.tv_usec = 0;
 	  result = select(max_handle + 1, &readfds, nullptr, nullptr, &timeout);
 	  if (result == -1) {
+		  EVAL_LOG(mipi_cam::eval::EVAL_EV_FRAME_DROP,
+		           "pipe=- stream=main reason=select_error errno=%d", errno);
 		  std::cerr << "Select error" << std::endl;
 		  break;
 	  } else if (result == 0) {
 		  // 超时
+		  EVAL_LOG(mipi_cam::eval::EVAL_EV_FRAME_DROP,
+		           "pipe=- stream=main reason=select_timeout timeout_s=2");
 		  std::cout << "Timeout occurred" << std::endl;
 		  continue;
 	  } else {
@@ -707,14 +789,28 @@ void HobotMipiCapIml::multiFrameTask() {
 			  if (FD_ISSET(ochn_fd[i], &readfds)) {
 				std::shared_ptr<VideoBuffer> buff_ptr = v_buff_que_manger_[i]->get_empty_buff();
 				if (buff_ptr) {
-					ret = getVnodeFrame(pipe_contex[i].stream_handle, 0, buff_ptr);
+					ret = getVnodeFrame(pipe_contex[i].stream_handle, 0, buff_ptr, i, "main");
 					if (ret == 0) {
+						if (i < static_cast<int>(first_main_frame_logged_.size()) &&
+						    !first_main_frame_logged_[i]) {
+							first_main_frame_logged_[i] = true;
+							EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+							         "stage=first_frame pipe=%d stream=main", i);
+						}
+						// 02-frame-timing / 03-drop / 04-resolution：时间戳、硬件序号、设备侧宽高
+						EVAL_LOG(mipi_cam::eval::EVAL_EV_FRAME_IN,
+						         "pipe=%d stream=main frame_id=%u ts_frame=%lld width=%d height=%d",
+						         i, buff_ptr->frame_id,
+						         static_cast<long long>(buff_ptr->timestamp),
+						         buff_ptr->width, buff_ptr->height);
 						if (combine_flag_) {
 							auto buff_tmp = std::make_shared<VideoBuffer>(*buff_ptr);
 							v_frame_que_[i]->push(buff_tmp);
 						}
 						buff_ptr->return_data_que();
 					} else {
+						EVAL_LOG(mipi_cam::eval::EVAL_EV_FRAME_DROP,
+						         "pipe=%d stream=main reason=getframe_fail ret=%d", i, ret);
 						RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", i,ret);
 						buff_ptr->return_empty_que();
 					}
@@ -766,10 +862,14 @@ void HobotMipiCapIml::subMultiFrameTask() {
 	  timeout.tv_usec = 0;
 	  result = select(max_handle + 1, &readfds, nullptr, nullptr, &timeout);
 	  if (result == -1) {
+		  EVAL_LOG(mipi_cam::eval::EVAL_EV_FRAME_DROP,
+		           "pipe=- stream=sub reason=select_error errno=%d", errno);
 		  std::cerr << "Select error" << std::endl;
 		  break;
 	  } else if (result == 0) {
 		  // 超时
+		  EVAL_LOG(mipi_cam::eval::EVAL_EV_FRAME_DROP,
+		           "pipe=- stream=sub reason=select_timeout timeout_s=2");
 		  std::cout << "Timeout occurred" << std::endl;
 		  continue;
 	  } else {
@@ -778,14 +878,28 @@ void HobotMipiCapIml::subMultiFrameTask() {
 			  if (FD_ISSET(ochn_fd[i], &readfds)) {
 				std::shared_ptr<VideoBuffer> buff_ptr = v_sub_buff_que_manger_[i]->get_empty_buff();
 				if (buff_ptr) {
-					ret = getVnodeFrame(pipe_contex[i].sub_stream_handle, pipe_contex[i].sub_stream_channel, buff_ptr);
+					ret = getVnodeFrame(pipe_contex[i].sub_stream_handle, pipe_contex[i].sub_stream_channel, buff_ptr, i, "sub");
 					if (ret == 0) {
+						if (i < static_cast<int>(first_sub_frame_logged_.size()) &&
+						    !first_sub_frame_logged_[i]) {
+							first_sub_frame_logged_[i] = true;
+							EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+							         "stage=first_frame pipe=%d stream=sub", i);
+						}
+						// 02-frame-timing / 03-drop / 04-resolution：辅码流时间戳、序号、宽高
+						EVAL_LOG(mipi_cam::eval::EVAL_EV_FRAME_IN,
+						         "pipe=%d stream=sub frame_id=%u ts_frame=%lld width=%d height=%d",
+						         i, buff_ptr->frame_id,
+						         static_cast<long long>(buff_ptr->timestamp),
+						         buff_ptr->width, buff_ptr->height);
 						if (combine_flag_) {
 							auto buff_tmp = std::make_shared<VideoBuffer>(*buff_ptr);
 							v_sub_frame_que_[i]->push(buff_tmp);
 						}
 						buff_ptr->return_data_que();
 					} else {
+						EVAL_LOG(mipi_cam::eval::EVAL_EV_FRAME_DROP,
+						         "pipe=%d stream=sub reason=getframe_fail ret=%d", i, ret);
 						RCLCPP_ERROR(rclcpp::get_logger("mipi_cap"),"hbn_vnode_getframe VSE channel = %d failed ,ret = %d\n", pipe_contex[i].sub_stream_channel,ret);
 						buff_ptr->return_empty_que();
 					}
@@ -797,6 +911,58 @@ void HobotMipiCapIml::subMultiFrameTask() {
 	return;
 }
 
+
+void HobotMipiCapIml::queueStatTask() {
+  while (started_) {
+    for (size_t i = 0; i < pipe_contex.size(); ++i) {
+      const size_t main_depth = (i < v_buff_que_manger_.size())
+                                    ? v_buff_que_manger_[i]->size_data() : 0;
+      const size_t sub_depth = (i < v_sub_buff_que_manger_.size())
+                                   ? v_sub_buff_que_manger_[i]->size_data() : 0;
+      const size_t combine_depth = combine_buff_que_manger_
+                                       ? combine_buff_que_manger_->size_data() : 0;
+      const uint64_t main_recycled = (i < v_buff_que_manger_.size())
+                                         ? v_buff_que_manger_[i]->recycled_total() : 0;
+      const uint64_t main_empty = (i < v_buff_que_manger_.size())
+                                      ? v_buff_que_manger_[i]->empty_null_total() : 0;
+      const uint64_t sub_recycled = (i < v_sub_buff_que_manger_.size())
+                                        ? v_sub_buff_que_manger_[i]->recycled_total() : 0;
+      const uint64_t sub_empty = (i < v_sub_buff_que_manger_.size())
+                                     ? v_sub_buff_que_manger_[i]->empty_null_total() : 0;
+      const uint64_t combine_recycled = combine_buff_que_manger_
+                                            ? combine_buff_que_manger_->recycled_total() : 0;
+      const uint64_t combine_empty = combine_buff_que_manger_
+                                         ? combine_buff_que_manger_->empty_null_total() : 0;
+      const uint64_t main_fq_full = (i < v_frame_que_.size())
+                                        ? v_frame_que_[i]->dropped_full() : 0;
+      const uint64_t main_fq_exp = (i < v_frame_que_.size())
+                                       ? v_frame_que_[i]->dropped_expired() : 0;
+      const uint64_t sub_fq_full = (i < v_sub_frame_que_.size())
+                                       ? v_sub_frame_que_[i]->dropped_full() : 0;
+      const uint64_t sub_fq_exp = (i < v_sub_frame_que_.size())
+                                      ? v_sub_frame_que_[i]->dropped_expired() : 0;
+      EVAL_LOG(mipi_cam::eval::EVAL_EV_QUEUE_STAT,
+               "pipe=%zu main_depth=%zu sub_depth=%zu combine_depth=%zu "
+               "main_recycled=%llu sub_recycled=%llu combine_recycled=%llu "
+               "main_empty_null=%llu sub_empty_null=%llu combine_empty_null=%llu "
+               "main_fq_full=%llu main_fq_expired=%llu sub_fq_full=%llu sub_fq_expired=%llu",
+               i, main_depth, sub_depth, combine_depth,
+               static_cast<unsigned long long>(main_recycled),
+               static_cast<unsigned long long>(sub_recycled),
+               static_cast<unsigned long long>(combine_recycled),
+               static_cast<unsigned long long>(main_empty),
+               static_cast<unsigned long long>(sub_empty),
+               static_cast<unsigned long long>(combine_empty),
+               static_cast<unsigned long long>(main_fq_full),
+               static_cast<unsigned long long>(main_fq_exp),
+               static_cast<unsigned long long>(sub_fq_full),
+               static_cast<unsigned long long>(sub_fq_exp));
+    }
+    for (int k = 0; k < 10 && started_; ++k) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+  }
+}
 
 int HobotMipiCapIml::creat_camera_node(camera_config_t* camera_config,int64_t* cam_fd) {
 	int32_t ret = 0;

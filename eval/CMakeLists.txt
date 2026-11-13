@@ -38,6 +38,14 @@ ament_target_dependencies(recorder rclcpp)
 install(TARGETS recorder
   DESTINATION lib/${PROJECT_NAME})
 
+# 评测 launch / 用例（产品 launch 不改）
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME}
+  FILES_MATCHING PATTERN "*.py"
+  PATTERN "__pycache__" EXCLUDE)
+install(DIRECTORY cases DESTINATION share/${PROJECT_NAME}
+  FILES_MATCHING PATTERN "*.yaml")
+# run_case.sh 只在仓库内运行（依赖 eval/cases 与仓库 install/setup.bash），不安装到 share
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest QUIET)
   if(ament_cmake_gtest_FOUND)

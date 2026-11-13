@@ -105,8 +105,11 @@ class HobotMipiCapIml : public HobotMipiCap {
 
   void multiFrameTask();
   void subMultiFrameTask();
+  void queueStatTask();
   void singleFrameTask();
-  int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr);
+  // pipe_idx/stream_name 仅用于 05-exposure 埋点定位（不参与取帧逻辑）
+  int getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::shared_ptr<VideoBuffer> buff_ptr,
+                    int pipe_idx, const char *stream_name);
   void sync_awb_ae_task();
 
   int create_and_run_vflow(pipe_contex_t *pipe_contex);
@@ -135,6 +138,7 @@ class HobotMipiCapIml : public HobotMipiCap {
   std::map<int, std::vector<std::string>> host_sensor_m_;
   std::shared_ptr<std::thread> multi_frame_task_ = nullptr;
   std::shared_ptr<std::thread> sub_multi_frame_task_ = nullptr;
+  std::shared_ptr<std::thread> queue_stat_task_ = nullptr;
   std::shared_ptr<std::thread> awb_ae_sync_task_ = nullptr;
   std::vector<std::shared_ptr<GdcBinBuf_ST>> gdc_bin_buf_;
   std::vector<std::shared_ptr<Opt_Awb_Config>> awb_otp_data_;
@@ -166,6 +170,9 @@ class HobotMipiCapIml : public HobotMipiCap {
   hbn_vnode_handle_t vse_node_handle[PIPES_TOTAL] = {0};
 
   std::vector<pipe_contex_t> pipe_contex;
+  // [EVAL] startup first_frame：每 pipe/流只打一次；分别由对应采集线程写
+  std::vector<bool> first_main_frame_logged_;
+  std::vector<bool> first_sub_frame_logged_;
 };
 
 }  // namespace mipi_cam

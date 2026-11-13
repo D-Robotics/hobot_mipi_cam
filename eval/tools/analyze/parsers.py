@@ -10,6 +10,7 @@
 """
 import csv
 import io
+from collections import deque
 from typing import Dict, List, Optional
 
 
@@ -20,13 +21,23 @@ def _to_int(v: str) -> Optional[int]:
         return None
 
 
-def parse_eval_log(text: str) -> List[Dict]:
-    """解析 [EVAL] 行 -> [{'ts_mono':int,'event':str,'kv':{str:int|str}}, ...]"""
+def parse_eval_log(text: str, stats: Optional[Dict] = None) -> List[Dict]:
+    """解析 [EVAL] 行 -> [{'ts_mono':int,'event':str,'kv':{str:int|str}}, ...]
+
+    邻近重复行去重：launch 的 stdout 转发偶发把同一行写两次（ts_mono 会完全相同）。
+    只比较最近 8 行，避免大日志常驻内存；去重条数写入 stats['duplicates']。
+    """
     events = []
+    recent = deque(maxlen=8)
+    duplicates = 0
     for line in text.splitlines():
         line = line.strip()
         if not line.startswith("[EVAL] "):
             continue
+        if line in recent:
+            duplicates += 1
+            continue
+        recent.append(line)
         rest = line[len("[EVAL] "):]
         kv = {}
         parts = rest.split()
@@ -46,6 +57,8 @@ def parse_eval_log(text: str) -> List[Dict]:
         if ts_mono is None or event is None:
             continue
         events.append({"ts_mono": ts_mono, "event": event, "kv": kv})
+    if stats is not None:
+        stats["duplicates"] = duplicates
     return events
 
 

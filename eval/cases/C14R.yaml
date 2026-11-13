@@ -1,0 +1,42 @@
+# 04-resolution 旋转用例：双目 1280x1088 @10fps，rotation=90°，combine=1
+# 参考产品 mipi_cam_dual_channel_websocket_132gs_nocal+cal+r90.launch.py 的 1280x1088/r90 配置。
+id: C14R
+name: dual-1280x1088-nv12-10-combine1-r90
+run_label: dual-1280x1088-nv12-10fps-combine1-r90
+stage: 04-resolution
+baseline: false
+
+launch: mipi_cam_eval_dual.launch.py
+params:
+  device_mode: dual
+  dual_combine: 1
+  sub_stream_enable: false
+  image_width: 1280
+  image_height: 1088
+  sub_image_width: 640
+  sub_image_height: 544
+  framerate: 10.0
+  sub_framerate: 10.0
+  out_format: nv12
+  io_method: ros
+  frame_ts_type: sensor
+  lpwm_enable: false
+  gdc_enable: true
+  rotation: 90.0
+  cal_rotation: 0.0
+  channel: 0
+  channel2: 2
+  imu_type: icm42688
+
+eval:
+  log_enable: true
+  log_events: [frame_in, pub_out, imu_error]
+  duration_s: 180
+
+recorder:
+  image_topics: [/image_left_raw, /image_right_raw, /image_combine_raw]
+  imu_topics: [/imu_data]
+  info_topics: [/image_left_raw/camera_info, /image_right_raw/camera_info,
+                /image_combine_raw/left/camera_info, /image_combine_raw/right/camera_info]
+
+thresholds: {}

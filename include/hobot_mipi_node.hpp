@@ -61,6 +61,7 @@ class Publisher_info_base {
   int64_t pub_interval_ns_ = 0;   // 目标发布周期(ns)
   int64_t next_pub_ts_ns_ = 0;    // 下一次允许发布的帧时间戳时刻(ns)
   int64_t last_pub_ts_ns_ = 0;    // 上一次已发布帧的时间戳(ns)，用于检测时间戳回退
+  bool first_pub_logged_ = false; // [EVAL] startup first_pub 只打一次（每个 publisher 由自己的发布线程写）
 };
 
 class Publisher_info : public Publisher_info_base  {
@@ -115,6 +116,8 @@ class MipiCamNode : public rclcpp::Node {
 
   std::vector<std::shared_ptr<std::thread>> timer_;
   int32_t mSendIdx = 0;
+  // [EVAL] startup 基准：构造函数起始的 CLOCK_MONOTONIC 纳秒
+  int64_t startup_t0_ns_ = 0;
 
   rclcpp::TimerBase::SharedPtr timer_tmp_ = nullptr;
 

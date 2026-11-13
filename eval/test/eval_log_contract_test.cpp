@@ -46,7 +46,7 @@ std::string fmt_line_buf(char *buf, size_t size, uint64_t ts, uint32_t ev,
 
 }  // namespace
 
-TEST(EvalEventName, SixEvents) {
+TEST(EvalEventName, AllEvents) {
   using namespace mipi_cam::eval;
   EXPECT_STREQ("startup", eval_event_name(EVAL_EV_STARTUP));
   EXPECT_STREQ("frame_in", eval_event_name(EVAL_EV_FRAME_IN));
@@ -54,6 +54,23 @@ TEST(EvalEventName, SixEvents) {
   EXPECT_STREQ("queue_stat", eval_event_name(EVAL_EV_QUEUE_STAT));
   EXPECT_STREQ("error", eval_event_name(EVAL_EV_ERROR));
   EXPECT_STREQ("imu_error", eval_event_name(EVAL_EV_IMU_ERROR));
+  EXPECT_STREQ("frame_drop", eval_event_name(EVAL_EV_FRAME_DROP));
+  EXPECT_STREQ("exposure", eval_event_name(EVAL_EV_EXPOSURE));
+  EXPECT_STREQ("sync_pair", eval_event_name(EVAL_EV_SYNC_PAIR));
+  EXPECT_STREQ("combine_out", eval_event_name(EVAL_EV_COMBINE_OUT));
+}
+
+TEST(EvalEventName, ParseNewEvents) {
+  using namespace mipi_cam::eval;
+  uint32_t ev = 0;
+  ASSERT_TRUE(eval_event_from_name("exposure", &ev));
+  EXPECT_EQ(ev, EVAL_EV_EXPOSURE);
+  ASSERT_TRUE(eval_event_from_name("sync_pair", &ev));
+  EXPECT_EQ(ev, EVAL_EV_SYNC_PAIR);
+  ASSERT_TRUE(eval_event_from_name("frame_drop", &ev));
+  EXPECT_EQ(ev, EVAL_EV_FRAME_DROP);
+  ASSERT_TRUE(eval_event_from_name("combine_out", &ev));
+  EXPECT_EQ(ev, EVAL_EV_COMBINE_OUT);
 }
 
 TEST(EvalFormatLine, PayloadPassthrough) {

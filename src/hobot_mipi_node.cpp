@@ -36,6 +36,8 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
     : m_bIsInit(0),
       Node("mipi_cam", node_options),
       camera_calibration_info_(new sensor_msgs::msg::CameraInfo()) {
+  // [EVAL] startup 基准：构造函数起始（CLOCK_MONOTONIC 纳秒）
+  startup_t0_ns_ = mipi_cam::eval::eval_now_mono_ns();
   nodePare_ = std::make_shared<struct NodePara>();
 
   std::string tros_distro = std::string(std::getenv("TROS_DISTRO")? std::getenv("TROS_DISTRO") : "");
@@ -148,6 +150,10 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
       this->get_parameter("eval_log_enable").as_bool(),
       mipi_cam::eval::eval_event_mask_from_names(
           this->get_parameter("eval_log_events").as_string()));
+  // [EVAL] startup: node_init（t0_ns 为构造函数起始，供后续阶段计算相对耗时）
+  EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+           "stage=node_init pipe=- t0_ns=%lld",
+           static_cast<long long>(startup_t0_ns_));
 
   nodePare_->sync_awb_ = this->declare_parameter<bool>("sync_awb", false);
   nodePare_->sync_ccm_ = this->declare_parameter<bool>("sync_ccm", false);
@@ -263,8 +269,16 @@ MipiCamNode::~MipiCamNode() {
 
 void MipiCamNode::init() {
   if (m_bIsInit) return;
+  EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=node_init_call_begin pipe=-");
   mipiCam_ptr_ = MipiCam::create_mipicam();
-  if (!mipiCam_ptr_ || mipiCam_ptr_->init(nodePare_)) {
+  EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=backend_init_begin pipe=-");
+  int backend_init_ret = -1;
+  if (mipiCam_ptr_) {
+    backend_init_ret = mipiCam_ptr_->init(nodePare_);
+  }
+  EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+           "stage=backend_init_end pipe=- ret=%d", backend_init_ret);
+  if (!mipiCam_ptr_ || backend_init_ret) {
     RCLCPP_ERROR_ONCE(rclcpp::get_logger("mipi_node"),
                       "[%s]->mipinode init failure.\n",
                       __func__);
@@ -454,7 +468,11 @@ void MipiCamNode::init() {
 
   // start the camera
 
-  if (0 != mipiCam_ptr_->start()) {
+  EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=backend_start_begin pipe=-");
+  int backend_start_ret = mipiCam_ptr_->start();
+  EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+           "stage=backend_start_end pipe=- ret=%d", backend_start_ret);
+  if (0 != backend_start_ret) {
     RCLCPP_ERROR_ONCE(rclcpp::get_logger("mipi_node"),
                       "mipi camera start failed!");
     rclcpp::shutdown();
@@ -509,6 +527,7 @@ void MipiCamNode::init() {
     EVAL_LOG(EVAL_EV_IMU_ERROR, "err=imu_init_fail detail=type_%s", imu_type_.c_str());
   }
 
+  EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP, "stage=node_init_call_end pipe=-");
 }
 
 void MipiCamNode::init_publisher(std::shared_ptr<Publisher_info> Pub_info, std::string topic, std::string topic_type,
@@ -726,6 +745,13 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
     auto frame_id = pub_info->frame_id;
     auto ts = img->header.stamp;
     pub_info->image_pub_->publish(std::move(img));
+    // 评测埋点：startup first_pub（每个 publisher 首次发布，供首帧启动时间）
+    if (!pub_info->first_pub_logged_) {
+      pub_info->first_pub_logged_ = true;
+      EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+               "stage=first_pub pipe=- topic=%s channel=%s",
+               pub_info->image_pub_->get_topic_name(), channel.c_str());
+    }
     // 评测埋点：pub_out（发布完成时刻，帧 ts 见帧内时间戳）
     EVAL_LOG(EVAL_EV_PUB_OUT, "topic=%s ts_frame=%lld",
              pub_info->image_pub_->get_topic_name(),
@@ -786,6 +812,14 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
           static_cast<long long>(msg.time_stamp.sec) * 1000000000LL +
           static_cast<long long>(msg.time_stamp.nanosec);
       pub_info->publisher_hbmem_->publish(std::move(loanedMsg));
+      // 评测埋点：startup first_pub（每个 publisher 首次发布）
+      if (!pub_info->first_pub_logged_) {
+        pub_info->first_pub_logged_ = true;
+        EVAL_LOG(mipi_cam::eval::EVAL_EV_STARTUP,
+                 "stage=first_pub pipe=- topic=%s channel=%s",
+                 pub_info->publisher_hbmem_->get_topic_name(),
+                 pub_info->topic_type.c_str());
+      }
       // 评测埋点：pub_out（hbmem 通路，序号由订阅端校验连续性）
       EVAL_LOG(EVAL_EV_PUB_OUT, "topic=%s seq=%u ts_frame=%lld",
                pub_info->publisher_hbmem_->get_topic_name(), pub_seq, pub_ts_ns);
