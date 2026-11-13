@@ -21,6 +21,7 @@
 #include "hobot_mipi_calibration.hpp"
 
 // #include <vector>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -53,6 +54,13 @@ class Publisher_info_base {
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr info_pub_ = nullptr;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr info_pub2_ = nullptr;
   std::chrono::time_point<std::chrono::system_clock> time_start_;
+
+  // 发布帧率控制：底层VIN以max(fps, sub_fps)统一出帧，
+  // 主/辅码流在发布端按各自目标帧率基于发布时刻表抽帧
+  int target_fps_ = 0;            // 目标发布帧率，0表示不限制
+  int64_t pub_interval_ns_ = 0;   // 目标发布周期(ns)
+  int64_t next_pub_ts_ns_ = 0;    // 下一次允许发布的帧时间戳时刻(ns)
+  int64_t last_pub_ts_ns_ = 0;    // 上一次已发布帧的时间戳(ns)，用于检测时间戳回退
 };
 
 class Publisher_info : public Publisher_info_base  {
@@ -86,6 +94,11 @@ class MipiCamNode : public rclcpp::Node {
   void init_publisher(std::shared_ptr<Publisher_info>  Pub_info, std::string topic, std::string topic_type,
                       std::string frame_id);
   void init_publisher_hbmem(std::shared_ptr<Publisher_hbmem_info>  Pub_info, std::string topic, std::string topic_type);
+  // 按topic_type(sub_前缀)为主/辅码流设置发布目标帧率
+  void setPubRateLimit(Publisher_info_base *pub_info,
+                       const std::string &topic_type, const std::string &topic);
+  // 发布帧率抽帧：帧时间戳间隔达到pub_interval_ns_(含容差)才允许发布
+  bool pubRateAllow(Publisher_info_base &pub_info, int64_t frame_ts_ns);
   
   void init_Calibration(Publisher_info_base*  Pub_info,
                     std::string info_topic, std::string info_file);

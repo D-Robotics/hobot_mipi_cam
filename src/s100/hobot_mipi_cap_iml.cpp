@@ -910,26 +910,25 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::
 
 	//*timestamp = out_img.info.trig_tv.tv_sec * 1e9 + out_img.info.trig_tv.tv_usec * 1e3;
 	//*timestamp = out_img.info.tv.tv_sec * 1e9 + out_img.info.tv.tv_usec * 1e3;
-	struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-	double sys_timestamps = ts.tv_sec * 1e9 + ts.tv_nsec;
  
     int32_t exposure_time = (out_img.info.tv.tv_sec - out_img.info.trig_tv.tv_sec) * 1e9 + 
                           (out_img.info.tv.tv_usec - out_img.info.trig_tv.tv_usec) * 1e3;  
-
-//   if (out_img.info.trig_tv.tv_sec != 0 && 
-//       out_img.info.trig_tv.tv_usec != 0) {
-//       out_img.info.sys_timestamps -= exposure_time;
-//   }
+	uint64_t sys_timestamps = out_img.info.sys_timestamps;
+	if (out_img.info.trig_tv.tv_sec != 0 && 
+		out_img.info.trig_tv.tv_usec != 0) {
+			sys_timestamps -= exposure_time;
+	}
   
   //  timestamps means kernel timestamp when the frame is obtained
   //  sys_timestamps means kernel system timestamp when the frame is obtained
   //  tv means hardware timestamp when the frame is obtained
   //  trig_tv means hardware timestamp when the frame is triggered by the external trigger
   double timestamps = out_img.info.timestamps * 1e-9;
-  // double sys_timestamps = out_img.info.sys_timestamps * 1e-9;
+  double sys_timestamps_sec = out_img.info.sys_timestamps * 1e-9;
   double hw_timestamp = out_img.info.tv.tv_sec + (double)out_img.info.tv.tv_usec * 1e-6;
   double tri_timestamp = out_img.info.trig_tv.tv_sec + (double)out_img.info.trig_tv.tv_usec * 1e-6;
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
   double current_ts =  ts.tv_sec + (double)ts.tv_nsec * 1e-9;
   
   buff_ptr->frame_id = out_img.info.frame_id;
@@ -939,11 +938,11 @@ int HobotMipiCapIml::getVnodeFrame(hbn_vnode_handle_t handle, int channel, std::
 	buff_ptr->timestamp = out_img.info.timestamps;
   }                       
                           
-  RCLCPP_DEBUG(rclcpp::get_logger("mipi_cap"),
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
             "capture a frame, handle: %llu, id: %d, timestamps: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
             "current timestamp: %f, laps ms: %fms, exposure_time: %fms.", 
-			                        handle, buff_ptr->frame_id, timestamps, sys_timestamps, hw_timestamp, tri_timestamp,
-                              current_ts, (current_ts - sys_timestamps) * 1e3, exposure_time * 1e-6);
+			                        handle, buff_ptr->frame_id, timestamps, sys_timestamps_sec, hw_timestamp, tri_timestamp,
+                              current_ts, (current_ts - sys_timestamps_sec) * 1e3, exposure_time * 1e-6);
 
 	//std::cout << "getVnodeFrame--system time sec:" << tv.tv_sec << ", image time sec:" << out_img.info.tv.tv_sec
 	//          << ", trig time sec:" << out_img.info.trig_tv.tv_sec 
@@ -977,17 +976,45 @@ int HobotMipiCapIml::copyGroupFrameToBuffer(const hbn_vnode_image_group_t &out_i
 	}
 	hb_mem_invalidate_buf_with_vaddr((uint64_t)graph.virt_addr[0], graph.size[0]);
 	hb_mem_invalidate_buf_with_vaddr((uint64_t)graph.virt_addr[1], graph.size[1]);
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	uint64_t timestamp_1 = tv.tv_sec * 1e9 + tv.tv_usec * 1e3;
-	uint64_t timestamp_2 = ts.tv_sec * 1e9 + ts.tv_nsec;
-	if ("realtime" == cap_info_.frame_ts_type_) {
-		buff_ptr->timestamp = out_img.info.timestamps + (timestamp_1 - timestamp_2);
-	} else {
-		buff_ptr->timestamp = out_img.info.timestamps;
+
+
+    int32_t exposure_time = (out_img.info.tv.tv_sec - out_img.info.trig_tv.tv_sec) * 1e9 + 
+                          (out_img.info.tv.tv_usec - out_img.info.trig_tv.tv_usec) * 1e3;  
+	uint64_t sys_timestamps = out_img.info.sys_timestamps;
+	if (out_img.info.trig_tv.tv_sec != 0 && 
+		out_img.info.trig_tv.tv_usec != 0) {
+			sys_timestamps -= exposure_time;
 	}
+  
+  //  timestamps means kernel timestamp when the frame is obtained
+  //  sys_timestamps means kernel system timestamp when the frame is obtained
+  //  tv means hardware timestamp when the frame is obtained
+  //  trig_tv means hardware timestamp when the frame is triggered by the external trigger
+  double timestamps = out_img.info.timestamps * 1e-9;
+  double sys_timestamps_sec = sys_timestamps * 1e-9;
+  double hw_timestamp = out_img.info.tv.tv_sec + (double)out_img.info.tv.tv_usec * 1e-6;
+  double tri_timestamp = out_img.info.trig_tv.tv_sec + (double)out_img.info.trig_tv.tv_usec * 1e-6;
+	struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  double current_ts =  ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+  
+  buff_ptr->frame_id = out_img.info.frame_id;
+  if ("realtime" == cap_info_.frame_ts_type_) {
+	buff_ptr->timestamp = sys_timestamps;
+  } else {
+	buff_ptr->timestamp = out_img.info.timestamps;
+  }  
+  struct timespec ts_2;
+  clock_gettime(CLOCK_MONOTONIC, &ts_2);
+  uint64_t timestamp_1 = ts_2.tv_sec * 1e9 + ts_2.tv_nsec;
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"), "timestamps diff = %fms", (timestamp_1 - out_img.info.timestamps) * 1e-6);               
+                          
+  RCLCPP_INFO(rclcpp::get_logger("mipi_cap"),
+            "capture pym group, id: %d, timestamps: %f, sys_timestamps: %f, HW timestamp: %f, trig timestamp: %f,"
+            "current timestamp: %f, laps ms: %fms, exposure_time: %fms.", 
+			                        buff_ptr->frame_id, timestamps, sys_timestamps_sec, hw_timestamp, tri_timestamp,
+                              current_ts, (current_ts - sys_timestamps_sec) * 1e3, exposure_time * 1e-6);
+
 	buff_ptr->frame_id = out_img.info.frame_id;
 	buff_ptr->stride = graph.stride;
 	buff_ptr->width = graph.width;

@@ -502,12 +502,71 @@ void MipiCamNode::init_publisher(std::shared_ptr<Publisher_info> Pub_info, std::
   Pub_info->frame_id = frame_id;
   Pub_info->topic_type = topic_type;
   Pub_info->time_start_ = std::chrono::system_clock::now();
+  setPubRateLimit(Pub_info.get(), topic_type, topic);
 }
 
 void MipiCamNode::init_publisher_hbmem(std::shared_ptr<Publisher_hbmem_info>  Pub_info, std::string topic, std::string topic_type){
   Pub_info->publisher_hbmem_ = this->create_publisher<hbm_img_msgs::msg::HbmMsg1080P>(topic, rclcpp::SensorDataQoS());
   Pub_info->topic_type = topic_type;
   Pub_info->time_start_ = std::chrono::system_clock::now();
+  setPubRateLimit(Pub_info.get(), topic_type, topic);
+}
+
+// 主/辅码流发布帧率设置：底层VIN以max(fps, sub_fps)统一出帧，
+// 主码流topic(single/left/right/combine)按framerate发布，
+// 辅码流topic(sub_*)按sub_framerate发布
+void MipiCamNode::setPubRateLimit(Publisher_info_base *pub_info,
+                                  const std::string &topic_type,
+                                  const std::string &topic) {
+  const bool is_sub_stream = topic_type.rfind("sub_", 0) == 0;
+  const int target_fps =
+      is_sub_stream ? nodePare_->sub_framerate_ : nodePare_->framerate_;
+  if (target_fps > 0) {
+    pub_info->target_fps_ = target_fps;
+    pub_info->pub_interval_ns_ =
+        static_cast<int64_t>(1000000000.0 / target_fps);
+    pub_info->next_pub_ts_ns_ = 0;
+    pub_info->last_pub_ts_ns_ = 0;
+  }
+  RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+              "publisher topic:%s, type:%s, pub rate limit:%d fps%s",
+              topic.c_str(), topic_type.c_str(), pub_info->target_fps_,
+              (pub_info->target_fps_ > 0 ? "" : " (no limit)"));
+}
+
+// 发布帧率抽帧(发布时刻表法)：维护next_pub_ts_ns_发布时刻，帧ts到达或越过
+// 该时刻(留10%周期容差，兼容sensor时间戳抖动)即发布，并把时刻表推进一个目标
+// 周期。丢帧按时刻表均匀分布，平均发布帧率精确等于目标帧率，
+// 不会因整数倍跳帧而偏低(如底层8fps目标7fps时按125*6+250ms模式发布，恰为7fps)。
+// 目标帧率不低于底层实际帧率时不丢帧。时刻表落后于当前帧(码流停顿后恢复)时
+// 重新锚定，避免连续补发。返回true表示允许发布。
+bool MipiCamNode::pubRateAllow(Publisher_info_base &pub_info, int64_t frame_ts_ns) {
+  if (pub_info.target_fps_ <= 0 || pub_info.pub_interval_ns_ <= 0) {
+    return true;  // 未限速
+  }
+  const int64_t interval = pub_info.pub_interval_ns_;
+  const int64_t tol = interval / 10;
+  // 首帧；或时间戳回退(码流重启/时钟切换)：发布并重新锚定时刻表
+  if (pub_info.next_pub_ts_ns_ == 0 || frame_ts_ns < pub_info.last_pub_ts_ns_) {
+    pub_info.last_pub_ts_ns_ = frame_ts_ns;
+    pub_info.next_pub_ts_ns_ = frame_ts_ns + interval;
+    return true;
+  }
+  if (frame_ts_ns + tol >= pub_info.next_pub_ts_ns_) {
+    // 到达发布时刻：发布并推进时刻表
+    pub_info.last_pub_ts_ns_ = frame_ts_ns;
+    pub_info.next_pub_ts_ns_ += interval;
+    if (pub_info.next_pub_ts_ns_ <= frame_ts_ns) {
+      // 时刻表已落后(帧停顿后恢复等)：按当前帧重新锚定，避免连续补发
+      pub_info.next_pub_ts_ns_ = frame_ts_ns + interval;
+    }
+    return true;
+  }
+  RCLCPP_DEBUG(rclcpp::get_logger("mipi_node"),
+               "drop frame ts:%ld ns, next pub ts:%ld ns (target %d fps)",
+               static_cast<long>(frame_ts_ns),
+               static_cast<long>(pub_info.next_pub_ts_ns_), pub_info.target_fps_);
+  return false;
 }
 
 
@@ -626,6 +685,13 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
       }
       return;
     }
+    // 帧率控制：按目标帧率抽帧，未到发布间隔的帧直接丢弃
+    const int64_t frame_ts_ns =
+        static_cast<int64_t>(img->header.stamp.sec) * 1000000000LL +
+        static_cast<int64_t>(img->header.stamp.nanosec);
+    if (!pubRateAllow(*pub_info, frame_ts_ns)) {
+      return;
+    }
     save_jpg(img->header.stamp,img->encoding,img->width,img->height,(void *)&img->data[0]);
     save_yuv(img->header.stamp, (void *)&img->data[0], img->data.size());
     if (pub_info->info_pub_ && pub_info->camera_calibration_info_) {
@@ -673,6 +739,14 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
         if (interval > 3000) {
           RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "hbmemUpdate grab img failed");
         }
+        return;
+      }
+      // 帧率控制：按目标帧率抽帧，未到发布间隔的帧丢弃
+      // (loaned消息随作用域回收，不publish、不递增index)
+      const int64_t frame_ts_ns =
+          static_cast<int64_t>(msg.time_stamp.sec) * 1000000000LL +
+          static_cast<int64_t>(msg.time_stamp.nanosec);
+      if (!pubRateAllow(*pub_info, frame_ts_ns)) {
         return;
       }
       std::string encode(msg.encoding.begin(), msg.encoding.end());
