@@ -59,6 +59,7 @@ def main():
             meta_text = f.read()
         expected = expected_from_launch_args(meta_text)
         image_topics = info_topics = None
+        thresholds = None
         for line in meta_text.splitlines():
             if line.startswith("image_topics="):
                 try:
@@ -70,13 +71,19 @@ def main():
                     info_topics = json.loads(line.split("=", 1)[1])
                 except ValueError:
                     pass
+            elif line.startswith("thresholds="):
+                try:
+                    thresholds = json.loads(line.split("=", 1)[1])
+                except ValueError:
+                    pass
         expected_topics = (image_topics or []) + (info_topics or []) or None
 
     result = run_analyze(rows, eval_text,
                          image_domain=None if args.image_domain == "auto" else args.image_domain,
                          clock_offset_ns=offset,
                          expected=expected,
-                         expected_topics=expected_topics)
+                         expected_topics=expected_topics,
+                         thresholds=thresholds)
     result["meta"]["csv_skipped_rows"] = skipped
     result["meta"]["expected_source"] = meta_path if expected else None
     result["meta"]["expected_topics"] = expected_topics

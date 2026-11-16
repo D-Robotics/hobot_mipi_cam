@@ -763,5 +763,99 @@ class TestMetrics(unittest.TestCase):
         self.assertIn("不完整", md)
 
 
+class TestThresholds(unittest.TestCase):
+    def setUp(self):
+        from metrics import reset_thresholds
+        reset_thresholds()
+
+    def tearDown(self):
+        from metrics import reset_thresholds
+        reset_thresholds()
+
+    def test_default_and_merge(self):
+        from thresholds import DEFAULT_THRESHOLDS, KNOWN_KEYS, merge_thresholds
+        th = merge_thresholds()
+        self.assertEqual(th["pair_rate_min"], 0.999)
+        # 覆盖生效
+        th2 = merge_thresholds({"pair_rate_min": 0.99})
+        self.assertEqual(th2["pair_rate_min"], 0.99)
+        # 未知键忽略
+        th3 = merge_thresholds({"no_such_key": 1})
+        self.assertNotIn("no_such_key", th3)
+        self.assertEqual(set(DEFAULT_THRESHOLDS), KNOWN_KEYS)
+
+    def test_pair_rate_threshold_used_in_report(self):
+        from metrics import sync_metrics
+        from report import render_baseline_report
+        lines = [f"[EVAL] ts_mono={i} event=frame_in pipe={p} stream=main "
+                 f"frame_id={i} ts_frame={MONO_BASE}" for i in range(3) for p in (0, 1)]
+        lines.append("[EVAL] ts_mono=9 event=sync_pair tag=main ok=1 "
+                     "frame_id_a=1 frame_id_b=1 ts_a=1 ts_b=2 diff_ns=100000 tol_ns=16666666")
+        m = sync_metrics(parse_eval_log("\n".join(lines)))["main"]
+        self.assertAlmostEqual(m["pair_rate"], 1 / 3, places=4)
+        # 默认 0.999 -> 告警
+        md = render_baseline_report({"meta": {}, "sync_pair": {"main": m}})
+        self.assertIn("配对率", md)
+        # 覆盖到 0.3 -> 不告警
+        md2 = render_baseline_report({"meta": {"thresholds": {"pair_rate_min": 0.3}},
+                                      "sync_pair": {"main": m}})
+        self.assertNotIn("配对率 33.33% 低于", md2)
+
+    def test_stability_ratio_threshold(self):
+        from metrics import stability_warnings
+        ft = {"pipe0/main": {"interval_max_ns": 4 * 33 * MS}}
+        exp = {"framerate": 30.0}
+        # 默认 3×：4×周期 -> 告警
+        self.assertEqual(len(stability_warnings(ft, exp)), 1)
+        # 覆盖到 5×：不告警
+        from metrics import set_thresholds
+        set_thresholds({"stability_interval_ratio": 5.0})
+        self.assertEqual(stability_warnings(ft, exp), [])
+
+
+class TestSuiteReport(unittest.TestCase):
+    def _run(self, result="OK", with_pair=False, with_res=True, unstable=False):
+        metrics = {}
+        if with_res:
+            metrics["resolution"] = {"all_match": True}
+        if unstable:
+            metrics["stability_warnings"] = [{"stream": "pipe0/main"}]
+        if with_pair:
+            metrics["meta"] = {"thresholds": {"pair_rate_min": 0.999,
+                                              "pair_diff_p99_ms": 1.0}}
+            metrics["frame_timing"] = {"pipe0/main": {"fps_mean": 30.0}}
+            metrics["sync_pair"] = {"main": {"pair_rate": 0.5, "diff_p50_ns": 3000000,
+                                             "diff_p99_ns": 3100000,
+                                             "frame_id_mismatch": 0}}
+        return {"case": "C04", "outdir": "/tmp/x", "result": result,
+                "elapsed_s": 180, "metrics": metrics}
+
+    def test_verdicts(self):
+        from suite_report import summarize_run
+        self.assertEqual(summarize_run(self._run())["verdict"], "PASS")
+        self.assertEqual(summarize_run(self._run(unstable=True))["verdict"], "WARN")
+        self.assertEqual(summarize_run(self._run(result="FAIL"))["verdict"], "FAIL")
+        self.assertEqual(summarize_run(self._run(with_pair=True))["verdict"], "WARN")
+
+    def test_summary_fields(self):
+        from suite_report import summarize_run
+        s = summarize_run(self._run(with_pair=True))
+        self.assertEqual(s["fps"], {"pipe0/main": 30.0})
+        self.assertEqual(s["pair"]["rate"], 0.5)
+        self.assertEqual(s["pair"]["diff_p50_ms"], 3.0)
+        self.assertIn("pair_rate_low", s["warnings"])
+        self.assertIn("pair_diff_p99", s["warnings"])
+
+    def test_render(self):
+        from suite_report import render_suite_report, summarize_run
+        suite = {"suite": "smoke",
+                 "runs": [summarize_run(self._run()),
+                          summarize_run(self._run(with_pair=True))]}
+        md = render_suite_report(suite)
+        self.assertIn("评测 suite：smoke", md)
+        self.assertIn("**WARN**", md)
+        self.assertIn("pair_rate_low", md)
+
+
 if __name__ == "__main__":
     unittest.main()

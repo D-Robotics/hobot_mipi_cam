@@ -5,6 +5,14 @@ import datetime
 import json
 from typing import Dict
 
+from thresholds import DEFAULT_THRESHOLDS
+
+
+def _th(metrics: Dict, key: str):
+    """阈值优先读 metrics.meta.thresholds（来自用例 YAML），回退默认。"""
+    return (metrics.get("meta", {}).get("thresholds") or {}).get(key,
+                                                                 DEFAULT_THRESHOLDS[key])
+
 
 def _fmt_ns(v, unit="ms"):
     if v is None:
@@ -180,11 +188,13 @@ def render_baseline_report(metrics: Dict, title: str = "mipi_cam 评测·基线�
                 elif m.get("missing_idle"):
                     extra = f"（两路都空 {m['missing_idle']} 次为帧间常态）"
                 lines.append(f"- {tag} 配对失败（1 条/秒限流）：{detail}{extra}")
-            if m.get("pair_rate") is not None and m["pair_rate"] < 0.999:
-                lines.append(f"- **WARNING：{tag} 配对率 {m['pair_rate']:.2%} 低于 99.9% 基线**")
-            if (m.get("diff_p99_ns") or 0) > 1e6:
+            if m.get("pair_rate") is not None and m["pair_rate"] < float(_th(metrics, "pair_rate_min")):
+                lines.append(f"- **WARNING：{tag} 配对率 {m['pair_rate']:.2%} 低于 "
+                             f"{float(_th(metrics, 'pair_rate_min')):.2%} 基线**")
+            if (m.get("diff_p99_ns") or 0) > float(_th(metrics, "pair_diff_p99_ms")) * 1e6:
                 lines.append(f"- **WARNING：{tag} 配对差 p99="
-                             f"{_fmt_ns(m.get('diff_p99_ns'))}ms 超过 1ms 口径**")
+                             f"{_fmt_ns(m.get('diff_p99_ns'))}ms 超过 "
+                             f"{_th(metrics, 'pair_diff_p99_ms')}ms 口径**")
             if (m.get("frame_id_mismatch") or 0) > 0:
                 nz = {k: v for k, v in (m.get("frame_id_delta") or {}).items() if k != "0"}
                 desc = ", ".join(f"Δ={k}:{v}" for k, v in nz.items())

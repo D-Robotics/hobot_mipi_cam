@@ -41,4 +41,8 @@ recorder:
   info_topics: [/image_left_raw/camera_info, /image_right_raw/camera_info,
                 /image_combine_raw/left/camera_info, /image_combine_raw/right/camera_info]
 
-thresholds: {}
+# 阈值覆盖（可省略，省略时用 eval/tools/analyze/thresholds.py 的默认值）：
+# X5 自由运行双目的配对 stamp 差 ~3ms（07 轮实测），1ms 默认口径必然告警；
+# 本用例按实测基线放宽到 4ms，其余用默认。
+thresholds:
+  pair_diff_p99_ms: 4.0

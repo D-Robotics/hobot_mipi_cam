@@ -11,12 +11,24 @@ from collections import Counter, defaultdict
 from typing import Dict, List, Optional
 
 from parsers import RecRow, parse_eval_log  # 同目录导入（脚本/测试均从此目录起）
+from thresholds import merge_thresholds  # 阈值默认值 + YAML 覆盖
 
-# 曝光匹配容差：realtime 域下图像 stamp 与内核 ts_frame 相差帧管线延迟+时钟漂移，
-# 用最近邻匹配（mono 域下精确命中，diff=0）
-EXP_MATCH_TOL_NS = 50 * 1000 * 1000
 # 域自动识别阈值：realtime 域 stamp ~1.7e18，monotonic 域 <1e17
 REALTIME_DETECT_NS = 10 ** 17
+
+# 模块级阈值状态：analyze() 入口按 YAML 覆盖；纯模块常量的旧写法保留向后兼容。
+_TH = merge_thresholds()
+
+
+def set_thresholds(override: dict = None) -> dict:
+    """更新模块阈值（analyze 入口调用）；返回生效值。测试用 reset 还原。"""
+    global _TH
+    _TH = merge_thresholds(override)
+    return _TH
+
+
+def reset_thresholds() -> dict:
+    return set_thresholds(None)
 
 
 def percentile(sorted_vals: List[float], p: float) -> Optional[float]:
@@ -362,10 +374,10 @@ def latency_metrics(rows: List[RecRow], eval_events: List[Dict],
     exp_pairs = _exp_pairs_sorted(eval_events)
     # 匹配容差：不超过半帧间隔（避免丢帧/无曝光帧"借"到邻帧曝光），
     # 且不超过帧管线延迟上界（覆盖 realtime 域 stamp 与 ts_frame 的偏差）
-    tol_ns = EXP_MATCH_TOL_NS
+    tol_ns = int(_TH["exp_match_tol_ms"] * 1e6)
     if len(exp_pairs) >= 2:
         gaps = [b[0] - a[0] for a, b in zip(exp_pairs, exp_pairs[1:])]
-        tol_ns = min(EXP_MATCH_TOL_NS, max(gaps) // 2)
+        tol_ns = min(tol_ns, max(gaps) // 2)
     by_topic = defaultdict(list)
     for r in rows:
         if r.encoding in ("imu", "camera_info"):
@@ -641,13 +653,13 @@ def startup_metrics(eval_events: List[Dict]) -> Optional[Dict]:
 
 
 def stability_warnings(frame_timing: Optional[Dict], expected: Optional[Dict]) -> List[Dict]:
-    """帧时序稳定性告警：最大间隔超过 3 个目标周期。"""
+    """帧时序稳定性告警：最大间隔超过 stability_interval_ratio × 目标周期。"""
     if not frame_timing or not expected:
         return []
     fps = expected.get("framerate") or 0
     if fps <= 0:
         return []
-    threshold_ns = 3e9 / float(fps)
+    threshold_ns = float(_TH["stability_interval_ratio"]) * 1e9 / float(fps)
     out = []
     for key, m in sorted(frame_timing.items()):
         mx = m.get("interval_max_ns")
@@ -683,7 +695,7 @@ def _domain_of(vals: List[int]) -> Optional[str]:
     return "realtime" if percentile(sorted(vals), 50) > REALTIME_DETECT_NS else "mono"
 
 
-EXP_US_HARD_CAP = 5000000   # 单帧“触发→取帧”硬上限 5s，防跨域脏值
+EXP_US_HARD_CAP = 5000000   # 兼容旧引用：实际生效值以 _TH["exp_us_cap_s"] 为准
 EXP_US_MIN_CAP = 1000000    # 闸门下限 1s，避免误杀低帧率长曝光
 
 
@@ -706,7 +718,7 @@ def _exposure_gate(rows: List[Dict]) -> Dict:
     itv = [b - a for a, b in zip(frames, frames[1:]) if b > a]
     itv_us = percentile(sorted(itv), 50) / 1000.0 if itv else 0.0
     cap_us = int(max(float(EXP_US_MIN_CAP), 1.5 * itv_us)) if itv_us else EXP_US_MIN_CAP
-    cap_us = min(cap_us, EXP_US_HARD_CAP)
+    cap_us = min(cap_us, int(float(_TH["exp_us_cap_s"]) * 1e6))
     stale = len(trig_vals) > 1 and len(set(trig_vals)) == 1
     usable = []
     for r in rows:
@@ -1205,8 +1217,14 @@ def device_latency_metrics(eval_events: List[Dict]) -> Optional[Dict]:
 
 def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = None,
             clock_offset_ns: int = 0, expected: Optional[Dict] = None,
-            expected_topics: Optional[List[str]] = None) -> Dict:
-    """总入口：产出指标字典（报告/JSON 用）。image_domain=None 时自动识别。"""
+            expected_topics: Optional[List[str]] = None,
+            thresholds: Optional[Dict] = None) -> Dict:
+    """总入口：产出指标字典（报告/JSON 用）。image_domain=None 时自动识别。
+
+    thresholds：用例 YAML 的 `thresholds:` 覆盖默认阈值（见 thresholds.py）；
+    生效值写入 result["meta"]["thresholds"] 供报告/评分层读取。
+    """
+    th = set_thresholds(thresholds)
     ev_stats = {}
     events = parse_eval_log(eval_text, ev_stats)
     if image_domain is None:
@@ -1216,6 +1234,7 @@ def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = No
         "meta": {
             "image_domain": image_domain,
             "clock_offset_ns": clock_offset_ns,
+            "thresholds": dict(th),
             "eval_events": len(events),
             "eval_duplicate_lines": ev_stats.get("duplicates", 0),
             "eval_by_event": dict(sorted(

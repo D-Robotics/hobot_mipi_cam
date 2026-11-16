@@ -1,0 +1,15 @@
+# suite 预设：一键评测组合（run_suite.py --suite <name>）
+# duration_s 覆盖用例 YAML 的默认时长（省略则用 YAML 值）换 sensor/改配置后的
+# 冒烟推荐：smoke；完整基线：core。
+suites:
+  smoke:            # 快速链路自检（~2 分钟）
+    cases: [C04]
+    duration_s: 60
+  core:             # 采集/同步/延迟核心基线（~12 分钟）
+    cases: [C04, C04S, C07, C08]
+  latency:          # 延迟专题（含 bgr8、辅流）
+    cases: [C04, C07, C04B, C06]
+  resolution:       # 分辨率/旋转
+    cases: [C04, C14R]
+  full:             # 全部已定义用例
+    cases: [C04, C04S, C04B, C05, C06, C07, C08, C14R]

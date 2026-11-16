@@ -65,6 +65,7 @@ print('True' if ev.get('log_enable', True) else 'False')
 load = d.get('load') or {}
 print(load.get('cpu_affinity', ''))
 print(load.get('cmd', ''))
+print(json.dumps(d.get('thresholds') or {}))
 with open(sys.argv[2], 'w', encoding='utf-8') as af:
     for k, v in (d.get('params') or {}).items():
         if isinstance(v, bool):
@@ -91,6 +92,9 @@ INFO_TOPICS=${YV[6]:-[]}
 EVAL_LOG_ENABLE=${YV[7]:-True}
 CPU_AFFINITY=${YV[8]:-}
 LOAD_CMD=${YV[9]:-}
+THRESHOLDS_JSON=${YV[10]:-}
+# bash 的 ${v:-{}} 会把第一个 } 当展开结束、多拼一个字面 }，故判空单独写
+[ -n "$THRESHOLDS_JSON" ] || THRESHOLDS_JSON='{}'
 
 [ -n "$EVAL_LAUNCH" ] || die launch_not_set 2
 [ -f "$PROJ/eval/launch/$EVAL_LAUNCH" ] || die "launch_missing path=$PROJ/eval/launch/$EVAL_LAUNCH" 2
@@ -177,6 +181,7 @@ fi
   echo "load_cmd=$LOAD_CMD"
   echo "image_topics=$IMG_TOPICS"
   echo "info_topics=$INFO_TOPICS"
+  echo "thresholds=$THRESHOLDS_JSON"
   echo "board_loadavg=$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)"
   echo "uptime_s=$(cut -d' ' -f1 /proc/uptime 2>/dev/null)"
   echo "git_commit=$(git -C "$PROJ" rev-parse --short HEAD 2>/dev/null || echo unknown)"
