@@ -196,6 +196,55 @@ def render_baseline_report(metrics: Dict, title: str = "mipi_cam 评测·基线�
                              f"frame_id 不一致（{desc}；{kind}）**")
         lines.append("")
 
+    dl = metrics.get("device_latency")
+    if dl:
+        lines.append("## 设备侧延迟分解（frame_in / combine_out → deq_mono → pub_out）")
+        lines.append("")
+        lines.append("| topic | 发布数 | deq 覆盖 | 就绪→取帧返回 p50/p95(ms) | 取帧返回→发布 p50/p95(ms) | 就绪→发布 p50/p95(ms) | t0 口径 | t0→发布 p50/p95(ms) |")
+        lines.append("|---|---|---|---|---|---|---|---|")
+        for topic, m in sorted(dl.items()):
+            q = m.get("ready_to_get_ns") or {}
+            c = m.get("publish_cost_ns") or {}
+            t = m.get("total_ns") or {}
+            p = m.get("pub_from_t0_ns") or {}
+            lines.append(
+                f"| {topic} | {m.get('count', '-')} "
+                f"| {m.get('deq_checked', 0)}/{m.get('count', '-')} "
+                f"| {_fmt_ns(q.get('p50'))}/{_fmt_ns(q.get('p95'))} "
+                f"| {_fmt_ns(c.get('p50'))}/{_fmt_ns(c.get('p95'))} "
+                f"| {_fmt_ns(t.get('p50'))}/{_fmt_ns(t.get('p95'))} "
+                f"| {m.get('t0_source', 'none')} "
+                f"| {_fmt_ns(p.get('p50'))}/{_fmt_ns(p.get('p95'))} |")
+        lines.append("")
+        for topic, m in sorted(dl.items()):
+            if (m.get("deq_checked") or 0) < (m.get("count") or 0):
+                lines.append(f"- **WARNING：{topic} 有 "
+                             f"{(m.get('count') or 0) - (m.get('deq_checked') or 0)} 帧缺 deq_mono，"
+                             f"延迟拆分覆盖不全**")
+            q = m.get("ready_to_get_ns") or {}
+            if q and (q.get("min") or 0) < 0:
+                lines.append(f"- **WARNING：{topic} 出现负的“就绪→取帧返回”"
+                             f"（min={q['min']:.3f}ms），检查打点顺序/时钟域**")
+            if m.get("unmapped"):
+                lines.append(f"- **WARNING：{topic} 未登记 topic→pipe 映射，"
+                             f"就绪时刻与 t0 未计算**")
+            elif (m.get("ready_checked") or 0) == 0:
+                lines.append(f"- **WARNING：{topic} 没有匹配到就绪时刻"
+                             f"（frame_in/combine_out 缺失或 stamp 对不上）**")
+            if (m.get("ready_duplicates") or 0) > 0 or (m.get("t0_duplicates") or 0) > 0:
+                lines.append(f"- **WARNING：{topic} 关联键有重复"
+                             f"（ready {m.get('ready_duplicates', 0)}、t0 {m.get('t0_duplicates', 0)}），"
+                             f"统计可能偏少**")
+        trig_topics = [t for t, m in dl.items() if m.get("t0_source") == "trig"]
+        for topic in sorted(trig_topics):
+            m = dl[topic]
+            if m.get("t0_offset_p50_ns") is not None:
+                unc = (m.get("t0_offset_p99_ns", 0) - m.get("t0_offset_p1_ns", 0)) / 2 / 1e6
+                lines.append(f"- {topic} t0 归一偏移 p50={m['t0_offset_p50_ns']/1e6:.3f}ms，"
+                             f"p1~p99 半宽 {unc:.3f}ms；偏移按 run/pipe 标定，"
+                             f"t0 口径延迟量级为 ±{unc:.1f}ms")
+        lines.append("")
+
     cb = metrics.get("combine")
     if cb:
         lines.append("## 拼接产出（combine_out 埋点）")

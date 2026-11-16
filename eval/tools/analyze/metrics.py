@@ -1046,6 +1046,163 @@ def combine_metrics(eval_events: List[Dict], rows: Optional[List[RecRow]] = None
     return out
 
 
+_LATENCY_TOPIC_MAP = {
+    "/image_left_raw": ("frame", (0, "main")),
+    "/image_right_raw": ("frame", (1, "main")),
+    "/sub_image_left_raw": ("frame", (0, "sub")),
+    "/sub_image_right_raw": ("frame", (1, "sub")),
+    "/image_combine_raw": ("combine", "main"),
+    "/sub_image_combine_raw": ("combine", "sub"),
+    # 单目 / hbmem 通路：都来自 pipe0
+    "/image_raw": ("frame", (0, "main")),
+    "/sub_image_raw": ("frame", (0, "sub")),
+    "/hbmem_img": ("frame", (0, "main")),
+    "/sub_hbmem_img": ("frame", (0, "sub")),
+}
+
+
+def _latency_source(topic: str):
+    """topic -> (kind, key)；未登记返回 None（避免静默按右目映射）。"""
+    return _LATENCY_TOPIC_MAP.get(topic)
+
+
+def device_latency_metrics(eval_events: List[Dict]) -> Optional[Dict]:
+    """设备侧延迟分解（08-device-latency）。
+
+    - 就绪：`frame_in`/`combine_out` 的打点时刻（采集/拼接完成）
+    - 出队：`pub_out.deq_mono`（发布线程 getImage 返回）
+    - 发布：`pub_out.ts_mono`（publish 返回后）
+
+    queue_wait = 出队 − 就绪；publish_cost = 发布 − 出队；total = 发布 − 就绪。
+    t0 口径：仅当 exposure 的 trig 可信时，用硬件域 t0 减去实测硬件-单调偏移，
+    得到可与 ts_mono 比较的曝光中点；否则不做 t0 归一（避免跨域假延迟）。
+    """
+    pubs = [e for e in eval_events if e["event"] == "pub_out"]
+    if not pubs:
+        return None
+
+    def _i(kv: Dict, key: str) -> Optional[int]:
+        v = kv.get(key)
+        return v if isinstance(v, int) else None
+
+    frame_ready = defaultdict(dict)      # (pipe,stream) -> ts_frame -> ts_mono
+    frame_dup = Counter()
+    for e in eval_events:
+        if e["event"] != "frame_in":
+            continue
+        kv = e["kv"]
+        ts = _i(kv, "ts_frame")
+        if ts is not None:
+            key = (_i(kv, "pipe"), str(kv.get("stream")))
+            if ts in frame_ready[key]:
+                frame_dup[key] += 1
+            frame_ready[key][ts] = e["ts_mono"]
+
+    combine_ready = defaultdict(dict)    # tag -> ts_combine -> ts_mono
+    combine_dup = Counter()
+    for e in eval_events:
+        if e["event"] != "combine_out":
+            continue
+        kv = e["kv"]
+        ts = _i(kv, "ts_combine")
+        if ts is not None:
+            tag = str(kv.get("tag"))
+            if ts in combine_ready[tag]:
+                combine_dup[tag] += 1
+            combine_ready[tag][ts] = e["ts_mono"]
+
+    # exposure：硬件域偏移 + 可信 t0（归一后）
+    exp_groups = defaultdict(list)
+    for e in eval_events:
+        if e["event"] != "exposure":
+            continue
+        kv = e["kv"]
+        exp_groups[(_i(kv, "pipe"), str(kv.get("stream")))].append((e["ts_mono"], kv))
+    t0_map = defaultdict(dict)
+    t0_dup = Counter()
+    offsets = {}
+    for key, items in exp_groups.items():
+        offs = sorted([hw - mono for mono, kv in items
+                       for hw in [_i(kv, "ts_hw_ns")] if hw and hw > 0])
+        if not offs:
+            continue
+        off_stats = {"p1": percentile(offs, 1), "p50": percentile(offs, 50),
+                     "p99": percentile(offs, 99)}
+        offsets[key] = off_stats
+        off = off_stats["p50"]
+        trig_by_ts = {}
+        for _, kv in items:
+            ts, tg = _i(kv, "ts_frame"), _i(kv, "ts_trig_ns")
+            if ts is not None and tg is not None:
+                trig_by_ts[ts] = tg
+        for ts, exp in _exposure_gate([kv for _, kv in items])["usable"]:
+            if ts in trig_by_ts:
+                if ts in t0_map[key]:
+                    t0_dup[key] += 1
+                t0_map[key][ts] = trig_by_ts[ts] + exp * 1000 // 2 - off
+
+    out = {}
+    for e in pubs:
+        kv = e["kv"]
+        topic = kv.get("topic")
+        ts = _i(kv, "ts_frame")
+        if not isinstance(topic, str) or ts is None:
+            continue
+        src = _latency_source(topic)
+        rec = out.setdefault(topic, {
+            "count": 0, "deq_checked": 0, "ready_checked": 0,
+            "t0_checked": 0, "t0_source": "none", "unmapped": False,
+            "ready_duplicates": 0, "t0_duplicates": 0,
+            "queue_wait": [], "publish_cost": [], "total": [],
+            "pub_from_t0": [], "acq_from_t0": [],
+        })
+        rec["count"] += 1
+        if src is None:
+            rec["unmapped"] = True
+            continue
+        kind, key = src
+        pub_mono = e["ts_mono"]
+        deq = _i(kv, "deq_mono")
+        if kind == "combine":
+            ready = combine_ready.get(key, {}).get(ts)
+            t0_key = (0, key)
+            rec["ready_duplicates"] = combine_dup[key]
+        else:
+            ready = frame_ready.get(key, {}).get(ts)
+            t0_key = key
+            rec["ready_duplicates"] = frame_dup[key]
+        rec["t0_duplicates"] = t0_dup[t0_key]
+        off_stats = offsets.get(t0_key)
+        if off_stats:
+            rec["t0_offset_p50_ns"] = off_stats["p50"]
+            rec["t0_offset_p1_ns"] = off_stats["p1"]
+            rec["t0_offset_p99_ns"] = off_stats["p99"]
+        if ready is not None:
+            rec["ready_checked"] += 1
+            rec["total"].append(pub_mono - ready)
+        if deq is not None:
+            rec["deq_checked"] += 1
+            rec["publish_cost"].append(pub_mono - deq)
+            if ready is not None:
+                rec["queue_wait"].append(deq - ready)
+        t0 = t0_map.get(t0_key, {}).get(ts)
+        if t0 is not None:
+            rec["t0_checked"] += 1
+            rec["t0_source"] = "trig"
+            rec["pub_from_t0"].append(pub_mono - t0)
+            if kind == "frame" and ready is not None:
+                rec["acq_from_t0"].append(ready - t0)
+
+    for rec in out.values():
+        # 就绪→取帧返回：含 getFrame 的 10ms 轮询量化、拷贝与（bgr8 的）NV12→BGR 转换
+        rec["ready_to_get_ns"] = _summary(rec.pop("queue_wait"), 1.0)
+        rec["publish_cost_ns"] = _summary(rec.pop("publish_cost"), 1.0)
+        rec["total_ns"] = _summary(rec.pop("total"), 1.0)
+        rec["pub_from_t0_ns"] = _summary(rec.pop("pub_from_t0"), 1.0)
+        rec["acq_from_t0_ns"] = _summary(rec.pop("acq_from_t0"), 1.0)
+    return out
+
+
 def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = None,
             clock_offset_ns: int = 0, expected: Optional[Dict] = None,
             expected_topics: Optional[List[str]] = None) -> Dict:
@@ -1096,6 +1253,9 @@ def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = No
     combine = combine_metrics(events, rows, expected)
     if combine:
         result["combine"] = combine
+    device_latency = device_latency_metrics(events)
+    if device_latency:
+        result["device_latency"] = device_latency
     pairs = []
     for i in range(1, len(image_topics)):
         p = pairing_metrics(rows, image_topics[0], image_topics[i],

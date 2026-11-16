@@ -605,6 +605,105 @@ class TestMetrics(unittest.TestCase):
         self.assertIsNone(m["extra_latency_ns"])
         self.assertIsNone(m["extra_recv_ns"])
 
+    def test_device_latency_decomposition(self):
+        from metrics import device_latency_metrics
+        b = MONO_BASE
+        hw = b + 2_000_000_000          # 硬件域比单调域快 ~2s（实测现象）
+        lines = [
+            f"[EVAL] ts_mono={b + 100} event=frame_in pipe=0 stream=main "
+            f"ts_frame={b} width=1 height=1",
+            f"[EVAL] ts_mono={b + 200} event=exposure pipe=0 stream=main frame_id=1 "
+            f"stamp_src=sensor trig_valid=1 ts_trig_ns={b + 1_990_000_000} ts_hw_ns={hw} "
+            f"exp_us=10000 ts_sys_raw_ns={RT_BASE} ts_frame={b}",
+            f"[EVAL] ts_mono={b + 300} event=combine_out tag=main n=2 order=0,1 "
+            f"frame_id=1 frame_id_left=1 frame_id_right=1 ts_combine={b} ts_left={b} "
+            f"ts_right={b + 1000} width=1 height=2",
+            f"[EVAL] ts_mono={b + 500} event=pub_out topic=/image_left_raw "
+            f"ts_frame={b} deq_mono={b + 400}",
+            f"[EVAL] ts_mono={b + 700} event=pub_out topic=/image_combine_raw "
+            f"ts_frame={b} deq_mono={b + 600}",
+        ]
+        m = device_latency_metrics(parse_eval_log("\n".join(lines)))
+        left = m["/image_left_raw"]
+        self.assertEqual(left["count"], 1)
+        self.assertEqual(left["deq_checked"], 1)
+        self.assertEqual(left["ready_to_get_ns"]["p50"], 300.0)
+        self.assertEqual(left["publish_cost_ns"]["p50"], 100.0)
+        self.assertEqual(left["total_ns"]["p50"], 400.0)
+        self.assertEqual(left["t0_source"], "trig")
+        self.assertEqual(left["t0_checked"], 1)
+        # t0 = trig + exp/2 − offset；offset = hw − 打点 = 2e9 − 200
+        self.assertAlmostEqual(left["acq_from_t0_ns"]["p50"], 4_999_900.0, delta=1)
+        self.assertAlmostEqual(left["pub_from_t0_ns"]["p50"], 5_000_300.0, delta=1)
+        comb = m["/image_combine_raw"]
+        self.assertEqual(comb["ready_to_get_ns"]["p50"], 300.0)
+        self.assertEqual(comb["t0_source"], "trig")
+
+    def test_device_latency_negative_and_unmatched_ready(self):
+        from metrics import device_latency_metrics
+        b = MONO_BASE
+        lines = [
+            f"[EVAL] ts_mono={b + 100} event=frame_in pipe=0 stream=main ts_frame={b}",
+            # deq 早于 ready -> 负值
+            f"[EVAL] ts_mono={b + 300} event=pub_out topic=/image_left_raw "
+            f"ts_frame={b} deq_mono={b + 50}",
+            # combine 无 combine_out -> 就绪匹配为 0
+            f"[EVAL] ts_mono={b + 10} event=pub_out topic=/image_combine_raw "
+            f"ts_frame={b + 5} deq_mono={b + 20}",
+            # 未登记 topic
+            f"[EVAL] ts_mono={b + 11} event=pub_out topic=/unknown_raw "
+            f"ts_frame={b + 6} deq_mono={b + 21}",
+        ]
+        m = device_latency_metrics(parse_eval_log("\n".join(lines)))
+        self.assertLess(m["/image_left_raw"]["ready_to_get_ns"]["min"], 0)
+        self.assertEqual(m["/image_combine_raw"]["ready_checked"], 0)
+        self.assertTrue(m["/unknown_raw"]["unmapped"])
+        md = render_baseline_report({"device_latency": m})
+        self.assertIn("负的", md)
+        self.assertIn("没有匹配到就绪时刻", md)
+        self.assertIn("未登记", md)
+
+    def test_device_latency_single_and_hbmem_mapping(self):
+        from metrics import device_latency_metrics
+        b = MONO_BASE
+        lines = [
+            f"[EVAL] ts_mono={b + 100} event=frame_in pipe=0 stream=main ts_frame={b}",
+            f"[EVAL] ts_mono={b + 160} event=pub_out topic=/hbmem_img "
+            f"ts_frame={b} deq_mono={b + 140}",
+            f"[EVAL] ts_mono={b + 170} event=pub_out topic=/image_raw "
+            f"ts_frame={b} deq_mono={b + 140}",
+        ]
+        m = device_latency_metrics(parse_eval_log("\n".join(lines)))
+        for topic in ("/hbmem_img", "/image_raw"):
+            self.assertFalse(m[topic]["unmapped"])
+            self.assertEqual(m[topic]["ready_checked"], 1)
+            self.assertEqual(m[topic]["ready_to_get_ns"]["p50"], 40.0)
+
+    def test_device_latency_duplicate_ready_keys(self):
+        from metrics import device_latency_metrics
+        b = MONO_BASE
+        lines = [
+            f"[EVAL] ts_mono={b + 100} event=frame_in pipe=0 stream=main ts_frame={b}",
+            f"[EVAL] ts_mono={b + 110} event=frame_in pipe=0 stream=main ts_frame={b}",
+            f"[EVAL] ts_mono={b + 200} event=pub_out topic=/image_left_raw "
+            f"ts_frame={b} deq_mono={b + 150}",
+        ]
+        m = device_latency_metrics(parse_eval_log("\n".join(lines)))["/image_left_raw"]
+        self.assertEqual(m["ready_duplicates"], 1)
+        md = render_baseline_report({"device_latency": {"/image_left_raw": m}})
+        self.assertIn("关联键有重复", md)
+
+    def test_device_latency_missing_deq_and_t0(self):
+        from metrics import device_latency_metrics
+        line = (f"[EVAL] ts_mono={MONO_BASE + 50} event=pub_out topic=/image_left_raw "
+                f"ts_frame={MONO_BASE}")
+        m = device_latency_metrics(parse_eval_log(line))["/image_left_raw"]
+        self.assertEqual(m["deq_checked"], 0)
+        self.assertIsNone(m["ready_to_get_ns"])
+        self.assertEqual(m["t0_source"], "none")
+        md = render_baseline_report({"device_latency": {"/image_left_raw": m}})
+        self.assertIn("缺 deq_mono", md)
+
     def test_sync_metrics_absent(self):
         from metrics import sync_metrics
         self.assertIsNone(sync_metrics(parse_eval_log("")))

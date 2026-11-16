@@ -31,7 +31,8 @@ params:
 
 eval:
   log_enable: true
-  log_events: [sync_pair, exposure, frame_in]
+  # 08-device-latency：lpwm 提供可信 t0；pub_out 带 deq_mono 用于拆分队列等待
+  log_events: [sync_pair, exposure, frame_in, pub_out]
   duration_s: 180
 
 recorder:

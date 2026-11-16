@@ -719,6 +719,8 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
       }
       return;
     }
+    // 08-device-latency：发布线程真正取到帧的时刻（含队列等待）
+    const uint64_t deq_mono = mipi_cam::eval::eval_now_mono_ns();
     // 帧率控制：按目标帧率抽帧，未到发布间隔的帧直接丢弃
     const int64_t frame_ts_ns =
         static_cast<int64_t>(img->header.stamp.sec) * 1000000000LL +
@@ -753,9 +755,10 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
                pub_info->image_pub_->get_topic_name(), channel.c_str());
     }
     // 评测埋点：pub_out（发布完成时刻，帧 ts 见帧内时间戳）
-    EVAL_LOG(EVAL_EV_PUB_OUT, "topic=%s ts_frame=%lld",
+    EVAL_LOG(EVAL_EV_PUB_OUT, "topic=%s ts_frame=%lld deq_mono=%llu",
              pub_info->image_pub_->get_topic_name(),
-             static_cast<long long>(ts.sec) * 1000000000LL + ts.nanosec);
+             static_cast<long long>(ts.sec) * 1000000000LL + ts.nanosec,
+             static_cast<unsigned long long>(deq_mono));
     RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
       "Published image on channel: %s, frame_id: %s, ts: %d.%d, delay: %.3f sec",
       channel.c_str(), frame_id.c_str(),
@@ -786,6 +789,8 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
         }
         return;
       }
+      // 08-device-latency：发布线程真正取到帧的时刻（含队列等待）
+      const uint64_t deq_mono = mipi_cam::eval::eval_now_mono_ns();
       // 帧率控制：按目标帧率抽帧，未到发布间隔的帧丢弃
       // (loaned消息随作用域回收，不publish、不递增index)
       const int64_t frame_ts_ns =
@@ -821,8 +826,9 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
                  pub_info->topic_type.c_str());
       }
       // 评测埋点：pub_out（hbmem 通路，序号由订阅端校验连续性）
-      EVAL_LOG(EVAL_EV_PUB_OUT, "topic=%s seq=%u ts_frame=%lld",
-               pub_info->publisher_hbmem_->get_topic_name(), pub_seq, pub_ts_ns);
+      EVAL_LOG(EVAL_EV_PUB_OUT, "topic=%s seq=%u ts_frame=%lld deq_mono=%llu",
+               pub_info->publisher_hbmem_->get_topic_name(), pub_seq, pub_ts_ns,
+               static_cast<unsigned long long>(deq_mono));
 
     } else {
       RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
