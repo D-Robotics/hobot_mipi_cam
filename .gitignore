@@ -28,3 +28,7 @@ solver.bin
 
 # 交叉编译日志
 build_x5_diag_*.log
+
+# 测评
+eval
+build_eval

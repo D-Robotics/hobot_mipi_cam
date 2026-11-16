@@ -201,6 +201,7 @@ add_library(${PROJECT_NAME}_plugin SHARED
   src/imu/icm42688.cpp
   src/imu/imu_manager.cpp
   src/imu/event_device.cpp
+  src/hobot_mipi_fault_injector.cpp
 )
 target_link_libraries(${PROJECT_NAME}_plugin
   ${BASE_LIBRARIES} ${X3_HAPI_LIB} yaml-cpp

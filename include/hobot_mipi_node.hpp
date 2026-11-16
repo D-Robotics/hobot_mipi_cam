@@ -30,6 +30,7 @@
 
 #include "sensor_msgs/msg/image.hpp"
 #include <std_msgs/msg/string.hpp>
+#include "hobot_mipi_fault_injector.hpp"
 
 #include <fstream>
 #include <iomanip>
@@ -99,6 +100,9 @@ class MipiCamNode : public rclcpp::Node {
                        const std::string &topic_type, const std::string &topic);
   // 发布帧率抽帧：帧时间戳间隔达到pub_interval_ns_(含容差)才允许发布
   bool pubRateAllow(Publisher_info_base &pub_info, int64_t frame_ts_ns);
+
+  // 异常模拟控制（fault injection）：激活字段集合变化时发布状态话题
+  void publishFaultStatusIfChanged();
   
   void init_Calibration(Publisher_info_base*  Pub_info,
                     std::string info_topic, std::string info_file);
@@ -142,6 +146,14 @@ class MipiCamNode : public rclcpp::Node {
 
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
   rclcpp::Publisher<geometry_msgs::msg::TransformStamped>::SharedPtr pub_imu_extrinsic_;
+
+  // 异常模拟器（fault_inject 参数非空时创建；仅发布层注入，底层零改动）
+  std::shared_ptr<FaultInjector> fault_injector_ = nullptr;
+  // 注入状态话题：激活字段集合变化时发布（内容=逗号分隔列表，空串=全部恢复）
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_fault_status_ = nullptr;
+  std::string last_fault_status_;
+  // 状态发布并发保护（多个发布线程 + IMU 线程都会触发变化检测）
+  std::mutex fault_status_mtx_;
 };
 }  // namespace mipi_cam
 #endif  // HOBOT_MIPI_NODE_HPP_

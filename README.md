@@ -190,6 +190,14 @@ Open a browser (chrome/firefox/edge) on your PC and enter <http://IP:8000> (wher
 | channel                      | 0（default）                                      | mipi host number,rang 0~3                          |
 | channel2                      | 2（default）                                 | When device_mode_ == "dual" is effective, mipi_host number of the right camera          |
 | gdc_bin_file                   | None（default）                                 | Path to the GDC file                          |
+| fault_inject                   | None (default)                                  | Fault injection list (comma separated) for downstream anomaly-detection testing: IMU_STALLED / IMU_STALE_OR_FUTURE_TIMESTAMP / IMU_TIMESTAMP_NOT_INCREASING / IMAGE_STALLED / IMAGE_STALE_OR_FUTURE_TIMESTAMP; invalid value refuses to start; publish-layer only, underlying pipeline untouched |
+| fault_ts_drift_mode            | stale (default)<br />future                     | Timestamp drift direction: stale = -250ms (behind threshold 200ms), future = +150ms (ahead of threshold 100ms) |
+| fault_imu_stall_period_s       | 10.0 (default)                                  | IMU stall period in seconds, 0 = inject once; anchored at first IMU publish, normal phase first |
+| fault_imu_stall_duration_ms    | 1000 (default)                                  | IMU stall duration in ms, 0 = permanent silence |
+| fault_image_stall_period_s     | 10.0 (default)                                  | Image stall period in seconds, 0 = inject once |
+| fault_image_stall_duration_ms  | 1000 (default)                                  | Image stall duration in ms, 0 = permanent silence |
+
+When fault injection is enabled, a status topic `/mipi_cam_fault_status` (std_msgs/msg/String) is published on changes of the active fault set (comma separated list, empty string = all recovered), usable as ground truth for tests. Test entry: `ros2 launch mipi_cam mipi_cam_fault_inject.launch.py fault_inject:="IMU_STALLED"`.
 
 
 # FAQ
