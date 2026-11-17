@@ -892,44 +892,92 @@ void MipiCamNode::read_imu_data() {
   imu_msg.header.frame_id = "imu_link";
   imu_sensor::ImuData_T imu_data;
 
+  // 10-imu-timing：读取环 1Hz 聚合探针（样本数/读失败/样本时戳范围/最大间隔）。
+  // 样本时间戳序列由 recorder CSV 全量落盘，探针提供驱动侧计数做对账。
+  uint64_t probe_n = 0, probe_fail = 0, probe_backwards = 0;
+  long long probe_first_ts = -1, probe_last_ts = -1, probe_iv_max_ns = -1;
+  auto imu_probe_flush = [&](const char *src) {
+    if (probe_n == 0 && probe_fail == 0) {
+      return;
+    }
+    EVAL_LOG(mipi_cam::eval::EVAL_EV_IMU_PROBE,
+             "src=%s n=%llu rd_fail=%llu ts_first=%lld ts_last=%lld "
+             "iv_max_ns=%lld iv_backwards=%llu",
+             src, static_cast<unsigned long long>(probe_n),
+             static_cast<unsigned long long>(probe_fail),
+             probe_first_ts, probe_last_ts, probe_iv_max_ns,
+             static_cast<unsigned long long>(probe_backwards));
+    probe_n = probe_fail = probe_backwards = 0;
+    probe_first_ts = probe_last_ts = -1;
+    probe_iv_max_ns = -1;
+  };
+  auto last_flush_mono = mipi_cam::eval::eval_now_mono_ns();
+
   while (is_imu_running_ ) {
     size_t subscriber_count = pub_imu_->get_subscription_count();
     if (subscriber_count > 0) {
-      imu_manager_->read_sensor_data(&imu_data);
-      // ---- IMU 时间戳 ----
-      auto sec = static_cast<int32_t>(imu_data.timestamp / 1e9);
-      auto nanosec = static_cast<uint32_t>(
-          imu_data.timestamp - sec * 1e9);
-      imu_msg.header.stamp.set__sec(sec);
-      imu_msg.header.stamp.set__nanosec(nanosec);
-      imu_msg.linear_acceleration.x = imu_data.ax;
-      imu_msg.linear_acceleration.y = imu_data.ay;
-      imu_msg.linear_acceleration.z = imu_data.az;
-      imu_msg.angular_velocity.x = imu_data.gx;
-      imu_msg.angular_velocity.y = imu_data.gy;
-      imu_msg.angular_velocity.z = imu_data.gz;
-      pub_imu_->publish(imu_msg);
-
-      // ---- 发布外参（与 IMU 同频，时间戳同步） ----
-      if (publish_extrinsic)
-      {
-        tf_msg.header.stamp.set__sec(sec);
-        tf_msg.header.stamp.set__nanosec(nanosec);
-
-        if (static_tf_broadcaster_)
-        {
-          static_tf_broadcaster_->sendTransform(tf_msg);
+      // 10-imu-timing：读失败不发布（原实现会把上一帧/未初始化数据重发出去）
+      if (imu_manager_->read_sensor_data(&imu_data) != 0) {
+        ++probe_fail;
+      } else {
+        const long long ts_ns =
+            static_cast<long long>(imu_data.timestamp);
+        if (probe_n == 0) {
+          probe_first_ts = ts_ns;
+        } else {
+          const long long iv = ts_ns - probe_last_ts;
+          if (iv > probe_iv_max_ns) {
+            probe_iv_max_ns = iv;
+          }
+          if (iv < 0) {
+            ++probe_backwards;
+          }
         }
-        if (pub_imu_extrinsic_)
+        probe_last_ts = ts_ns;
+        ++probe_n;
+
+        // ---- IMU 时间戳 ----
+        auto sec = static_cast<int32_t>(imu_data.timestamp / 1e9);
+        auto nanosec = static_cast<uint32_t>(
+            imu_data.timestamp - sec * 1e9);
+        imu_msg.header.stamp.set__sec(sec);
+        imu_msg.header.stamp.set__nanosec(nanosec);
+        imu_msg.linear_acceleration.x = imu_data.ax;
+        imu_msg.linear_acceleration.y = imu_data.ay;
+        imu_msg.linear_acceleration.z = imu_data.az;
+        imu_msg.angular_velocity.x = imu_data.gx;
+        imu_msg.angular_velocity.y = imu_data.gy;
+        imu_msg.angular_velocity.z = imu_data.gz;
+        pub_imu_->publish(imu_msg);
+
+        // ---- 发布外参（与 IMU 同频，时间戳同步） ----
+        if (publish_extrinsic)
         {
-          pub_imu_extrinsic_->publish(tf_msg);
+          tf_msg.header.stamp.set__sec(sec);
+          tf_msg.header.stamp.set__nanosec(nanosec);
+
+          if (static_tf_broadcaster_)
+          {
+            static_tf_broadcaster_->sendTransform(tf_msg);
+          }
+          if (pub_imu_extrinsic_)
+          {
+            pub_imu_extrinsic_->publish(tf_msg);
+          }
         }
+      }
+      const uint64_t now = mipi_cam::eval::eval_now_mono_ns();
+      if (now - last_flush_mono >= 1000000000ULL) {
+        imu_probe_flush(imu_manager_->source_name().c_str());
+        last_flush_mono = now;
       }
     } else {
       usleep(1000*1000);
     }
     usleep(1*1000);
   }
+  // 终末 flush：最后一窗口（可能不足 1s）也要计入对账
+  imu_probe_flush(imu_manager_ ? imu_manager_->source_name().c_str() : "none");
 }
 
 

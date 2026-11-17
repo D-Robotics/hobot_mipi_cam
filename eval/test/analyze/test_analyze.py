@@ -813,6 +813,75 @@ class TestThresholds(unittest.TestCase):
         self.assertEqual(stability_warnings(ft, exp), [])
 
 
+class TestImuTiming(unittest.TestCase):
+    def _rows(self, n=200, period_us=5000, drop_at=()):
+        """n 个 5ms 间隔的 IMU 样本（realtime 域）；drop_at 挖掉若干下标。"""
+        lines = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding"]
+        for i in range(n):
+            if i in drop_at:
+                continue
+            lines.append(f"/imu_data,,{RT_BASE + i * period_us * 1000},"
+                         f"{MONO_BASE + i * period_us * 1000},0,0,imu")
+        rows, _ = parse_recorder_csv("\n".join(lines))
+        return rows
+
+    def _probe(self, n=199, fail=1, src="event"):
+        return (f"[EVAL] ts_mono=1 event=imu_probe src={src} n={n} rd_fail={fail} "
+                f"ts_first={RT_BASE} ts_last={RT_BASE + 199 * 5 * MS} "
+                f"iv_max_ns={5 * MS} iv_backwards=0")
+
+    def test_imu_timing_basic(self):
+        from metrics import imu_timing_metrics
+        m = imu_timing_metrics(self._rows(), parse_eval_log(self._probe(n=199, fail=0)))
+        self.assertEqual(m["count"], 200)
+        self.assertEqual(m["backward"], 0)
+        self.assertEqual(m["duplicate"], 0)
+        self.assertAlmostEqual(m["rate_hz"], 200.0, places=1)
+        self.assertEqual(m["interval_us"]["p50"], 5000)
+        self.assertEqual(m["missing_est"], 0)
+        self.assertEqual(m["probe_n_sum"], 199)
+        self.assertEqual(m["pub_loss"], -1)   # probe 窗口计数与 CSV 差 1 属对账近似
+        self.assertEqual(m["domain"], "realtime")
+
+    def test_imu_drop_and_backwards(self):
+        from metrics import imu_timing_metrics
+        rows = self._rows(n=200, drop_at=(50, 51, 52, 100))
+        m = imu_timing_metrics(rows, parse_eval_log(""))
+        self.assertEqual(m["count"], 196)
+        self.assertEqual(m["missing_est"], 4)
+        self.assertAlmostEqual(m["missing_rate"], 0.02, places=3)
+        self.assertGreater(m["interval_us"]["max"], 15000)   # 15ms 大缺口
+        # 实测周期反推：3+1=4 样本缺口
+        self.assertEqual(m["missing_gap"], 4)
+        self.assertEqual(len(m["gap_events"]), 2)
+
+    def test_imu_odr_offset_gap_detection(self):
+        """ODR 偏 +1% 时标称反推漏报，实测周期反推应抓到大缺口。"""
+        from metrics import imu_timing_metrics
+        rows = self._rows(n=1000, period_us=4950, drop_at=(500, 501, 502, 503, 504, 505, 506, 507))
+        m = imu_timing_metrics(rows, parse_eval_log(""))
+        # 标称口径：期望=跨度×200 ≈ 985 < 实收 992 → missing=0（漏报）
+        self.assertEqual(m["missing_est"], 0)
+        # 实测口径：40ms 缺口 ≈ 8 样本
+        self.assertEqual(m["missing_gap"], 8)
+
+    def test_imu_report_warnings(self):
+        from metrics import imu_timing_metrics
+        from report import render_baseline_report
+        rows = self._rows(n=100, period_us=6000)   # 166Hz < 198
+        m = imu_timing_metrics(rows, parse_eval_log(self._probe(n=99, fail=2)))
+        md = render_baseline_report({"meta": {}, "imu": m})
+        self.assertIn("频率比率", md)
+        self.assertIn("读取失败 2", md)
+
+    def test_imu_absent(self):
+        from metrics import imu_timing_metrics
+        csv = "topic,seq,stamp_ns,recv_mono_ns,width,height,encoding\n" \
+              f"/t/img,,{MONO_BASE},{MONO_BASE},1,1,nv12\n"
+        rows, _ = parse_recorder_csv(csv)
+        self.assertIsNone(imu_timing_metrics(rows, parse_eval_log("")))
+
+
 class TestSuiteReport(unittest.TestCase):
     def _run(self, result="OK", with_pair=False, with_res=True, unstable=False):
         metrics = {}

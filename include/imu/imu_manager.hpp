@@ -39,6 +39,9 @@ class ImuManager {
   int read_sensor_data(ImuData_T* data);
   void release_sensor();
 
+  /// 当前 IMU 数据通路（eval 探针用）："event"/"iio"/"split"/"none"
+  std::string source_name() const;
+
   std::shared_ptr<imu_base> createImuDevice(const std::string &dev_name);
 
   bool loadCalibrationFromEeprom();

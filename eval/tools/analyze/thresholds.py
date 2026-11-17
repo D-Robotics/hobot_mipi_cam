@@ -28,6 +28,14 @@ DEFAULT_THRESHOLDS = {
     "exp_us_cap_s": 5.0,
     # 单侧缺帧持续多久才算 sync_pair 失败（驱动侧固定 100ms，仅分析侧对齐用）
     "sync_missing_sustain_ms": 100.0,
+    # C-01 IMU 标称采样率（icm42688 odr 默认 200Hz）
+    "imu_nominal_hz": 200.0,
+    # C-01 实测频率 ≥ 标称×该比率
+    "imu_rate_ratio_min": 0.99,
+    # C-02 间隔 p99 ≤ 周期×该比率
+    "imu_interval_p99_ratio": 0.5,
+    # C-03 时间戳倒退容忍（0 = 不允许）
+    "imu_backward_max": 0,
 }
 
 # 允许出现在 YAML 里的键（未知键告警并忽略，防拼写错误静默失效）

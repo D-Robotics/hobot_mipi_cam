@@ -260,6 +260,22 @@ int ImuManager::init_sensor(std::string sensor_type) {
 }
 
 // 读取传感器数据
+std::string ImuManager::source_name() const {
+    if (imu_handle == nullptr) {
+        return "none";
+    }
+    if (imu_handle == event_handle_) {
+        return "event";
+    }
+    // IIO 直读与 sysfs split 都经 imu_base，只区分得出直读/事件；
+    // split 判定交给具体 read 路径自身（icm42688::split_iio_enabled_）
+    auto icm = std::dynamic_pointer_cast<icm42688>(imu_handle);
+    if (icm && icm->is_split_iio()) {
+        return "split";
+    }
+    return "iio";
+}
+
 int ImuManager::read_sensor_data(ImuData_T* data) {
     if (imu_handle == nullptr) {
         return -1;

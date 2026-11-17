@@ -1,0 +1,43 @@
+# 10-imu-timing：IMU 采样频率/抖动/单调性（C-01/02/03/04）
+# 双目 combine=1 正常出流 + IMU 静置；板端需 root 跑（/dev/iio* root-only）：
+#   ssh s600 'cd /home/sunrise/workspace/hobot_mipi_cam && ./eval/run/run_case.sh C16 180'
+id: C16
+name: dual-1088x1280-nv12-30-combine1-imu
+run_label: dual-1088x1280-nv12-30fps-combine1-imu
+stage: 10-imu-timing
+baseline: false
+
+launch: mipi_cam_eval_dual.launch.py
+params:
+  device_mode: dual
+  dual_combine: 1
+  sub_stream_enable: false
+  image_width: 1088
+  image_height: 1280
+  sub_image_width: 544
+  sub_image_height: 640
+  framerate: 30.0
+  sub_framerate: 15.0
+  out_format: nv12
+  io_method: ros
+  frame_ts_type: sensor
+  lpwm_enable: false
+  gdc_enable: true
+  rotation: 0.0
+  cal_rotation: 0.0
+  channel: 0
+  channel2: 2
+  imu_type: icm42688
+
+eval:
+  log_enable: true
+  # imu_probe 为本轮直接证据；frame_in/pub_out 做图像侧上下文
+  log_events: [imu_probe, frame_in, pub_out]
+  duration_s: 180
+
+recorder:
+  image_topics: [/image_left_raw, /image_right_raw, /image_combine_raw]
+  imu_topics: [/imu_data]
+  info_topics: [/image_left_raw/camera_info, /image_right_raw/camera_info]
+
+thresholds: {}

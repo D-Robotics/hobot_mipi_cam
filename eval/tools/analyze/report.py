@@ -206,6 +206,50 @@ def render_baseline_report(metrics: Dict, title: str = "mipi_cam 评测·基线�
                              f"frame_id 不一致（{desc}；{kind}）**")
         lines.append("")
 
+    imu = metrics.get("imu")
+    if imu:
+        lines.append("## IMU 采样时序（imu_probe + /imu_data）")
+        lines.append("")
+        lines.append(f"- 样本数：{imu.get('count', '-')}（跨度 {imu.get('span_s', '-')}s，"
+                     f"域 `{imu.get('domain', '-')}`）")
+        if imu.get("rate_hz") is not None:
+            lines.append(f"- C-01 频率：**{imu['rate_hz']} Hz**"
+                         f"（标称 {imu.get('nominal_hz')}，比率 {imu.get('rate_ratio')}）")
+        it = imu.get("interval_us") or {}
+        lines.append(f"- C-02 间隔：p50={_dash(it.get('p50'))}µs "
+                     f"p99={_dash(it.get('p99'))}µs max={_dash(it.get('max'))}µs"
+                     f"（标称周期 {round(1e6 / imu['nominal_hz'], 1) if imu.get('nominal_hz') else '-'}µs）")
+        lines.append(f"- C-03 单调/重复：倒退 {imu.get('backward', '-')} 次、"
+                     f"重复 {imu.get('duplicate', '-')} 次")
+        lines.append(f"- C-04 丢样：标称反推 缺失 {imu.get('missing_est', '-')}；"
+                     f"**实测周期反推 缺失 {imu.get('missing_gap', '-')}"
+                     f"（率 {imu.get('missing_gap_rate', '-')}）**"
+                     f"（ODR 与标称有晶振级偏差时以实测口径为准）")
+        for g in (imu.get("gap_events") or [])[:5]:
+            lines.append(f"  - t+{g['after_s']}s 处 {g['gap_ms']}ms 缺口（≈{g['missing']} 样本）")
+        if imu.get("probe_windows"):
+            lines.append(f"- 驱动探针：src={imu.get('probe_src')}、"
+                         f"窗口 {imu.get('probe_windows')}、读到 {imu.get('probe_n_sum')}、"
+                         f"读失败 {imu.get('probe_rd_fail')}、"
+                         f"发布链损失 {imu.get('pub_loss', '-')}")
+        lines.append("")
+        if imu.get("rate_ratio") is not None and \
+                imu["rate_ratio"] < float(_th(metrics, "imu_rate_ratio_min")):
+            lines.append(f"- **WARNING：IMU 频率比率 {imu['rate_ratio']} 低于 "
+                         f"{_th(metrics, 'imu_rate_ratio_min')}**")
+        it_p99 = (imu.get("interval_us") or {}).get("p99")
+        nominal = imu.get("nominal_hz")
+        if it_p99 is not None and nominal:
+            tol = float(_th(metrics, "imu_interval_p99_ratio")) * 1e6 / nominal
+            if abs(it_p99 - 1e6 / nominal) > tol:
+                lines.append(f"- **WARNING：IMU 间隔 p99={it_p99}µs 偏离标称周期 "
+                             f"超过 {round(tol, 1)}µs**")
+        if (imu.get("backward") or 0) > int(_th(metrics, "imu_backward_max")):
+            lines.append("- **WARNING：IMU 时间戳出现倒退**")
+        if (imu.get("probe_rd_fail") or 0) > 0:
+            lines.append(f"- **WARNING：驱动读取失败 {imu['probe_rd_fail']} 次**")
+        lines.append("")
+
     dl = metrics.get("device_latency")
     if dl:
         lines.append("## 设备侧延迟分解（frame_in / combine_out → deq_mono → pub_out）")

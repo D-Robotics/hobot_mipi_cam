@@ -47,6 +47,8 @@ class icm42688 : public imu_base {
     int read_data(ImuData_T *imu_data) override;
     int deinit() override;
     int set_path(std::vector<DeviceInfo_T>  &dev_info) override;
+    /// 当前是否走 sysfs split 布局（eval 探针用）
+    bool is_split_iio() const { return split_iio_enabled_; }
 
   private:
     struct DeviceChannel {

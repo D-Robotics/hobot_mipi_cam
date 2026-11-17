@@ -1215,6 +1215,85 @@ def device_latency_metrics(eval_events: List[Dict]) -> Optional[Dict]:
     return out
 
 
+def imu_timing_metrics(rows: List[RecRow], eval_events: List[Dict]) -> Optional[Dict]:
+    """IMU 采样时序（10-imu-timing，C-01/02/03/04）。
+
+    样本时间戳序列取自 recorder CSV 的 /imu_data 行（驱动采样时刻，
+    realtime 域）；驱动侧 imu_probe（1Hz 聚合）提供读取计数对账：
+    probe_n 合计 vs CSV 行数 = 发布链损失；rd_fail = 驱动读取失败。
+    C-04 丢样 = 期望样本数（跨度×标称频率）− 实收。
+    """
+    stamps = sorted(r.stamp_ns for r in rows if r.encoding == "imu")
+    probes = [e["kv"] for e in eval_events if e["event"] == "imu_probe"]
+    if not stamps and not probes:
+        return None
+
+    def _i(kv, key):
+        v = kv.get(key)
+        return v if isinstance(v, int) else None
+
+    out: Dict = {}
+    if stamps:
+        n = len(stamps)
+        span_s = (stamps[-1] - stamps[0]) / 1e9 if n > 1 else 0.0
+        nominal = float(_TH["imu_nominal_hz"])
+        rate = (n - 1) / span_s if span_s > 0 else None
+        itvs = [b - a for a, b in zip(stamps, stamps[1:])]
+        itvs_us = sorted(v // 1000 for v in itvs)
+        backwards = sum(1 for v in itvs if v < 0)
+        duplicates = sum(1 for v in itvs if v == 0)
+        expected = int(round(span_s * nominal)) + 1 if span_s > 0 else n
+        # 按实测周期反推缺口：ODR 与标称有晶振级偏差（实测 +1%）时，
+        # 标称反推会漏报；gap > 1.5×实测 p50 周期才算缺口
+        itv_p50 = itvs[len(itvs) // 2] if itvs else 0
+        missing_gap = 0
+        gap_events = []
+        if itv_p50 > 0:
+            for v, a in zip(itvs, stamps):
+                if v > itv_p50 * 3 // 2:
+                    k = int(v // itv_p50) - 1
+                    if k > 0:
+                        missing_gap += k
+                        gap_events.append({"after_s": round((a - stamps[0]) / 1e9, 1),
+                                           "gap_ms": round(v / 1e6, 2),
+                                           "missing": k})
+        out.update({
+            "count": n,
+            "span_s": round(span_s, 3),
+            "nominal_hz": nominal,
+            "rate_hz": round(rate, 3) if rate else None,
+            "rate_ratio": round(rate / nominal, 4) if rate and nominal else None,
+            "interval_us": _summary(itvs_us, 1.0),
+            "backward": backwards,
+            "duplicate": duplicates,
+            "expected_count": expected,
+            "missing_est": max(0, expected - n),
+            "missing_rate": round(max(0, expected - n) / expected, 6) if expected else None,
+            "missing_gap": missing_gap,
+            "missing_gap_rate": round(missing_gap / n, 6) if n else None,
+            "gap_events": gap_events[:10],
+            "domain": _domain_of(stamps),
+        })
+    if probes:
+        src = Counter(str(kv.get("src")) for kv in probes)
+        n_sum = sum(v for kv in probes for v in [_i(kv, "n")] if v)
+        fail_sum = sum(v for kv in probes for v in [_i(kv, "rd_fail")] if v)
+        bw_sum = sum(v for kv in probes for v in [_i(kv, "iv_backwards")] if v)
+        iv_max = max((v for kv in probes for v in [_i(kv, "iv_max_ns")]
+                      if v is not None and v >= 0), default=None)
+        out.update({
+            "probe_windows": len(probes),
+            "probe_src": dict(sorted(src.items())),
+            "probe_n_sum": n_sum,
+            "probe_rd_fail": fail_sum,
+            "probe_backward": bw_sum,
+            "probe_iv_max_ns": iv_max,
+            # 发布链损失：驱动读到 vs 订阅端收到
+            "pub_loss": (n_sum - out["count"]) if ("count" in out and n_sum) else None,
+        })
+    return out or None
+
+
 def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = None,
             clock_offset_ns: int = 0, expected: Optional[Dict] = None,
             expected_topics: Optional[List[str]] = None,
@@ -1275,6 +1354,9 @@ def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = No
     device_latency = device_latency_metrics(events)
     if device_latency:
         result["device_latency"] = device_latency
+    imu = imu_timing_metrics(rows, events)
+    if imu:
+        result["imu"] = imu
     pairs = []
     for i in range(1, len(image_topics)):
         p = pairing_metrics(rows, image_topics[0], image_topics[i],
