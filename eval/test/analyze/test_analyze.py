@@ -1075,6 +1075,33 @@ class TestRecvLatency(unittest.TestCase):
         self.assertIsNone(recv_latency_metrics(rows, parse_eval_log("")))
 
 
+class TestBandwidth(unittest.TestCase):
+    def test_three_sources(self):
+        from metrics import bandwidth_metrics
+        csv = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding"]
+        for i in range(30):   # 1s 内 30 帧 2.09MB → 62.7MB/s
+            s = MONO_BASE + i * 33 * MS
+            csv.append(f"/image_left_raw,,{s},{s + MS},1088,1280,nv12")
+        rows, _ = parse_recorder_csv("\n".join(csv))
+        bw_txt = ("Subscribed to [/image_left_raw]\n"
+                  "29.60 MB/s from 13 messages\n\tMessage size mean: 2.09 MB\n"
+                  "31.85 MB/s from 100 messages\n\tMessage size mean: 2.09 MB\n")
+        m = bandwidth_metrics(rows, {"framerate": 30.0},
+                              {"/image_left_raw": bw_txt})["/image_left_raw"]
+        self.assertEqual(m["bytes_per_frame"], 2088960)
+        self.assertEqual(m["pub_bw_mb_s"], 62.67)
+        self.assertAlmostEqual(m["csv_bw_mb_s"], 62.67, delta=1.0)
+        self.assertEqual(m["bw_tool_mb_s"], 31.85)   # 取最后一条收敛值
+
+    def test_bgr8(self):
+        from metrics import bandwidth_metrics
+        csv = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding",
+               f"/t/img,,{MONO_BASE},{MONO_BASE},100,100,bgr8"]
+        rows, _ = parse_recorder_csv("\n".join(csv))
+        m = bandwidth_metrics(rows)["/t/img"]
+        self.assertEqual(m["bytes_per_frame"], 30000)   # 100×100×3
+
+
 class TestSuiteReport(unittest.TestCase):
     def _run(self, result="OK", with_pair=False, with_res=True, unstable=False):
         metrics = {}

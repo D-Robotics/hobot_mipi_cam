@@ -1,0 +1,45 @@
+# 18-multisub-load：E-07 CPU 负载（2×yes 压 CPU0）+ 1 额外订阅者
+# 与 C04/C04S 构成三组：无负载 / 负载（03 轮）/ 负载+订阅（本轮）
+id: C11
+name: dual-1088x1280-nv12-30-combine1-load-sub
+run_label: dual-1088x1280-nv12-30fps-combine1-load-sub
+stage: 18-multisub-load
+baseline: false
+
+launch: mipi_cam_eval_dual.launch.py
+params:
+  device_mode: dual
+  dual_combine: 1
+  sub_stream_enable: false
+  image_width: 1088
+  image_height: 1280
+  sub_image_width: 544
+  sub_image_height: 640
+  framerate: 30.0
+  sub_framerate: 15.0
+  out_format: nv12
+  io_method: ros
+  frame_ts_type: sensor
+  lpwm_enable: false
+  gdc_enable: true
+  rotation: 0.0
+  cal_rotation: 0.0
+  channel: 0
+  channel2: 2
+  imu_type: icm42688
+
+eval:
+  log_enable: true
+  log_events: [frame_in, pub_out, frame_drop, queue_stat]
+  duration_s: 120
+
+load:
+  cpu_affinity: 0
+  cmd: "timeout 110 taskset -c 0 yes > /dev/null & timeout 110 taskset -c 0 yes > /dev/null & timeout 110 ros2 topic hz /image_left_raw >/dev/null 2>&1 & wait"
+
+recorder:
+  image_topics: [/image_left_raw, /image_right_raw, /image_combine_raw]
+  imu_topics: [/imu_data]
+  info_topics: [/image_left_raw/camera_info, /image_right_raw/camera_info]
+
+thresholds: {}

@@ -1613,6 +1613,67 @@ def recv_latency_metrics(rows: List[RecRow], eval_events: List[Dict]) -> Optiona
     return out
 
 
+# bw 文件内容缓存：analyze.py 读 run 目录的 bw_*.txt 后注入（模块级，
+# 与 thresholds 同模式；单进程 CLI 语义下安全）
+_BW_FILES: Dict[str, str] = {}
+
+
+def set_bw_files(files: Optional[Dict[str, str]]) -> None:
+    global _BW_FILES
+    _BW_FILES = files or {}
+
+
+def bandwidth_metrics(rows: List[RecRow], expected: Optional[Dict] = None,
+                      bw_files: Optional[Dict[str, str]] = None) -> Optional[Dict]:
+    """带宽（17-bandwidth，E-05）：三口径对比。
+
+    - pub 估算：目标帧率 × 帧大小（w×h×1.5 nv12 / ×3 bgr8）——发布口径；
+    - csv 实收：recorder 收到的 bytes/时长——订阅端实收（受 best_effort 丢样拖低）；
+    - bw 实测：run 目录 bw_*.txt 的 `ros2 topic bw` 收敛值（同为订阅端口径）。
+    """
+    by_topic = defaultdict(list)
+    for r in rows:
+        if r.encoding in ("imu", "camera_info"):
+            continue
+        by_topic[r.topic].append(r)
+    if not by_topic:
+        return None
+
+    def _bytes_per(r):
+        bpp = 3.0 if r.encoding == "bgr8" else 1.5
+        return r.width * r.height * bpp
+
+    fps = (expected or {}).get("framerate") or 0
+    out = {}
+    for topic, rs in sorted(by_topic.items()):
+        b = _bytes_per(rs[0])
+        span = (max(r.recv_mono_ns for r in rs) -
+                min(r.recv_mono_ns for r in rs)) / 1e9
+        if span > 0 and len(rs) > 1:
+            # 首尾间隔少算一个周期：补均值周期，带宽不因窗口端点偏高
+            span += span / (len(rs) - 1)
+        csv_bw = len(rs) * b / span if span > 0 else None
+        rec = {
+            "csv_rows": len(rs),
+            "bytes_per_frame": int(b),
+            "csv_bw_mb_s": round(csv_bw / 1e6, 2) if csv_bw else None,
+        }
+        if fps:
+            rec["pub_bw_mb_s"] = round(fps * b / 1e6, 2)
+        if bw_files and topic in bw_files:
+            import re
+            vals = re.findall(r"([0-9.]+) (MB|KB)/s from", bw_files[topic])
+            if vals:
+                v, unit = vals[-1]
+                rec["bw_tool_mb_s"] = round(float(v) / (1 if unit == "MB" else 1000), 2)
+        out[topic] = rec
+    imu_n = sum(1 for r in rows if r.encoding == "imu")
+    if imu_n:
+        out["/imu_data"] = {"csv_rows": imu_n, "bytes_per_frame": 320,
+                            "note": "0.32KB×实际频率"}
+    return out
+
+
 def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = None,
             clock_offset_ns: int = 0, expected: Optional[Dict] = None,
             expected_topics: Optional[List[str]] = None,
@@ -1668,6 +1729,9 @@ def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = No
     if sync_pair:
         result["sync_pair"] = sync_pair
     combine = combine_metrics(events, rows, expected)
+    bw = bandwidth_metrics(rows, expected, _BW_FILES or None)
+    if bw:
+        result["bandwidth"] = bw
     if combine:
         result["combine"] = combine
     device_latency = device_latency_metrics(events)

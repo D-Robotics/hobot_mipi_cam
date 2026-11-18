@@ -84,6 +84,31 @@ def main():
                          expected=expected,
                          expected_topics=expected_topics,
                          thresholds=thresholds)
+
+    # 17-bandwidth：run 目录的 bw_<topic 安全名>.txt（run_bw.sh 产出）
+    bw_dir = os.path.dirname(os.path.abspath(args.csv))
+    bw_files = {}
+    if os.path.isdir(bw_dir):
+        for name in os.listdir(bw_dir):
+            if name.startswith("bw_") and name.endswith(".txt"):
+                safe = name[3:-4]              # _image_left_raw
+                if safe.startswith("_"):
+                    topic = safe.replace("_", "/", 1)   # /image_left_raw
+                    try:
+                        with open(os.path.join(bw_dir, name), encoding="utf-8",
+                                  errors="replace") as f:
+                            bw_files[topic] = f.read()
+                    except OSError:
+                        pass
+    if bw_files:
+        from metrics import set_bw_files
+        set_bw_files(bw_files)
+        result = run_analyze(rows, eval_text,
+                             image_domain=None if args.image_domain == "auto" else args.image_domain,
+                             clock_offset_ns=offset,
+                             expected=expected,
+                             expected_topics=expected_topics,
+                             thresholds=thresholds)
     result["meta"]["csv_skipped_rows"] = skipped
     result["meta"]["expected_source"] = meta_path if expected else None
     result["meta"]["expected_topics"] = expected_topics

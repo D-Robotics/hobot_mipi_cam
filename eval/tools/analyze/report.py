@@ -374,6 +374,22 @@ def render_baseline_report(metrics: Dict, title: str = "mipi_cam 评测·基线�
                              f"（min={d['min']:.3f}ms），检查时钟/配对**")
         lines.append("")
 
+    bw = metrics.get("bandwidth")
+    if bw:
+        lines.append("## 带宽（E-05：发布估算 / CSV 实收 / bw 工具）")
+        lines.append("")
+        lines.append("| topic | 帧大小 | CSV 行 | 发布估算(MB/s) | CSV 实收(MB/s) | bw 工具(MB/s) |")
+        lines.append("|---|---|---|---|---|---|")
+        for topic, m in sorted(bw.items()):
+            lines.append(
+                f"| {topic} | {m.get('bytes_per_frame', '-')}B "
+                f"| {m.get('csv_rows', '-')} | {_dash(m.get('pub_bw_mb_s'))} "
+                f"| {_dash(m.get('csv_bw_mb_s'))} | {_dash(m.get('bw_tool_mb_s'))} |")
+        lines.append("")
+        lines.append("> bw 工具与 CSV 实收均为订阅端口径（best_effort 丢样拖低）；"
+                     "发布估算为上限。三者差距即订阅端丢样率。")
+        lines.append("")
+
     dl = metrics.get("device_latency")
     if dl:
         lines.append("## 设备侧延迟分解（frame_in / combine_out → deq_mono → pub_out）")
