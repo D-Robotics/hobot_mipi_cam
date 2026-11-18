@@ -1542,6 +1542,77 @@ def recv_metrics(rows: List[RecRow], eval_events: List[Dict],
     return out
 
 
+def recv_latency_metrics(rows: List[RecRow], eval_events: List[Dict]) -> Optional[Dict]:
+    """接收延迟（16-recv-latency，E-04）。
+
+    - dds 段：recv_mono − pub_out.ts_mono（同 stamp 配对）——publish 返回
+      到订阅回调的传输/序列化开销；
+    - E-04 端到端：recv_mono − t0（trig 可信时，13 轮同法归一）；
+      无可信 t0 时不输出（避免帧 ts 近似混入口径）。
+    """
+    pub = defaultdict(dict)
+    for e in eval_events:
+        if e["event"] != "pub_out":
+            continue
+        kv = e["kv"]
+        ts = kv.get("ts_frame")
+        topic = kv.get("topic")
+        if isinstance(ts, int) and isinstance(topic, str):
+            pub[topic][ts] = e["ts_mono"]
+    recv = defaultdict(dict)
+    for r in rows:
+        if r.encoding in ("imu", "camera_info"):
+            continue
+        recv[r.topic][r.stamp_ns] = r.recv_mono_ns
+    topics = sorted(set(pub) & set(recv))
+    if not topics:
+        return None
+
+    # 可信 t0（mono 域，13 轮同法）
+    t0_map = defaultdict(dict)
+    groups = defaultdict(list)
+    for e in eval_events:
+        if e["event"] != "exposure":
+            continue
+        kv = e["kv"]
+        groups[(_i2(kv, "pipe"), str(kv.get("stream")))].append((e["ts_mono"], kv))
+    for key, items in groups.items():
+        offs = sorted(hw - mono for mono, kv in items
+                      for hw in [_i2(kv, "ts_hw_ns")] if hw and hw > 0)
+        if not offs:
+            continue
+        off = percentile(offs, 50)
+        trig = {ts: tg for _, kv in items
+                for ts, tg in [(_i2(kv, "ts_frame"), _i2(kv, "ts_trig_ns"))]
+                if ts is not None and tg is not None}
+        for ts, exp in _exposure_gate([kv for _, kv in items])["usable"]:
+            if ts in trig:
+                t0_map[key][ts] = trig[ts] + exp * 1000 // 2 - off
+
+    out = {}
+    for topic in topics:
+        dds = []
+        e2e = []
+        for ts, rm in recv[topic].items():
+            pm = pub[topic].get(ts)
+            if pm is not None:
+                dds.append(rm - pm)
+            src = _LATENCY_TOPIC_MAP.get(topic)
+            if src is not None:
+                kind, key = src
+                t0_key = (0, key) if kind == "combine" else key
+                t0 = t0_map.get(t0_key, {}).get(ts)
+                if t0 is not None:
+                    e2e.append(rm - t0)
+        rec = {"count": len(recv[topic]),
+               "dds_ns": _summary(dds, 1.0), "dds_checked": len(dds)}
+        if e2e:
+            rec["e2e_from_t0_ns"] = _summary(e2e, 1.0)
+            rec["t0_source"] = "trig"
+        out[topic] = rec
+    return out
+
+
 def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = None,
             clock_offset_ns: int = 0, expected: Optional[Dict] = None,
             expected_topics: Optional[List[str]] = None,
@@ -1614,6 +1685,9 @@ def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = No
     recv = recv_metrics(rows, events, clock_offset_ns)
     if recv:
         result["recv"] = recv
+    recv_lat = recv_latency_metrics(rows, events)
+    if recv_lat:
+        result["recv_latency"] = recv_lat
     pairs = []
     for i in range(1, len(image_topics)):
         p = pairing_metrics(rows, image_topics[0], image_topics[i],

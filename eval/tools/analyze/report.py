@@ -353,6 +353,27 @@ def render_baseline_report(metrics: Dict, title: str = "mipi_cam 评测·基线�
                              f"{_th(metrics, 'info_pair_min')}（E-10）**")
         lines.append("")
 
+    rl = metrics.get("recv_latency")
+    if rl:
+        lines.append("## 接收延迟（E-04：DDS 段 + 曝光中点端到端）")
+        lines.append("")
+        lines.append("| topic | 样本 | DDS 段(pub→recv) p50/p95/p99(ms) | t0→recv p50/p95(ms) |")
+        lines.append("|---|---|---|---|")
+        for topic, m in sorted(rl.items()):
+            d = m.get("dds_ns") or {}
+            e = m.get("e2e_from_t0_ns") or {}
+            lines.append(
+                f"| {topic} | {m.get('count', '-')} "
+                f"| {_fmt_ns(d.get('p50'))}/{_fmt_ns(d.get('p95'))}/{_fmt_ns(d.get('p99'))} "
+                f"| {_fmt_ns(e.get('p50'))}/{_fmt_ns(e.get('p95'))} |")
+        lines.append("")
+        for topic, m in sorted(rl.items()):
+            d = m.get("dds_ns") or {}
+            if d and (d.get("min") or 0) < 0:
+                lines.append(f"- **WARNING：{topic} DDS 段出现负值"
+                             f"（min={d['min']:.3f}ms），检查时钟/配对**")
+        lines.append("")
+
     dl = metrics.get("device_latency")
     if dl:
         lines.append("## 设备侧延迟分解（frame_in / combine_out → deq_mono → pub_out）")

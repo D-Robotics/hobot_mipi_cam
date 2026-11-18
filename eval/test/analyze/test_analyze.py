@@ -1043,6 +1043,38 @@ class TestRecvMetrics(unittest.TestCase):
         self.assertEqual(m["imu"]["backward"], 0)
 
 
+class TestRecvLatency(unittest.TestCase):
+    def test_dds_and_e2e(self):
+        from metrics import recv_latency_metrics
+        t = MONO_BASE
+        hw = t + 2_000_000_000
+        ev = [
+            f"[EVAL] ts_mono={t + 100} event=exposure pipe=0 stream=main frame_id=1 "
+            f"stamp_src=sensor trig_valid=1 ts_trig_ns={t + 1_990_000_000} ts_hw_ns={hw} "
+            f"exp_us=10000 ts_sys_raw_ns={RT_BASE} ts_frame={t}",
+            f"[EVAL] ts_mono={t + 1000} event=pub_out topic=/image_left_raw "
+            f"ts_frame={t} deq_mono={t + 900}",
+        ]
+        csv = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding",
+               f"/image_left_raw,,{t},{t + 2000},10,10,nv12"]
+        rows, _ = parse_recorder_csv("\n".join(csv))
+        m = recv_latency_metrics(rows, parse_eval_log("\n".join(ev)))
+        rec = m["/image_left_raw"]
+        # DDS = recv − pub = 2000 − 1000 = 1000µs
+        self.assertEqual(rec["dds_ns"]["p50"], 1000.0)
+        # t0 = trig + 5ms − (hw − 打点=2e9−100) = t − 4_999_900
+        # e2e = recv − t0 = 2000 + 4_999_900
+        self.assertAlmostEqual(rec["e2e_from_t0_ns"]["p50"], 5_001_900.0, delta=1)
+        self.assertEqual(rec["t0_source"], "trig")
+
+    def test_no_pub_no_output(self):
+        from metrics import recv_latency_metrics
+        csv = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding",
+               f"/t/img,,{MONO_BASE},{MONO_BASE},1,1,nv12"]
+        rows, _ = parse_recorder_csv("\n".join(csv))
+        self.assertIsNone(recv_latency_metrics(rows, parse_eval_log("")))
+
+
 class TestSuiteReport(unittest.TestCase):
     def _run(self, result="OK", with_pair=False, with_res=True, unstable=False):
         metrics = {}
