@@ -968,6 +968,81 @@ class TestCamImu(unittest.TestCase):
         self.assertIsNone(cam_imu_metrics(rows, parse_eval_log(""), 0))
 
 
+class TestRecvMetrics(unittest.TestCase):
+    def _rows(self, n_pub=10, n_recv=9, n_info=9):
+        """n_pub 帧 pub，CSV 收到后 n_recv 帧（丢第 5 帧）；info 独立写 n_info 帧。"""
+        lines = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding"]
+        for i in range(n_pub):
+            if i == 4 and n_recv < n_pub:
+                continue
+            s = MONO_BASE + i * 33 * MS
+            lines.append(f"/image_left_raw,,{s},{s + MS},10,10,nv12")
+        for i in range(n_info):
+            s = MONO_BASE + i * 33 * MS
+            lines.append(f"/image_left_raw/camera_info,,{s},{s + MS},10,10,camera_info")
+        rows, _ = parse_recorder_csv("\n".join(lines))
+        ev = [f"[EVAL] ts_mono={MONO_BASE + i} event=pub_out topic=/image_left_raw "
+              f"ts_frame={MONO_BASE + i * 33 * MS}" for i in range(n_pub)]
+        return rows, parse_eval_log("\n".join(ev))
+
+    def test_recv_drop_and_e10(self):
+        from metrics import recv_metrics
+        rows, ev = self._rows()
+        m = recv_metrics(rows, ev)["topics"]["/image_left_raw"]
+        self.assertEqual(m["pub_count"], 10)
+        self.assertEqual(m["csv_rows"], 9)
+        self.assertEqual(m["recv_drop"], 1)
+        self.assertAlmostEqual(m["recv_drop_rate"], 0.1, places=3)
+        self.assertEqual(m["backward"], 0)
+        ip = recv_metrics(rows, ev)["info_pair"]["/image_left_raw/camera_info"]
+        # info 覆盖 i=0..8 共 9 帧，其中 i=4 的图像帧被丢 → matched=8、多余 1
+        self.assertEqual(ip["matched"], 8)
+        self.assertEqual(ip["extra_info"], 1)
+        self.assertAlmostEqual(ip["pair_rate"], 8 / 9, places=3)
+
+    def test_pre_subscription_window(self):
+        from metrics import recv_metrics
+        rows, ev = self._rows(n_pub=12, n_recv=12, n_info=0)
+        # CSV 首帧是第 3 帧（模拟订阅晚建立）：把前 2 帧 pub 的 stamp 前移
+        lines = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding"]
+        for i in range(2, 12):
+            s = MONO_BASE + i * 33 * MS
+            lines.append(f"/image_left_raw,,{s},{s + MS},10,10,nv12")
+        rows, _ = parse_recorder_csv("\n".join(lines))
+        m = recv_metrics(rows, ev)["topics"]["/image_left_raw"]
+        self.assertEqual(m["pre_subscription"], 2)
+        self.assertEqual(m["recv_drop"], 0)
+
+    def test_backward_and_warning(self):
+        from metrics import recv_metrics
+        from report import render_baseline_report
+        rows, ev = self._rows(n_pub=5, n_recv=5, n_info=0)
+        csv = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding"]
+        stamps = [MONO_BASE, MONO_BASE + MS, MONO_BASE, MONO_BASE + 2 * MS,
+                  MONO_BASE + 3 * MS]   # 第 3 行倒退+重复
+        for s in stamps:
+            csv.append(f"/image_left_raw,,{s},{s},10,10,nv12")
+        rows, _ = parse_recorder_csv("\n".join(csv))
+        m = {"recv": recv_metrics(rows, ev)}
+        self.assertEqual(m["recv"]["topics"]["/image_left_raw"]["backward"], 1)
+        self.assertEqual(m["recv"]["topics"]["/image_left_raw"]["duplicate"], 1)
+        md = render_baseline_report({"meta": {}, **m})
+        self.assertIn("倒退 1 次", md)
+
+    def test_imu_recv(self):
+        from metrics import recv_metrics
+        csv = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding",
+               f"/image_left_raw,,{MONO_BASE},{MONO_BASE},1,1,nv12"]
+        for i in range(200):
+            csv.append(f"/imu_data,,{RT_BASE + i * 5 * MS},{MONO_BASE + i},0,0,imu")
+        rows, _ = parse_recorder_csv("\n".join(csv))
+        ev = (f"[EVAL] ts_mono=1 event=pub_out topic=/image_left_raw "
+              f"ts_frame={MONO_BASE}")
+        m = recv_metrics(rows, parse_eval_log(ev))
+        self.assertEqual(m["imu"]["csv_rows"], 200)
+        self.assertEqual(m["imu"]["backward"], 0)
+
+
 class TestSuiteReport(unittest.TestCase):
     def _run(self, result="OK", with_pair=False, with_res=True, unstable=False):
         metrics = {}

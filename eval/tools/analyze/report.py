@@ -309,6 +309,50 @@ def render_baseline_report(metrics: Dict, title: str = "mipi_cam 评测·基线�
                          f"{_th(metrics, 'cam_imu_cover_min')}**")
         lines.append("")
 
+    rc = metrics.get("recv")
+    if rc:
+        lines.append("## 接收链路（recorder vs pub_out 对账）")
+        lines.append("")
+        lines.append("| topic | CSV 行 | pub 数 | 订阅前 | 丢帧(率) | 倒退 | 重复 |")
+        lines.append("|---|---|---|---|---|---|---|")
+        for topic, m in sorted((rc.get("topics") or {}).items()):
+            lines.append(
+                f"| {topic} | {m['csv_rows']} | {m['pub_count']} "
+                f"| {m['pre_subscription']} "
+                f"| {m['recv_drop']}({_dash(m.get('recv_drop_rate'))}) "
+                f"| {m['backward']} | {m['duplicate']} |")
+        lines.append("")
+        if rc.get("overall_recv_drop_rate") is not None:
+            lines.append(f"- E-01 总接收丢帧率：**{rc['overall_recv_drop_rate']}**"
+                         f"（判据 ≤{_th(metrics, 'recv_drop_max')}）")
+        imu = rc.get("imu") or {}
+        if imu:
+            lines.append(f"- E-02 IMU 接收：{imu['csv_rows']} 行 / 期望 {imu['expected']}"
+                         f"（丢帧率 {imu.get('recv_drop_rate')}，倒退 {imu['backward']}、"
+                         f"重复 {imu['duplicate']}）")
+        for topic, m in sorted((rc.get("info_pair") or {}).items()):
+            lines.append(f"- E-10 {topic}：{m['matched']}/{m['info_rows']} 与图像 stamp 配对"
+                         f"（率 {m['pair_rate']}，多余 {m['extra_info']}）")
+        lines.append("")
+        for topic, m in sorted((rc.get("topics") or {}).items()):
+            rate = m.get("recv_drop_rate")
+            if rate is not None and rate > float(_th(metrics, "recv_drop_max")):
+                lines.append(f"- **WARNING：{topic} 接收丢帧率 {rate} 超过 "
+                             f"{_th(metrics, 'recv_drop_max')}（best_effort 订阅端丢样）**")
+            if (m.get("backward") or 0) > 0 or (m.get("duplicate") or 0) > 0:
+                lines.append(f"- **WARNING：{topic} 接收序列倒退 {m['backward']} 次、"
+                             f"重复 {m['duplicate']} 次（E-03）**")
+        im = rc.get("imu") or {}
+        if im and im.get("recv_drop_rate") is not None and \
+                im["recv_drop_rate"] > float(_th(metrics, "imu_recv_drop_max")):
+            lines.append(f"- **WARNING：IMU 接收丢帧率 {im['recv_drop_rate']} 超过 "
+                         f"{_th(metrics, 'imu_recv_drop_max')}**")
+        for topic, m in sorted((rc.get("info_pair") or {}).items()):
+            if m["pair_rate"] < float(_th(metrics, "info_pair_min")):
+                lines.append(f"- **WARNING：{topic} 配对率 {m['pair_rate']} < "
+                             f"{_th(metrics, 'info_pair_min')}（E-10）**")
+        lines.append("")
+
     dl = metrics.get("device_latency")
     if dl:
         lines.append("## 设备侧延迟分解（frame_in / combine_out → deq_mono → pub_out）")

@@ -45,6 +45,12 @@ DEFAULT_THRESHOLDS = {
     "cam_imu_nearest_p99_ms": 10.0,
     # D-04 帧窗口内 IMU 覆盖率下限
     "cam_imu_cover_min": 0.95,
+    # E-01 图像接收丢帧率上限（best_effort 订阅端）
+    "recv_drop_max": 0.005,
+    # E-02 IMU 接收丢帧率上限
+    "imu_recv_drop_max": 0.0001,
+    # E-10 camera_info 与图像 stamp 配对率下限
+    "info_pair_min": 1.0,
 }
 
 # 允许出现在 YAML 里的键（未知键告警并忽略，防拼写错误静默失效）

@@ -1443,6 +1443,105 @@ def _i2(kv: Dict, key: str) -> Optional[int]:
     return v if isinstance(v, int) else None
 
 
+def recv_metrics(rows: List[RecRow], eval_events: List[Dict],
+                 clock_offset_ns: int = 0) -> Optional[Dict]:
+    """接收链路（15-recv-drop，E-01/02/03/10）。
+
+    E-01：按 stamp 匹配对账——pub_out 的每帧 ts_frame 是否出现在
+    recorder CSV 同 topic 的 stamp 集合（比计数比更能剔除启动窗口：
+    订阅建立前的发布天然不在 CSV，不计丢）。
+    E-02：IMU 接收数 vs 标称频率×跨度。
+    E-03：CSV 每 topic stamp 单调违例/重复。
+    E-10：camera_info.stamp 与同前缀 image.stamp 的逐帧配对率
+    （combine 的 left/right info 共用 image stamp）。
+    """
+    by_topic = defaultdict(list)
+    for r in rows:
+        by_topic[r.topic].append(r)
+    image_topics = sorted(t for t, rs in by_topic.items()
+                          if rs[0].encoding not in ("imu", "camera_info"))
+    if not image_topics:
+        return None
+
+    # E-01：pub stamp 集合（设备侧）
+    out = {"topics": {}}
+    drop_total_pub = drop_total_recv = 0
+    for topic in image_topics:
+        csv_stamps = {r.stamp_ns for r in by_topic[topic]}
+        pub_stamps = sorted(e["kv"].get("ts_frame")
+                            for e in eval_events
+                            if e["event"] == "pub_out"
+                            and e["kv"].get("topic") == topic
+                            and isinstance(e["kv"].get("ts_frame"), int))
+        dup_pub = len(pub_stamps) - len(set(pub_stamps))
+        matched = sum(1 for s in pub_stamps if s in csv_stamps)
+        missed = len(pub_stamps) - matched
+        # 启动窗口：首个被收到之前的发布不计（订阅未建立）
+        first_recv = min(csv_stamps) if csv_stamps else None
+        pre_sub = sum(1 for s in pub_stamps
+                      if first_recv is not None and s < first_recv)
+        missed_adj = max(0, missed - pre_sub)
+        eff_pub = len(pub_stamps) - pre_sub
+        rec = {
+            "csv_rows": len(by_topic[topic]),
+            "pub_count": len(pub_stamps),
+            "pub_duplicates": dup_pub,
+            "pre_subscription": pre_sub,
+            "matched": matched,
+            "recv_drop": missed_adj,
+            "recv_drop_rate": round(missed_adj / eff_pub, 6) if eff_pub else None,
+        }
+        # E-03：单调（到达序相邻判定，乱序即倒退）/ 重复（集合差，乱序不漏）
+        stamps = [r.stamp_ns for r in by_topic[topic]]
+        rec["backward"] = sum(1 for a, b in zip(stamps, stamps[1:]) if b < a)
+        rec["duplicate"] = len(stamps) - len(set(stamps))
+        out["topics"][topic] = rec
+        drop_total_pub += eff_pub
+        drop_total_recv += missed_adj
+
+    # E-02：IMU 接收
+    imu_rows = [r for r in rows if r.encoding == "imu"]
+    if imu_rows:
+        ist = sorted(r.stamp_ns for r in imu_rows)
+        span = (ist[-1] - ist[0]) / 1e9
+        nominal = float(_TH["imu_nominal_hz"])
+        expected = int(round(span * nominal)) + 1 if span > 0 else len(ist)
+        bw = sum(1 for a, b in zip(ist, ist[1:]) if b < a)
+        dp = sum(1 for a, b in zip(ist, ist[1:]) if a == b)
+        out["imu"] = {
+            "csv_rows": len(ist),
+            "span_s": round(span, 3),
+            "expected": expected,
+            "recv_drop_rate": round(max(0, expected - len(ist)) / expected, 6)
+                              if expected else None,
+            "backward": bw,
+            "duplicate": dp,
+        }
+
+    # E-10：camera_info 配套
+    info_pair = {}
+    for topic in image_topics:
+        base = topic  # /image_left_raw
+        info_topic = base + "/camera_info"
+        info_stamps = [r.stamp_ns for r in by_topic.get(info_topic, [])]
+        img_stamps = {r.stamp_ns for r in by_topic[topic]}
+        if not info_stamps:
+            continue
+        matched = sum(1 for s in info_stamps if s in img_stamps)
+        info_pair[info_topic] = {
+            "info_rows": len(info_stamps),
+            "matched": matched,
+            "pair_rate": round(matched / len(info_stamps), 6),
+            "img_rows": len(by_topic[topic]),
+            "extra_info": max(0, len(info_stamps) - matched),
+        }
+    if info_pair:
+        out["info_pair"] = info_pair
+    out["overall_recv_drop_rate"] = (round(drop_total_recv / drop_total_pub, 6)
+                                     if drop_total_pub else None)
+    return out
+
+
 def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = None,
             clock_offset_ns: int = 0, expected: Optional[Dict] = None,
             expected_topics: Optional[List[str]] = None,
@@ -1512,6 +1611,9 @@ def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = No
     cam_imu = cam_imu_metrics(rows, events, clock_offset_ns)
     if cam_imu:
         result["cam_imu"] = cam_imu
+    recv = recv_metrics(rows, events, clock_offset_ns)
+    if recv:
+        result["recv"] = recv
     pairs = []
     for i in range(1, len(image_topics)):
         p = pairing_metrics(rows, image_topics[0], image_topics[i],
