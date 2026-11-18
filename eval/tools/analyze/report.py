@@ -250,6 +250,39 @@ def render_baseline_report(metrics: Dict, title: str = "mipi_cam 评测·基线�
             lines.append(f"- **WARNING：驱动读取失败 {imu['probe_rd_fail']} 次**")
         lines.append("")
 
+    iv = metrics.get("imu_validity")
+    if iv:
+        lines.append("## IMU 六轴有效性（imu_stat）")
+        lines.append("")
+        ax = iv.get("axes") or {}
+        lines.append(f"- 窗口 {iv.get('windows')} / 样本 {iv.get('samples')}；"
+                     f"NaN {iv.get('nan')}、Inf {iv.get('inf')}；cal={iv.get('cal')}")
+        lines.append(f"- C-06 静态零偏：ax={_dash(ax.get('ax'))} ay={_dash(ax.get('ay'))} "
+                     f"az={_dash(ax.get('az'))}（m/s²）<br>"
+                     f"gx={_dash(ax.get('gx'))} gy={_dash(ax.get('gy'))} "
+                     f"gz={_dash(ax.get('gz'))}（rad/s）")
+        lines.append(f"- 噪声（全程合成 std）：accel "
+                     f"{_dash(ax.get('sax'))}/{_dash(ax.get('say'))}/{_dash(ax.get('saz'))}，"
+                     f"gyro {_dash(ax.get('sgx'))}/{_dash(ax.get('sgy'))}/{_dash(ax.get('sgz'))}")
+        lines.append(f"- C-05 accel 模长：**{_dash(iv.get('accel_norm'))} m/s²**；"
+                     f"静止 gyro 最大零偏 **{_dash(iv.get('gyro_bias_max'))} rad/s**")
+        lines.append("")
+        if (iv.get("nan") or 0) + (iv.get("inf") or 0) > 0:
+            lines.append(f"- **WARNING：六轴出现 NaN/Inf 共 "
+                         f"{(iv.get('nan') or 0) + (iv.get('inf') or 0)} 次**")
+        if (iv.get("gyro_bias_max") or 0) > float(_th(metrics, "imu_gyro_bias_max")):
+            lines.append(f"- **WARNING：gyro 静态零偏 {iv['gyro_bias_max']} rad/s 超过 "
+                         f"{_th(metrics, 'imu_gyro_bias_max')}**")
+        n = iv.get("accel_norm")
+        if n is not None and not (float(_th(metrics, "imu_accel_norm_min")) <=
+                                  n <= float(_th(metrics, "imu_accel_norm_max"))):
+            lines.append(f"- **WARNING：accel 模长 {n} m/s² 超出 "
+                         f"[{_th(metrics, 'imu_accel_norm_min')}, "
+                         f"{_th(metrics, 'imu_accel_norm_max')}]（单位/scale 可疑）**")
+        if -1 in (iv.get("cal") or []):
+            lines.append("- **WARNING：标定加载状态在运行中翻转（cal=-1 窗口）**")
+        lines.append("")
+
     dl = metrics.get("device_latency")
     if dl:
         lines.append("## 设备侧延迟分解（frame_in / combine_out → deq_mono → pub_out）")

@@ -58,6 +58,8 @@ enum EvalEvent : uint32_t {
   EVAL_EV_COMBINE_OUT = 1u << 9,
   // IMU 读取环 1Hz 聚合探针（src/n/rd_fail/ts/iv_max；C-01~04 直接证据）
   EVAL_EV_IMU_PROBE = 1u << 10,
+  // IMU 六轴窗口统计（cal/nan/inf/各轴 mean/std；C-05/06 直接证据）
+  EVAL_EV_IMU_STAT = 1u << 11,
   EVAL_EV_ALL = 0xFFFFFFFFu,
 };
 
@@ -75,6 +77,7 @@ inline const char* eval_event_name(uint32_t ev) {
     case EVAL_EV_SYNC_PAIR:  return "sync_pair";
     case EVAL_EV_COMBINE_OUT: return "combine_out";
     case EVAL_EV_IMU_PROBE:  return "imu_probe";
+    case EVAL_EV_IMU_STAT:   return "imu_stat";
     default:                 return "unknown";
   }
 }
@@ -91,6 +94,7 @@ inline bool eval_event_from_name(const std::string& name, uint32_t* ev) {
   if (name == "sync_pair")        { *ev = EVAL_EV_SYNC_PAIR; return true; }
   if (name == "combine_out")      { *ev = EVAL_EV_COMBINE_OUT; return true; }
   if (name == "imu_probe")        { *ev = EVAL_EV_IMU_PROBE; return true; }
+  if (name == "imu_stat")         { *ev = EVAL_EV_IMU_STAT; return true; }
   return false;
 }
 

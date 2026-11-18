@@ -882,6 +882,52 @@ class TestImuTiming(unittest.TestCase):
         self.assertIsNone(imu_timing_metrics(rows, parse_eval_log("")))
 
 
+class TestImuValidity(unittest.TestCase):
+    def _stat(self, n=200, ax=0.1, ay=-0.2, az=9.8, gx=0.001, gy=-0.002,
+              gz=0.0005, sax=0.04, sgx=0.001, nan=0, inf=0, cal=1):
+        return (f"[EVAL] ts_mono=1 event=imu_stat cal={cal} n={n} nan={nan} inf={inf} "
+                f"ax={ax} ay={ay} az={az} gx={gx} gy={gy} gz={gz} "
+                f"sax={sax} say={sax} saz={sax} sgx={sgx} sgy={sgx} sgz={sgx}")
+
+    def test_validity_normal(self):
+        from metrics import imu_validity_metrics
+        m = imu_validity_metrics(parse_eval_log("\n".join([
+            self._stat(n=200), self._stat(n=100, ax=0.2)])))
+        self.assertEqual(m["windows"], 2)
+        self.assertEqual(m["samples"], 300)
+        self.assertEqual(m["nan"], 0)
+        # 加权均值：ax = (0.1*200 + 0.2*100)/300
+        self.assertAlmostEqual(m["axes"]["ax"], 0.13333, places=4)
+        self.assertAlmostEqual(m["accel_norm"], 9.8, places=2)
+        self.assertLess(m["gyro_bias_max"], 0.003)
+        self.assertEqual(m["cal"], [1])
+
+    def test_validity_bias_and_norm_warnings(self):
+        from metrics import imu_validity_metrics
+        from report import render_baseline_report
+        m = imu_validity_metrics(parse_eval_log(self._stat(gx=0.05, az=8.0)))
+        self.assertGreater(m["gyro_bias_max"], 0.03)
+        self.assertLess(m["accel_norm"], 9.3)
+        md = render_baseline_report({"meta": {}, "imu_validity": m})
+        self.assertIn("零偏 0.05", md)
+        self.assertIn("accel 模长", md)
+
+    def test_validity_nan_inf_cal_flip(self):
+        from metrics import imu_validity_metrics
+        from report import render_baseline_report
+        m = imu_validity_metrics(parse_eval_log("\n".join([
+            self._stat(nan=3), self._stat(cal=-1, n=100)])))
+        self.assertEqual(m["nan"], 3)
+        self.assertEqual(m["cal"], [-1, 1])
+        md = render_baseline_report({"meta": {}, "imu_validity": m})
+        self.assertIn("NaN/Inf 共 3", md)
+        self.assertIn("翻转", md)
+
+    def test_validity_absent(self):
+        from metrics import imu_validity_metrics
+        self.assertIsNone(imu_validity_metrics(parse_eval_log("")))
+
+
 class TestSuiteReport(unittest.TestCase):
     def _run(self, result="OK", with_pair=False, with_res=True, unstable=False):
         metrics = {}

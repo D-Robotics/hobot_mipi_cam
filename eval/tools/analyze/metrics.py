@@ -1294,6 +1294,81 @@ def imu_timing_metrics(rows: List[RecRow], eval_events: List[Dict]) -> Optional[
     return out or None
 
 
+def imu_validity_metrics(eval_events: List[Dict]) -> Optional[Dict]:
+    """IMU 六轴有效性（11-imu-validity，C-05/C-06）。
+
+    输入为 imu_stat 事件（1Hz 窗口统计：mean/std/nan/inf/cal）。
+    全程统计用「窗口均值 × 窗口样本数」加权（各窗口样本数几乎相等，
+    加权与简单平均的差异 <1%，但加权在末窗不足 1s 时无偏）。
+    C-05：nan/inf 总数、静止 gyro 零偏、accel 模长（单位/scale 正确性）。
+    C-06：各轴静态零偏（只记录，不判定）。
+    """
+    evs = [e["kv"] for e in eval_events if e["event"] == "imu_stat"]
+    if not evs:
+        return None
+
+    def _f(kv, key):
+        v = kv.get(key)
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            try:
+                return float(v)
+            except ValueError:
+                return None
+        return None
+
+    def _i(kv, key):
+        v = kv.get(key)
+        return v if isinstance(v, int) else None
+
+    axes = ("ax", "ay", "az", "gx", "gy", "gz")
+    w_sum = {}          # 各轴加权和
+    w_var = {}          # 各轴方差加权和（窗口内方差 + 窗口均值间方差的合成）
+    w_n = 0
+    nan_t = inf_t = 0
+    cal_vals = set()
+    for kv in evs:
+        n = _i(kv, "n") or 0
+        nan_t += _i(kv, "nan") or 0
+        inf_t += _i(kv, "inf") or 0
+        cal_vals.add(_i(kv, "cal"))
+        if n <= 0:
+            continue
+        w_n += n
+        for a in axes:
+            mean = _f(kv, a)
+            std = _f(kv, "s" + a)
+            if mean is None:
+                continue
+            var = std * std if std is not None else 0.0
+            # 合成：E[x²] = var + mean²，累加后统一算总方差
+            w_sum[a] = w_sum.get(a, 0.0) + mean * n
+            w_var[a] = w_var.get(a, 0.0) + (var + mean * mean) * n
+    if w_n == 0:
+        return {"windows": len(evs), "nan": nan_t, "inf": inf_t,
+                "cal": sorted(v for v in cal_vals if v is not None)}
+
+    overall = {}
+    for a in axes:
+        mean = w_sum[a] / w_n
+        var = max(0.0, w_var[a] / w_n - mean * mean)
+        overall[a] = round(mean, 6)
+        overall["s" + a] = round(var ** 0.5, 6)
+    norm = (overall["ax"] ** 2 + overall["ay"] ** 2 + overall["az"] ** 2) ** 0.5
+    return {
+        "windows": len(evs),
+        "samples": w_n,
+        "nan": nan_t,
+        "inf": inf_t,
+        "cal": sorted(v for v in cal_vals if v is not None),
+        "axes": overall,
+        "accel_norm": round(norm, 4),
+        "gyro_bias_max": round(max(abs(overall["gx"]), abs(overall["gy"]),
+                                   abs(overall["gz"])), 6),
+    }
+
+
 def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = None,
             clock_offset_ns: int = 0, expected: Optional[Dict] = None,
             expected_topics: Optional[List[str]] = None,
@@ -1357,6 +1432,9 @@ def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = No
     imu = imu_timing_metrics(rows, events)
     if imu:
         result["imu"] = imu
+    imu_v = imu_validity_metrics(events)
+    if imu_v:
+        result["imu_validity"] = imu_v
     pairs = []
     for i in range(1, len(image_topics)):
         p = pairing_metrics(rows, image_topics[0], image_topics[i],

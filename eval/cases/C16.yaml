@@ -31,8 +31,8 @@ params:
 
 eval:
   log_enable: true
-  # imu_probe 为本轮直接证据；frame_in/pub_out 做图像侧上下文
-  log_events: [imu_probe, frame_in, pub_out]
+  # imu_probe（时序）+ imu_stat（六轴统计）为 10/11 轮直接证据
+  log_events: [imu_probe, imu_stat, frame_in, pub_out]
   duration_s: 180
 
 recorder:

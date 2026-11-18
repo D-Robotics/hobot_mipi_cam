@@ -36,6 +36,11 @@ DEFAULT_THRESHOLDS = {
     "imu_interval_p99_ratio": 0.5,
     # C-03 时间戳倒退容忍（0 = 不允许）
     "imu_backward_max": 0,
+    # C-05 静止 gyro 任一轴零偏上限（rad/s）
+    "imu_gyro_bias_max": 0.03,
+    # C-05 accel 模长合理区间（m/s²，±5% 重力）
+    "imu_accel_norm_min": 9.3,
+    "imu_accel_norm_max": 10.3,
 }
 
 # 允许出现在 YAML 里的键（未知键告警并忽略，防拼写错误静默失效）

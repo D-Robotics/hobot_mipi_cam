@@ -20,6 +20,7 @@ using mipi_cam::eval::EVAL_EV_PUB_OUT;
 #include <sstream>
 #include <stdarg.h>
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
@@ -913,6 +914,57 @@ void MipiCamNode::read_imu_data() {
   };
   auto last_flush_mono = mipi_cam::eval::eval_now_mono_ns();
 
+  // 11-imu-validity：六轴窗口统计（mean/std，Welford 在线算法避免存 200 样本）。
+  // cal 为 EEPROM 标定加载状态；nan/inf 计非法值（isfinite 判 NaN 与 ±Inf）。
+  uint64_t stat_n = 0, stat_nan = 0, stat_inf = 0;
+  double m_ax = 0, m_ay = 0, m_az = 0, m_gx = 0, m_gy = 0, m_gz = 0;
+  double s_ax = 0, s_ay = 0, s_az = 0, s_gx = 0, s_gy = 0, s_gz = 0;
+  bool stat_cal = false, stat_cal_seen = false, stat_cal_flipped = false;
+  auto imu_stat_accum = [&](const imu_sensor::ImuData_T &d) {
+    if (!stat_cal_seen) {
+      stat_cal = imu_manager_->hasValidCalibration();
+      stat_cal_seen = true;
+    } else if (imu_manager_->hasValidCalibration() != stat_cal) {
+      stat_cal_flipped = true;   // 中途翻转：本窗口标记 cal=-1
+    }
+    const double v[6] = {d.ax, d.ay, d.az, d.gx, d.gy, d.gz};
+    for (double x : v) {
+      if (std::isnan(x)) { ++stat_nan; return; }
+      if (std::isinf(x)) { ++stat_inf; return; }
+    }
+    double *mean[6] = {&m_ax, &m_ay, &m_az, &m_gx, &m_gy, &m_gz};
+    double *m2[6]   = {&s_ax, &s_ay, &s_az, &s_gx, &s_gy, &s_gz};
+    ++stat_n;
+    for (int i = 0; i < 6; ++i) {
+      const double delta = v[i] - *mean[i];
+      *mean[i] += delta / static_cast<double>(stat_n);
+      *m2[i] += delta * (v[i] - *mean[i]);
+    }
+  };
+  auto imu_stat_flush = [&]() {
+    if (stat_n == 0 && stat_nan == 0 && stat_inf == 0) {
+      return;
+    }
+    const double var_div = stat_n > 1 ? static_cast<double>(stat_n - 1) : 1.0;
+    EVAL_LOG(mipi_cam::eval::EVAL_EV_IMU_STAT,
+             "cal=%d n=%llu nan=%llu inf=%lld "
+             "ax=%.4f ay=%.4f az=%.4f gx=%.5f gy=%.5f gz=%.5f "
+             "sax=%.4f say=%.4f saz=%.4f sgx=%.5f sgy=%.5f sgz=%.5f",
+             stat_cal_flipped ? -1 : (stat_cal ? 1 : 0),
+             static_cast<unsigned long long>(stat_n),
+             static_cast<unsigned long long>(stat_nan),
+             static_cast<long long>(stat_inf),
+             m_ax, m_ay, m_az, m_gx, m_gy, m_gz,
+             std::sqrt(s_ax / var_div), std::sqrt(s_ay / var_div),
+             std::sqrt(s_az / var_div), std::sqrt(s_gx / var_div),
+             std::sqrt(s_gy / var_div), std::sqrt(s_gz / var_div));
+    stat_n = stat_nan = stat_inf = 0;
+    m_ax = m_ay = m_az = m_gx = m_gy = m_gz = 0;
+    s_ax = s_ay = s_az = s_gx = s_gy = s_gz = 0;
+    stat_cal_seen = false;
+    stat_cal_flipped = false;
+  };
+
   while (is_imu_running_ ) {
     size_t subscriber_count = pub_imu_->get_subscription_count();
     if (subscriber_count > 0) {
@@ -935,6 +987,7 @@ void MipiCamNode::read_imu_data() {
         }
         probe_last_ts = ts_ns;
         ++probe_n;
+        imu_stat_accum(imu_data);
 
         // ---- IMU 时间戳 ----
         auto sec = static_cast<int32_t>(imu_data.timestamp / 1e9);
@@ -969,6 +1022,7 @@ void MipiCamNode::read_imu_data() {
       const uint64_t now = mipi_cam::eval::eval_now_mono_ns();
       if (now - last_flush_mono >= 1000000000ULL) {
         imu_probe_flush(imu_manager_->source_name().c_str());
+        imu_stat_flush();
         last_flush_mono = now;
       }
     } else {
@@ -978,6 +1032,7 @@ void MipiCamNode::read_imu_data() {
   }
   // 终末 flush：最后一窗口（可能不足 1s）也要计入对账
   imu_probe_flush(imu_manager_ ? imu_manager_->source_name().c_str() : "none");
+  imu_stat_flush();
 }
 
 
