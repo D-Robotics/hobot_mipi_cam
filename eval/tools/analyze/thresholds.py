@@ -41,6 +41,10 @@ DEFAULT_THRESHOLDS = {
     # C-05 accel 模长合理区间（m/s²，±5% 重力）
     "imu_accel_norm_min": 9.3,
     "imu_accel_norm_max": 10.3,
+    # D-02 曝光中点→最近 IMU 样本 p99 上限（ms；受域归一不确定度约束）
+    "cam_imu_nearest_p99_ms": 10.0,
+    # D-04 帧窗口内 IMU 覆盖率下限
+    "cam_imu_cover_min": 0.95,
 }
 
 # 允许出现在 YAML 里的键（未知键告警并忽略，防拼写错误静默失效）

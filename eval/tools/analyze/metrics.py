@@ -1369,6 +1369,80 @@ def imu_validity_metrics(eval_events: List[Dict]) -> Optional[Dict]:
     }
 
 
+def cam_imu_metrics(rows: List[RecRow], eval_events: List[Dict],
+                    clock_offset_ns: int = 0) -> Optional[Dict]:
+    """Camera-IMU 基础配对（13-cam-imu-basic，D-01/02/04）。
+
+    D-01 域归一：IMU(realtime) − clock 旁车偏移 → mono；图像 t0 取
+    exposure 可信触发（trig+exp/2）并按 run 标定硬件域偏移（08 同法）。
+    D-02 配对：每帧 t0 与最近 IMU 样本偏差 |Δ| 分布（相位随机时下限
+    为均匀分布 p50=T/4；归一不确定度会整体抬高）。
+    D-04 覆盖率：相邻帧 t0 窗口内 IMU 样本数 vs 期望（间隔×频率）。
+    """
+    imu_mono = sorted(r.stamp_ns - clock_offset_ns
+                      for r in rows if r.encoding == "imu")
+    # exposure → 可信 t0（mono 域）
+    groups = defaultdict(list)
+    for e in eval_events:
+        if e["event"] != "exposure":
+            continue
+        kv = e["kv"]
+        groups[(_i2(kv, "pipe"), str(kv.get("stream")))].append((e["ts_mono"], kv))
+    t0s = []
+    for key, items in groups.items():
+        offs = sorted(hw - mono for mono, kv in items
+                      for hw in [_i2(kv, "ts_hw_ns")] if hw and hw > 0)
+        if not offs:
+            continue
+        off = percentile(offs, 50)
+        trig = {ts: tg for _, kv in items
+                for ts, tg in [(_i2(kv, "ts_frame"), _i2(kv, "ts_trig_ns"))]
+                if ts is not None and tg is not None}
+        for ts, exp in _exposure_gate([kv for _, kv in items])["usable"]:
+            if ts in trig:
+                t0s.append(trig[ts] + exp * 1000 // 2 - off)
+    t0s.sort()
+    if not imu_mono or not t0s:
+        return None
+
+    import bisect
+    nearest = []
+    for t in t0s:
+        i = bisect.bisect_left(imu_mono, t)
+        best = min((abs(imu_mono[j] - t) for j in (i - 1, i)
+                    if 0 <= j < len(imu_mono)), default=None)
+        if best is not None:
+            nearest.append(best)
+    # D-04：相邻帧窗口内 IMU 样本数
+    cover = []
+    for a, b in zip(t0s, t0s[1:]):
+        lo = bisect.bisect_left(imu_mono, a)
+        hi = bisect.bisect_right(imu_mono, b)
+        cover.append((hi - lo, (b - a)))
+    exp_per_win = [(span_ns / 1e9) * float(_TH["imu_nominal_hz"])
+                   for _, span_ns in cover if span_ns > 0]
+    got_per_win = [c for c, _ in cover]
+    nearest_us = sorted(v // 1000 for v in nearest)
+    imu_period_us = 1e6 / float(_TH["imu_nominal_hz"])
+    return {
+        "frames": len(t0s),
+        "imu_samples": len(imu_mono),
+        "nearest_us": _summary(nearest_us, 1.0),
+        # 相位随机参考：均匀 [0,T/2] 的 p50 = T/4
+        "imu_period_us": imu_period_us,
+        "cover_windows": len(cover),
+        "cover_got_total": sum(got_per_win),
+        "cover_expected_total": round(sum(exp_per_win), 1) if exp_per_win else None,
+        "cover_ratio": (round(sum(got_per_win) / sum(exp_per_win), 4)
+                        if exp_per_win and sum(exp_per_win) > 0 else None),
+    }
+
+
+def _i2(kv: Dict, key: str) -> Optional[int]:
+    v = kv.get(key)
+    return v if isinstance(v, int) else None
+
+
 def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = None,
             clock_offset_ns: int = 0, expected: Optional[Dict] = None,
             expected_topics: Optional[List[str]] = None,
@@ -1435,6 +1509,9 @@ def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = No
     imu_v = imu_validity_metrics(events)
     if imu_v:
         result["imu_validity"] = imu_v
+    cam_imu = cam_imu_metrics(rows, events, clock_offset_ns)
+    if cam_imu:
+        result["cam_imu"] = cam_imu
     pairs = []
     for i in range(1, len(image_topics)):
         p = pairing_metrics(rows, image_topics[0], image_topics[i],

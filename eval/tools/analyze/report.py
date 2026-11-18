@@ -283,6 +283,32 @@ def render_baseline_report(metrics: Dict, title: str = "mipi_cam 评测·基线�
             lines.append("- **WARNING：标定加载状态在运行中翻转（cal=-1 窗口）**")
         lines.append("")
 
+    ci = metrics.get("cam_imu")
+    if ci:
+        nr = ci.get("nearest_us") or {}
+        lines.append("## Camera-IMU 配对（D-01/02/04，已域归一）")
+        lines.append("")
+        lines.append(f"- 帧数 {ci.get('frames')} / IMU 样本 {ci.get('imu_samples')}"
+                     f"（IMU 周期 {round(ci.get('imu_period_us', 0), 1)}µs）")
+        lines.append(f"- D-02 曝光中点→最近 IMU 样本偏差：p50="
+                     f"{_dash(nr.get('p50'))}µs p99={_dash(nr.get('p99'))}µs "
+                     f"max={_dash(nr.get('max'))}µs"
+                     f"（相位随机参考 p50≈{round(ci.get('imu_period_us', 0) / 4, 0)}µs）")
+        lines.append(f"- D-04 覆盖率：窗口 {ci.get('cover_windows')}，实收 "
+                     f"{ci.get('cover_got_total')} / 期望 {ci.get('cover_expected_total')}"
+                     f"（比率 {ci.get('cover_ratio')}）")
+        lines.append("")
+        p99 = nr.get("p99")
+        if p99 is not None and p99 > float(_th(metrics, "cam_imu_nearest_p99_ms")) * 1e3:
+            lines.append(f"- **WARNING：最近邻 p99={p99}µs 超过 "
+                         f"{_th(metrics, 'cam_imu_nearest_p99_ms')}ms"
+                         f"（含域归一不确定度，见 05/08）**")
+        r = ci.get("cover_ratio")
+        if r is not None and r < float(_th(metrics, "cam_imu_cover_min")):
+            lines.append(f"- **WARNING：IMU 覆盖率 {r} 低于 "
+                         f"{_th(metrics, 'cam_imu_cover_min')}**")
+        lines.append("")
+
     dl = metrics.get("device_latency")
     if dl:
         lines.append("## 设备侧延迟分解（frame_in / combine_out → deq_mono → pub_out）")

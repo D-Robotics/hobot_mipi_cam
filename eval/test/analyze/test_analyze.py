@@ -928,6 +928,46 @@ class TestImuValidity(unittest.TestCase):
         self.assertIsNone(imu_validity_metrics(parse_eval_log("")))
 
 
+class TestCamImu(unittest.TestCase):
+    def _data(self, n_frames=3, imu_per_frame=6, t0=MONO_BASE):
+        """每帧 33.33ms、帧间 6 个 IMU 样本（5.556ms 间隔，200Hz）。"""
+        lines = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding"]
+        frame_t0 = []
+        hw_off = 2_000_000_000   # 硬件域比 mono 快 2s
+        ev = []
+        for f in range(n_frames):
+            t = t0 + f * 33_333_333
+            frame_t0.append(t)
+            for s in range(imu_per_frame):
+                rt = (t + s * 5_555_556) + CLOCK_OFFSET
+                lines.append(f"/imu_data,,{rt},{t},0,0,imu")
+            ev.append(f"[EVAL] ts_mono={t + 100} event=exposure pipe=0 stream=main "
+                      f"frame_id={f} stamp_src=sensor trig_valid=1 "
+                      f"ts_trig_ns={t + hw_off} ts_hw_ns={t + hw_off + 5000000} "
+                      f"exp_us=10000 ts_sys_raw_ns={RT_BASE} ts_frame={t}")
+        rows, _ = parse_recorder_csv("\n".join(lines))
+        return rows, parse_eval_log("\n".join(ev))
+
+    def test_pair_and_cover(self):
+        from metrics import cam_imu_metrics
+        rows, ev = self._data()
+        m = cam_imu_metrics(rows, ev, CLOCK_OFFSET)
+        self.assertEqual(m["frames"], 3)
+        self.assertEqual(m["imu_samples"], 18)
+        # t0 = trig + 5ms − off(2s+~偏移中位) → 样本以 5.556ms 网格覆盖，
+        # 最近邻 ≤ 半周期 2.78ms
+        self.assertLessEqual(m["nearest_us"]["max"], 2800)
+        # 覆盖率：窗口内 6/6.67
+        self.assertGreater(m["cover_ratio"], 0.85)
+
+    def test_absent(self):
+        from metrics import cam_imu_metrics
+        csv = "topic,seq,stamp_ns,recv_mono_ns,width,height,encoding\n" \
+              f"/t/img,,{MONO_BASE},{MONO_BASE},1,1,nv12\n"
+        rows, _ = parse_recorder_csv(csv)
+        self.assertIsNone(cam_imu_metrics(rows, parse_eval_log(""), 0))
+
+
 class TestSuiteReport(unittest.TestCase):
     def _run(self, result="OK", with_pair=False, with_res=True, unstable=False):
         metrics = {}

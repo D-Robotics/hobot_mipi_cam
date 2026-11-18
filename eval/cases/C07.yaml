@@ -31,8 +31,8 @@ params:
 
 eval:
   log_enable: true
-  # 08-device-latency：lpwm 提供可信 t0；pub_out 带 deq_mono 用于拆分队列等待
-  log_events: [sync_pair, exposure, frame_in, pub_out]
+  # 13-cam-imu：lpwm 提供可信 t0，与 IMU 同录做域归一/配对/覆盖率
+  log_events: [sync_pair, exposure, frame_in, pub_out, imu_probe, imu_stat]
   duration_s: 180
 
 recorder:
