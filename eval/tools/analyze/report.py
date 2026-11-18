@@ -390,6 +390,43 @@ def render_baseline_report(metrics: Dict, title: str = "mipi_cam 评测·基线�
                      "发布估算为上限。三者差距即订阅端丢样率。")
         lines.append("")
 
+    dr = metrics.get("cam_imu_drift")
+    if dr:
+        lines.append("## Camera-IMU 漂移（D-03）")
+        lines.append("")
+        lines.append(f"- 样本 {dr.get('points')}，跨度 {dr.get('span_min')}min，"
+                     f"{dr.get('bucket_s')}s 分桶")
+        lines.append(f"- 斜率：**{dr.get('slope_us_per_min')} µs/min**"
+                     f"（全程 {dr.get('slope_total_us')} µs，"
+                     f"{'可测' if dr.get('detectable') else '低于周期/4，不可测'}）")
+        if dr.get("jumps"):
+            lines.append(f"- **时钟跳变 {len(dr['jumps'])} 处**（已剔除）："
+                         + "; ".join(f"@{j['after_s']}s Δ{j['delta_us']}µs"
+                                     for j in dr["jumps"][:5]))
+        lines.append("")
+
+    rm = metrics.get("resources")
+    if rm:
+        lines.append("## 资源稳态（19-resources，门槛）")
+        lines.append("")
+        lines.append(f"- 采样 {rm.get('samples')} 点 / {rm.get('span_s')}s")
+        lines.append(f"- RSS：首 {rm.get('rss_first_kb')}KB → 末 {rm.get('rss_last_kb')}KB"
+                     f"（max {rm.get('rss_max_kb')}KB，增长 **{rm.get('rss_growth')}**，判据 ≤0.05）")
+        cpu = rm.get("cpu_pct") or {}
+        lines.append(f"- CPU：p50={_dash(cpu.get('p50'))}% p95={_dash(cpu.get('p95'))}% "
+                     f"max={_dash(cpu.get('max'))}%")
+        lines.append(f"- fd：{rm.get('fd_first')} → {rm.get('fd_last')}"
+                     f"（增长 {rm.get('fd_growth')}，判据 =0）")
+        th = rm.get("thermal_c") or {}
+        if th:
+            lines.append(f"- 温度：{th.get('min')}~{th.get('max')}°C")
+        lines.append("")
+        if (rm.get("rss_growth") or 0) > 0.05:
+            lines.append("- **WARNING：RSS 单调增长超 5%（疑似泄漏，门槛项）**")
+        if (rm.get("fd_growth") or 0) > 0:
+            lines.append(f"- **WARNING：fd 增长 {rm['fd_growth']}（门槛项）**")
+        lines.append("")
+
     dl = metrics.get("device_latency")
     if dl:
         lines.append("## 设备侧延迟分解（frame_in / combine_out → deq_mono → pub_out）")

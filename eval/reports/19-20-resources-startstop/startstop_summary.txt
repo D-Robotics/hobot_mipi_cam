@@ -1,0 +1,10 @@
+case=C04 n=8 each=30s
+run=1 rc=0 proc_mipi_cam=0 proc_recorder=0 isp_busy=0 verdict=OK
+run=2 rc=0 proc_mipi_cam=0 proc_recorder=0 isp_busy=0 verdict=OK
+run=3 rc=0 proc_mipi_cam=0 proc_recorder=0 isp_busy=0 verdict=OK
+run=4 rc=0 proc_mipi_cam=0 proc_recorder=0 isp_busy=0 verdict=OK
+run=5 rc=0 proc_mipi_cam=0 proc_recorder=0 isp_busy=0 verdict=OK
+run=6 rc=0 proc_mipi_cam=0 proc_recorder=0 isp_busy=0 verdict=OK
+run=7 rc=0 proc_mipi_cam=0 proc_recorder=0 isp_busy=0 verdict=OK
+run=8 rc=0 proc_mipi_cam=0 proc_recorder=0 isp_busy=0 verdict=OK
+success=8/8

@@ -1,0 +1,1205 @@
+{
+  "meta": {
+    "image_domain": "mono",
+    "clock_offset_ns": 946684805685699725,
+    "thresholds": {
+      "fps_ratio_min": 0.99,
+      "drop_rate_max": 0.005,
+      "resolution_match_min": 1.0,
+      "stability_interval_ratio": 3.0,
+      "pair_rate_min": 0.999,
+      "pair_diff_p99_ms": 1.0,
+      "exp_match_tol_ms": 50.0,
+      "exp_us_cap_s": 5.0,
+      "sync_missing_sustain_ms": 100.0,
+      "imu_nominal_hz": 200.0,
+      "imu_rate_ratio_min": 0.99,
+      "imu_interval_p99_ratio": 0.5,
+      "imu_backward_max": 0,
+      "imu_gyro_bias_max": 0.03,
+      "imu_accel_norm_min": 9.3,
+      "imu_accel_norm_max": 10.3,
+      "cam_imu_nearest_p99_ms": 10.0,
+      "cam_imu_cover_min": 0.95,
+      "recv_drop_max": 0.005,
+      "imu_recv_drop_max": 0.0001,
+      "info_pair_min": 1.0
+    },
+    "eval_events": 433896,
+    "eval_duplicate_lines": 0,
+    "eval_by_event": {
+      "exposure": 107583,
+      "frame_in": 107583,
+      "imu_probe": 1788,
+      "imu_stat": 1788,
+      "pub_out": 161364,
+      "sync_pair": 53790
+    },
+    "csv_skipped_rows": 0,
+    "expected_source": "/home/dongyangliu/hobot_mipi_cam/eval/logs/C07_dual-1088x1280-nv12-30fps-combine1-lpwm_20000101_145157/meta.txt",
+    "expected_topics": [
+      "/image_left_raw",
+      "/image_right_raw",
+      "/image_combine_raw",
+      "/image_left_raw/camera_info",
+      "/image_right_raw/camera_info",
+      "/image_combine_raw/left/camera_info",
+      "/image_combine_raw/right/camera_info"
+    ]
+  },
+  "topics": {
+    "/image_right_raw/camera_info": {
+      "count": 53762,
+      "duration_s": 1792.962,
+      "fps_mean": 29.984,
+      "recv_interval_ns": {
+        "count": 53762,
+        "mean": 33350609.074180167,
+        "p50": 34838722.0,
+        "p95": 36005407.0,
+        "p99": 36613316.2,
+        "max": 90227271,
+        "min": 2627000
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/image_left_raw/camera_info": {
+      "count": 53763,
+      "duration_s": 1792.945,
+      "fps_mean": 29.985,
+      "recv_interval_ns": {
+        "count": 53763,
+        "mean": 33349670.860273056,
+        "p50": 34744407.5,
+        "p95": 36031279.95,
+        "p99": 36643121.74,
+        "max": 90359689,
+        "min": 1126185
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/image_combine_raw/left/camera_info": {
+      "count": 53763,
+      "duration_s": 1792.934,
+      "fps_mean": 29.985,
+      "recv_interval_ns": {
+        "count": 53763,
+        "mean": 33349474.733492058,
+        "p50": 29826558.0,
+        "p95": 41133996.64999999,
+        "p99": 49526377.76,
+        "max": 101930998,
+        "min": 781596
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/image_combine_raw/right/camera_info": {
+      "count": 53753,
+      "duration_s": 1792.935,
+      "fps_mean": 29.98,
+      "recv_interval_ns": {
+        "count": 53753,
+        "mean": 33355682.09244307,
+        "p50": 29932934.5,
+        "p95": 41065407.79999999,
+        "p99": 49423496.91,
+        "max": 101840413,
+        "min": 793971
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/image_left_raw": {
+      "count": 53528,
+      "duration_s": 1792.898,
+      "fps_mean": 29.855,
+      "recv_interval_ns": {
+        "count": 53528,
+        "mean": 33495199.809460647,
+        "p50": 34856971.0,
+        "p95": 36366533.4,
+        "p99": 37895944.339999996,
+        "max": 96269908,
+        "min": 4956245
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/imu_data": {
+      "count": 362196,
+      "duration_s": 1792.909,
+      "fps_mean": 202.015,
+      "recv_interval_ns": {
+        "count": 362196,
+        "mean": 4950119.5058407765,
+        "p50": 4954662.0,
+        "p95": 6131693.3,
+        "p99": 7002653.06,
+        "max": 66668395,
+        "min": 264588
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/image_right_raw": {
+      "count": 53559,
+      "duration_s": 1792.894,
+      "fps_mean": 29.872,
+      "recv_interval_ns": {
+        "count": 53559,
+        "mean": 33475737.36593973,
+        "p50": 34772824.5,
+        "p95": 36351520.9,
+        "p99": 37393653.19,
+        "max": 94451921,
+        "min": 4474113
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/image_combine_raw": {
+      "count": 53588,
+      "duration_s": 1792.881,
+      "fps_mean": 29.889,
+      "recv_interval_ns": {
+        "count": 53588,
+        "mean": 33457381.9135238,
+        "p50": 29748390.0,
+        "p95": 41752515.299999095,
+        "p99": 49501247.019999996,
+        "max": 101537492,
+        "min": 6796399
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    }
+  },
+  "frame_in": {
+    "pipe1/main": {
+      "count": 53791,
+      "frame_id_step": 1,
+      "dropped_by_frame_id": 0,
+      "drop_rate": 0.0,
+      "exp_valid_ratio": null,
+      "exp_us_mean": null
+    },
+    "pipe0/main": {
+      "count": 53792,
+      "frame_id_step": 1,
+      "dropped_by_frame_id": 0,
+      "drop_rate": 0.0,
+      "exp_valid_ratio": null,
+      "exp_us_mean": null
+    }
+  },
+  "pub_out": {
+    "/image_right_raw": 53788,
+    "/image_left_raw": 53788,
+    "/image_combine_raw": 53788
+  },
+  "latency": {
+    "/image_left_raw": {
+      "exp_midpoint": {
+        "count": 53528,
+        "mean_ms": 446.449,
+        "p50_ms": 446.49,
+        "p95_ms": 460.513,
+        "p99_ms": 463.891,
+        "max_ms": 488.866
+      },
+      "frame_ts": null
+    },
+    "/image_right_raw": {
+      "exp_midpoint": {
+        "count": 53559,
+        "mean_ms": 449.469,
+        "p50_ms": 449.478,
+        "p95_ms": 463.491,
+        "p99_ms": 466.396,
+        "max_ms": 493.12
+      },
+      "frame_ts": null
+    },
+    "/image_combine_raw": {
+      "exp_midpoint": {
+        "count": 53588,
+        "mean_ms": 460.504,
+        "p50_ms": 460.468,
+        "p95_ms": 475.378,
+        "p99_ms": 479.787,
+        "max_ms": 511.477
+      },
+      "frame_ts": null
+    }
+  },
+  "frame_timing": {
+    "pipe1/main": {
+      "count": 53791,
+      "duration_s": 1792.958,
+      "fps_mean": 30.001,
+      "interval_p50_ns": 33333958.0,
+      "interval_p95_ns": 33344250.0,
+      "interval_p99_ns": 33352458.0,
+      "interval_max_ns": 33691667,
+      "interval_min_ns": 23630083,
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "pipe0/main": {
+      "count": 53792,
+      "duration_s": 1792.98,
+      "fps_mean": 30.001,
+      "interval_p50_ns": 33333917.0,
+      "interval_p95_ns": 33344375.0,
+      "interval_p99_ns": 33352000.0,
+      "interval_max_ns": 33687291,
+      "interval_min_ns": 13954792,
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    }
+  },
+  "drop": {
+    "streams": {
+      "pipe0/main": {
+        "frames_in": 53792,
+        "drops_total": 0,
+        "drop_rate": 0.0,
+        "drops_by_reason": {
+          "queue_recycle": 0,
+          "empty_null": 0,
+          "fq_full": 0,
+          "fq_expired": 0,
+          "getframe_fail": 0
+        },
+        "frame_id_gaps": 0,
+        "frame_id_step": 1,
+        "queue_meta": {
+          "depth": 0,
+          "queue_stat_seen": false
+        }
+      },
+      "pipe1/main": {
+        "frames_in": 53791,
+        "drops_total": 0,
+        "drop_rate": 0.0,
+        "drops_by_reason": {
+          "queue_recycle": 0,
+          "empty_null": 0,
+          "fq_full": 0,
+          "fq_expired": 0,
+          "getframe_fail": 0
+        },
+        "frame_id_gaps": 0,
+        "frame_id_step": 1,
+        "queue_meta": {
+          "depth": 0,
+          "queue_stat_seen": false
+        }
+      }
+    },
+    "task_drops": {},
+    "combine": {
+      "queue_recycle": 0,
+      "empty_null": 0,
+      "depth": 0
+    },
+    "queue_stat_events": 0,
+    "queue_counters_available": false
+  },
+  "resolution": {
+    "expected": {
+      "main": {
+        "width": 1088,
+        "height": 1280,
+        "encoding": "nv12"
+      },
+      "info": {
+        "width": 1088,
+        "height": 1280,
+        "encoding": "camera_info"
+      },
+      "framerate": 30.0,
+      "combine": {
+        "width": 1088,
+        "height": 2560,
+        "encoding": "nv12"
+      }
+    },
+    "device": {
+      "pipe1/main": {
+        "expected": "1088x1280",
+        "observed": {
+          "1088x1280": 53791
+        },
+        "mismatch": 0
+      },
+      "pipe0/main": {
+        "expected": "1088x1280",
+        "observed": {
+          "1088x1280": 53792
+        },
+        "mismatch": 0
+      }
+    },
+    "published": {
+      "/image_right_raw/camera_info": {
+        "expected": "1088x1280 camera_info",
+        "observed": {
+          "1088x1280 camera_info": 53762
+        },
+        "mismatch": 0
+      },
+      "/image_left_raw/camera_info": {
+        "expected": "1088x1280 camera_info",
+        "observed": {
+          "1088x1280 camera_info": 53763
+        },
+        "mismatch": 0
+      },
+      "/image_combine_raw/left/camera_info": {
+        "expected": "1088x1280 camera_info",
+        "observed": {
+          "1088x1280 camera_info": 53763
+        },
+        "mismatch": 0
+      },
+      "/image_combine_raw/right/camera_info": {
+        "expected": "1088x1280 camera_info",
+        "observed": {
+          "1088x1280 camera_info": 53753
+        },
+        "mismatch": 0
+      },
+      "/image_left_raw": {
+        "expected": "1088x1280 nv12",
+        "observed": {
+          "1088x1280 nv12": 53528
+        },
+        "mismatch": 0
+      },
+      "/image_right_raw": {
+        "expected": "1088x1280 nv12",
+        "observed": {
+          "1088x1280 nv12": 53559
+        },
+        "mismatch": 0
+      },
+      "/image_combine_raw": {
+        "expected": "1088x2560 nv12",
+        "observed": {
+          "1088x2560 nv12": 53588
+        },
+        "mismatch": 0
+      }
+    },
+    "device_mismatch": 0,
+    "published_mismatch": 0,
+    "missing_topics": [],
+    "device_covered": true,
+    "all_match": true,
+    "expected_available": true
+  },
+  "exposure": {
+    "total": 107583,
+    "pipes": {
+      "0/main": {
+        "count": 53792,
+        "trig_valid": 53792,
+        "trig_valid_ratio": 1.0,
+        "trig_usable": 53792,
+        "trig_usable_ratio": 1.0,
+        "trig_stale": false,
+        "exp_cap_us": 1000000,
+        "stamp_src": {
+          "sensor": 53792
+        },
+        "exp_us": {
+          "count": 53792,
+          "min": 4835.0,
+          "mean": 4884.204,
+          "p50": 4883.0,
+          "p95": 4884.0,
+          "p99": 4884.0,
+          "max": 10217.0
+        },
+        "exp_negative": 0,
+        "exp_zero": 0,
+        "exp_over_1s": 0,
+        "frame_domain": "mono",
+        "sys_raw_domain": "realtime",
+        "hw_minus_frame_ms": {
+          "count": 53792,
+          "min": 6090.174,
+          "mean": 6109.586,
+          "p50": 6109.588,
+          "p95": 6109.59,
+          "p99": 6109.591,
+          "max": 6109.592
+        },
+        "sys_raw_minus_frame_ms": {
+          "count": 53792,
+          "min": 946684806079.255,
+          "mean": 946684806093.531,
+          "p50": 946684806093.531,
+          "p95": 946684806106.379,
+          "p99": 946684806107.521,
+          "max": 946684806107.806
+        },
+        "hw_minus_event_mono_ms": {
+          "count": 53792,
+          "min": 5663.252,
+          "mean": 5677.825,
+          "p50": 5677.84,
+          "p95": 5690.652,
+          "p99": 5691.812,
+          "max": 5692.252
+        },
+        "realtime_adjust": {
+          "checked": 0,
+          "mismatch": 0
+        },
+        "t0_basis": {
+          "trig": 53792
+        },
+        "t0_mixed": false,
+        "t0_interval_ms": {
+          "count": 53791,
+          "min": 32.691,
+          "mean": 33.333,
+          "p50": 33.334,
+          "p95": 33.334,
+          "p99": 33.334,
+          "max": 33.513
+        },
+        "t0_backwards": 0
+      },
+      "1/main": {
+        "count": 53791,
+        "trig_valid": 53791,
+        "trig_valid_ratio": 1.0,
+        "trig_usable": 53791,
+        "trig_usable_ratio": 1.0,
+        "trig_stale": false,
+        "exp_cap_us": 1000000,
+        "stamp_src": {
+          "sensor": 53791
+        },
+        "exp_us": {
+          "count": 53791,
+          "min": 6014.0,
+          "mean": 6016.276,
+          "p50": 6014.0,
+          "p95": 6015.0,
+          "p99": 6062.0,
+          "max": 10217.0
+        },
+        "exp_negative": 0,
+        "exp_zero": 0,
+        "exp_over_1s": 0,
+        "frame_domain": "mono",
+        "sys_raw_domain": "realtime",
+        "hw_minus_frame_ms": {
+          "count": 53791,
+          "min": 6099.888,
+          "mean": 6109.587,
+          "p50": 6109.588,
+          "p95": 6109.592,
+          "p99": 6109.592,
+          "max": 6109.593
+        },
+        "sys_raw_minus_frame_ms": {
+          "count": 53791,
+          "min": 946684806079.255,
+          "mean": 946684806093.53,
+          "p50": 946684806093.53,
+          "p95": 946684806106.379,
+          "p99": 946684806107.521,
+          "max": 946684806107.806
+        },
+        "hw_minus_event_mono_ms": {
+          "count": 53791,
+          "min": 5660.894,
+          "mean": 5675.537,
+          "p50": 5675.532,
+          "p95": 5688.365,
+          "p99": 5689.508,
+          "max": 5691.98
+        },
+        "realtime_adjust": {
+          "checked": 0,
+          "mismatch": 0
+        },
+        "t0_basis": {
+          "trig": 53791
+        },
+        "t0_mixed": false,
+        "t0_interval_ms": {
+          "count": 53790,
+          "min": 32.769,
+          "mean": 33.333,
+          "p50": 33.334,
+          "p95": 33.334,
+          "p99": 33.334,
+          "max": 33.513
+        },
+        "t0_backwards": 0
+      }
+    }
+  },
+  "sync_pair": {
+    "main": {
+      "pairs": 53790,
+      "expected": 53791,
+      "pair_rate": 0.999981,
+      "diff_p50_ns": 1129875.0,
+      "diff_p95_ns": 1141292.0,
+      "diff_p99_ns": 1222750.0,
+      "diff_max_ns": 9713125,
+      "diff_mean_ns": 1131362.625,
+      "frame_id_mismatch": 0,
+      "frame_id_delta": {
+        "0": 53790
+      },
+      "tol_ns": 16666666,
+      "fails": {},
+      "fail_missing": {},
+      "missing_idle": 0,
+      "missing_asym": 0,
+      "pair_interval_p50_ns": 31758423.0,
+      "pair_interval_max_ns": 42564886
+    }
+  },
+  "bandwidth": {
+    "/image_combine_raw": {
+      "csv_rows": 53588,
+      "bytes_per_frame": 4177920,
+      "csv_bw_mb_s": 124.87,
+      "pub_bw_mb_s": 125.34
+    },
+    "/image_left_raw": {
+      "csv_rows": 53528,
+      "bytes_per_frame": 2088960,
+      "csv_bw_mb_s": 62.37,
+      "pub_bw_mb_s": 62.67
+    },
+    "/image_right_raw": {
+      "csv_rows": 53559,
+      "bytes_per_frame": 2088960,
+      "csv_bw_mb_s": 62.4,
+      "pub_bw_mb_s": 62.67
+    },
+    "/imu_data": {
+      "csv_rows": 362196,
+      "bytes_per_frame": 320,
+      "note": "0.32KB×实际频率"
+    }
+  },
+  "device_latency": {
+    "/image_right_raw": {
+      "count": 53788,
+      "deq_checked": 53788,
+      "ready_checked": 53788,
+      "t0_checked": 53788,
+      "t0_source": "trig",
+      "unmapped": false,
+      "ready_duplicates": 0,
+      "t0_duplicates": 0,
+      "t0_offset_p50_ns": 5675531644.0,
+      "t0_offset_p1_ns": 5661595918.9,
+      "t0_offset_p99_ns": 5689507747.2,
+      "ready_to_get_ns": {
+        "count": 53788,
+        "min": 1262187.0,
+        "mean": 6581093.232,
+        "p50": 6600688.5,
+        "p95": 11194440.95,
+        "p99": 11605333.0,
+        "max": 12273612.0
+      },
+      "publish_cost_ns": {
+        "count": 53788,
+        "min": 2826003.0,
+        "mean": 3701952.589,
+        "p50": 3652850.0,
+        "p95": 4509415.2,
+        "p99": 5099959.58,
+        "max": 10604335.0
+      },
+      "total_ns": {
+        "count": 53788,
+        "min": 4165317.0,
+        "mean": 10283045.821,
+        "p50": 10419395.0,
+        "p95": 14772635.55,
+        "p99": 15333219.25,
+        "max": 19173472.0
+      },
+      "pub_from_t0_ns": {
+        "count": 53788,
+        "min": -6086907.0,
+        "mean": 13918749.491,
+        "p50": 13926251.5,
+        "p95": 28007654.85,
+        "p99": 30883243.29,
+        "max": 34487663.0
+      },
+      "acq_from_t0_ns": {
+        "count": 53788,
+        "min": -10885023.0,
+        "mean": 3635703.67,
+        "p50": 3633756.5,
+        "p95": 16488425.8,
+        "p99": 17603900.74,
+        "max": 18480721.0
+      }
+    },
+    "/image_left_raw": {
+      "count": 53788,
+      "deq_checked": 53788,
+      "ready_checked": 53788,
+      "t0_checked": 53788,
+      "t0_source": "trig",
+      "unmapped": false,
+      "ready_duplicates": 0,
+      "t0_duplicates": 0,
+      "t0_offset_p50_ns": 5677839958.5,
+      "t0_offset_p1_ns": 5663829443.69,
+      "t0_offset_p99_ns": 5691812399.76,
+      "ready_to_get_ns": {
+        "count": 53788,
+        "min": 1437398.0,
+        "mean": 6541703.129,
+        "p50": 6337684.5,
+        "p95": 11282815.3,
+        "p99": 11839157.79,
+        "max": 12542158.0
+      },
+      "publish_cost_ns": {
+        "count": 53788,
+        "min": 2822087.0,
+        "mean": 3687530.341,
+        "p50": 3657850.0,
+        "p95": 4523708.95,
+        "p99": 5098483.04,
+        "max": 7981377.0
+      },
+      "total_ns": {
+        "count": 53788,
+        "min": 4498113.0,
+        "mean": 10229233.47,
+        "p50": 9992367.5,
+        "p95": 15259824.25,
+        "p99": 16226219.71,
+        "max": 19847733.0
+      },
+      "pub_from_t0_ns": {
+        "count": 53788,
+        "min": -6013299.5,
+        "mean": 13393940.733,
+        "p50": 13424634.0,
+        "p95": 27379610.2,
+        "p99": 30691053.9,
+        "max": 34241024.5
+      },
+      "acq_from_t0_ns": {
+        "count": 53788,
+        "min": -11317207.5,
+        "mean": 3164707.263,
+        "p50": 3142807.5,
+        "p95": 16017469.7,
+        "p99": 17145129.57,
+        "max": 18358131.5
+      }
+    },
+    "/image_combine_raw": {
+      "count": 53788,
+      "deq_checked": 53788,
+      "ready_checked": 0,
+      "t0_checked": 53788,
+      "t0_source": "trig",
+      "unmapped": false,
+      "ready_duplicates": 0,
+      "t0_duplicates": 0,
+      "t0_offset_p50_ns": 5677839958.5,
+      "t0_offset_p1_ns": 5663829443.69,
+      "t0_offset_p99_ns": 5691812399.76,
+      "ready_to_get_ns": null,
+      "publish_cost_ns": {
+        "count": 53788,
+        "min": 5459378.0,
+        "mean": 6411065.225,
+        "p50": 6362330.5,
+        "p95": 7436687.3,
+        "p99": 8249053.0,
+        "max": 12238612.0
+      },
+      "total_ns": null,
+      "pub_from_t0_ns": {
+        "count": 53788,
+        "min": 3262227.5,
+        "mean": 26637463.448,
+        "p50": 26618916.5,
+        "p95": 41313763.9,
+        "p99": 45501704.0,
+        "max": 52875103.5
+      },
+      "acq_from_t0_ns": null
+    }
+  },
+  "imu": {
+    "count": 362196,
+    "span_s": 1792.921,
+    "nominal_hz": 200.0,
+    "rate_hz": 202.014,
+    "rate_ratio": 1.0101,
+    "interval_us": {
+      "count": 362195,
+      "min": 1927.0,
+      "mean": 4949.66,
+      "p50": 4941.0,
+      "p95": 4977.0,
+      "p99": 5005.0,
+      "max": 64255.0
+    },
+    "backward": 0,
+    "duplicate": 0,
+    "expected_count": 358585,
+    "missing_est": 0,
+    "missing_rate": 0.0,
+    "missing_gap": 606,
+    "missing_gap_rate": 0.001673,
+    "gap_events": [
+      {
+        "after_s": 0.0,
+        "gap_ms": 9.87,
+        "missing": 1
+      },
+      {
+        "after_s": 0.0,
+        "gap_ms": 9.93,
+        "missing": 1
+      },
+      {
+        "after_s": 4.7,
+        "gap_ms": 54.38,
+        "missing": 10
+      },
+      {
+        "after_s": 31.6,
+        "gap_ms": 9.9,
+        "missing": 1
+      },
+      {
+        "after_s": 40.0,
+        "gap_ms": 64.24,
+        "missing": 12
+      },
+      {
+        "after_s": 55.1,
+        "gap_ms": 54.39,
+        "missing": 10
+      },
+      {
+        "after_s": 85.3,
+        "gap_ms": 59.31,
+        "missing": 11
+      },
+      {
+        "after_s": 115.6,
+        "gap_ms": 59.28,
+        "missing": 11
+      },
+      {
+        "after_s": 145.8,
+        "gap_ms": 64.25,
+        "missing": 12
+      },
+      {
+        "after_s": 176.0,
+        "gap_ms": 29.67,
+        "missing": 5
+      }
+    ],
+    "domain": "realtime",
+    "probe_windows": 1788,
+    "probe_src": {
+      "iio": 1788
+    },
+    "probe_n_sum": 362823,
+    "probe_rd_fail": 0,
+    "probe_backward": 0,
+    "probe_iv_max_ns": 5741883,
+    "pub_loss": 627
+  },
+  "imu_validity": {
+    "windows": 1788,
+    "samples": 362823,
+    "nan": 0,
+    "inf": 0,
+    "cal": [
+      1
+    ],
+    "axes": {
+      "ax": -0.219798,
+      "sax": 0.010681,
+      "ay": 9.766205,
+      "say": 0.008267,
+      "az": 0.472708,
+      "saz": 0.013954,
+      "gx": -0.001129,
+      "sgx": 0.000635,
+      "gy": -0.003846,
+      "sgy": 0.000543,
+      "gz": 0.004994,
+      "sgz": 0.000531
+    },
+    "accel_norm": 9.7801,
+    "gyro_bias_max": 0.004994
+  },
+  "cam_imu": {
+    "frames": 107583,
+    "imu_samples": 362196,
+    "nearest_us": {
+      "count": 107583,
+      "min": 0.0,
+      "mean": 1254.314,
+      "p50": 1239.0,
+      "p95": 2351.0,
+      "p99": 2451.0,
+      "max": 57638.0
+    },
+    "imu_period_us": 5000.0,
+    "cover_windows": 107582,
+    "cover_got_total": 362196,
+    "cover_expected_total": 358600.5,
+    "cover_ratio": 1.01
+  },
+  "cam_imu_drift": {
+    "points": 107583,
+    "span_min": 29.88,
+    "bucket_s": 60.0,
+    "buckets": [
+      {
+        "t_s": 0.0,
+        "n": 3602,
+        "mean_us": 39.4
+      },
+      {
+        "t_s": 60.0,
+        "n": 3600,
+        "mean_us": -15.5
+      },
+      {
+        "t_s": 120.0,
+        "n": 3600,
+        "mean_us": 3.2
+      },
+      {
+        "t_s": 180.0,
+        "n": 3600,
+        "mean_us": -4.1
+      },
+      {
+        "t_s": 240.0,
+        "n": 3600,
+        "mean_us": -15.5
+      },
+      {
+        "t_s": 300.0,
+        "n": 3600,
+        "mean_us": 0.3
+      },
+      {
+        "t_s": 360.0,
+        "n": 3600,
+        "mean_us": 13.8
+      },
+      {
+        "t_s": 420.0,
+        "n": 3600,
+        "mean_us": 9.1
+      },
+      {
+        "t_s": 480.0,
+        "n": 3600,
+        "mean_us": 7.2
+      },
+      {
+        "t_s": 540.0,
+        "n": 3600,
+        "mean_us": -9.6
+      },
+      {
+        "t_s": 600.0,
+        "n": 3600,
+        "mean_us": 2.8
+      },
+      {
+        "t_s": 660.0,
+        "n": 3600,
+        "mean_us": -1.0
+      },
+      {
+        "t_s": 720.0,
+        "n": 3600,
+        "mean_us": -10.1
+      },
+      {
+        "t_s": 780.0,
+        "n": 3600,
+        "mean_us": 2.6
+      },
+      {
+        "t_s": 840.0,
+        "n": 3600,
+        "mean_us": 2.3
+      },
+      {
+        "t_s": 900.0,
+        "n": 3600,
+        "mean_us": 8.5
+      },
+      {
+        "t_s": 960.0,
+        "n": 3600,
+        "mean_us": -1.2
+      },
+      {
+        "t_s": 1020.0,
+        "n": 3600,
+        "mean_us": -6.7
+      },
+      {
+        "t_s": 1080.0,
+        "n": 3600,
+        "mean_us": -9.2
+      },
+      {
+        "t_s": 1140.0,
+        "n": 3600,
+        "mean_us": -6.8
+      },
+      {
+        "t_s": 1200.0,
+        "n": 3600,
+        "mean_us": -14.2
+      },
+      {
+        "t_s": 1260.0,
+        "n": 3600,
+        "mean_us": -16.3
+      },
+      {
+        "t_s": 1320.0,
+        "n": 3600,
+        "mean_us": -1.1
+      },
+      {
+        "t_s": 1380.0,
+        "n": 3600,
+        "mean_us": 4.3
+      },
+      {
+        "t_s": 1440.0,
+        "n": 3600,
+        "mean_us": -13.0
+      },
+      {
+        "t_s": 1500.0,
+        "n": 3600,
+        "mean_us": -6.0
+      },
+      {
+        "t_s": 1560.0,
+        "n": 3600,
+        "mean_us": -9.0
+      },
+      {
+        "t_s": 1620.0,
+        "n": 3600,
+        "mean_us": 2.6
+      },
+      {
+        "t_s": 1680.0,
+        "n": 3600,
+        "mean_us": 18.1
+      },
+      {
+        "t_s": 1740.0,
+        "n": 3181,
+        "mean_us": 31.4
+      }
+    ],
+    "slope_us_per_min": -0.1175,
+    "slope_total_us": -3.5,
+    "jumps": [],
+    "detectable": false,
+    "note": ""
+  },
+  "recv": {
+    "topics": {
+      "/image_combine_raw": {
+        "csv_rows": 53588,
+        "pub_count": 53788,
+        "pub_duplicates": 0,
+        "pre_subscription": 1,
+        "matched": 53588,
+        "recv_drop": 199,
+        "recv_drop_rate": 0.0037,
+        "backward": 0,
+        "duplicate": 0
+      },
+      "/image_left_raw": {
+        "csv_rows": 53528,
+        "pub_count": 53788,
+        "pub_duplicates": 0,
+        "pre_subscription": 1,
+        "matched": 53528,
+        "recv_drop": 259,
+        "recv_drop_rate": 0.004815,
+        "backward": 0,
+        "duplicate": 0
+      },
+      "/image_right_raw": {
+        "csv_rows": 53559,
+        "pub_count": 53788,
+        "pub_duplicates": 0,
+        "pre_subscription": 1,
+        "matched": 53559,
+        "recv_drop": 228,
+        "recv_drop_rate": 0.004239,
+        "backward": 0,
+        "duplicate": 0
+      }
+    },
+    "imu": {
+      "csv_rows": 362196,
+      "span_s": 1792.921,
+      "expected": 358585,
+      "recv_drop_rate": 0.0,
+      "backward": 0,
+      "duplicate": 0
+    },
+    "info_pair": {
+      "/image_left_raw/camera_info": {
+        "info_rows": 53763,
+        "matched": 53515,
+        "pair_rate": 0.995387,
+        "img_rows": 53528,
+        "extra_info": 248
+      },
+      "/image_right_raw/camera_info": {
+        "info_rows": 53762,
+        "matched": 53542,
+        "pair_rate": 0.995908,
+        "img_rows": 53559,
+        "extra_info": 220
+      }
+    },
+    "overall_recv_drop_rate": 0.004251
+  },
+  "recv_latency": {
+    "/image_combine_raw": {
+      "count": 53588,
+      "dds_ns": {
+        "count": 53588,
+        "min": 1708111.0,
+        "mean": 2138955.125,
+        "p50": 2060991.0,
+        "p95": 2613122.9,
+        "p99": 2952349.33,
+        "max": 48278394.0
+      },
+      "dds_checked": 53588,
+      "e2e_from_t0_ns": {
+        "count": 53588,
+        "min": 5299801.5,
+        "mean": 28758074.822,
+        "p50": 28721837.0,
+        "p95": 43633092.15,
+        "p99": 48047977.34,
+        "max": 79743827.5
+      },
+      "t0_source": "trig"
+    },
+    "/image_left_raw": {
+      "count": 53528,
+      "dds_ns": {
+        "count": 53528,
+        "min": 906598.0,
+        "mean": 1314161.254,
+        "p50": 1219978.0,
+        "p95": 1871431.65,
+        "p99": 2558795.16,
+        "max": 36136784.0
+      },
+      "dds_checked": 53528,
+      "e2e_from_t0_ns": {
+        "count": 53528,
+        "min": -5027825.5,
+        "mean": 14702589.858,
+        "p50": 14746381.5,
+        "p95": 28767762.1,
+        "p99": 32148075.05,
+        "max": 57128194.5
+      },
+      "t0_source": "trig"
+    },
+    "/image_right_raw": {
+      "count": 53559,
+      "dds_ns": {
+        "count": 53559,
+        "min": 912348.0,
+        "mean": 1490009.873,
+        "p50": 1280895.0,
+        "p95": 2559337.2,
+        "p99": 2883810.86,
+        "max": 37238134.0
+      },
+      "dds_checked": 53559,
+      "e2e_from_t0_ns": {
+        "count": 53559,
+        "min": -4920526.0,
+        "mean": 15413528.794,
+        "p50": 15420512.0,
+        "p95": 29436905.9,
+        "p99": 32340592.02,
+        "max": 59066767.0
+      },
+      "t0_source": "trig"
+    }
+  },
+  "pairing": [
+    {
+      "topic_a": "/image_combine_raw",
+      "topic_b": "/image_left_raw",
+      "count_a": 53588,
+      "count_b": 53528,
+      "paired": 53339,
+      "pair_rate": 0.9954,
+      "diff_p99_ns": 0.0,
+      "diff_max_ns": 0
+    },
+    {
+      "topic_a": "/image_combine_raw",
+      "topic_b": "/image_right_raw",
+      "count_a": 53588,
+      "count_b": 53559,
+      "paired": 9,
+      "pair_rate": 0.0002,
+      "diff_p99_ns": 983191.64,
+      "diff_max_ns": 984125
+    }
+  ],
+  "imu_nearest": {
+    "image_topic": "/image_combine_raw",
+    "imu_count": 362196,
+    "image_count": 53588,
+    "nearest_p50_ns": 1238231.0,
+    "nearest_p99_ns": 2451935.04,
+    "nearest_max_ns": 417785879
+  }
+}

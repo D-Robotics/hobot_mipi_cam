@@ -85,24 +85,35 @@ def main():
                          expected_topics=expected_topics,
                          thresholds=thresholds)
 
-    # 17-bandwidth：run 目录的 bw_<topic 安全名>.txt（run_bw.sh 产出）
+    # 17-bandwidth / 19-resources：run 目录附加文件（bw_*.txt / res_samples.csv）
     bw_dir = os.path.dirname(os.path.abspath(args.csv))
     bw_files = {}
+    res_text = None
     if os.path.isdir(bw_dir):
         for name in os.listdir(bw_dir):
-            if name.startswith("bw_") and name.endswith(".txt"):
-                safe = name[3:-4]              # _image_left_raw
-                if safe.startswith("_"):
-                    topic = safe.replace("_", "/", 1)   # /image_left_raw
-                    try:
+            try:
+                if name.startswith("bw_") and name.endswith(".txt"):
+                    safe = name[3:-4]              # _image_left_raw
+                    if safe.startswith("_"):
+                        topic = safe.replace("_", "/", 1)   # /image_left_raw
                         with open(os.path.join(bw_dir, name), encoding="utf-8",
                                   errors="replace") as f:
                             bw_files[topic] = f.read()
-                    except OSError:
-                        pass
-    if bw_files:
-        from metrics import set_bw_files
+                elif name == "res_samples.csv":
+                    with open(os.path.join(bw_dir, name), encoding="utf-8",
+                              errors="replace") as f:
+                        res_text = f.read()
+            except OSError:
+                pass
+
+    rerun = False
+    if bw_files or res_text is not None:
+        from metrics import _RES_CSV, set_bw_files
         set_bw_files(bw_files)
+        if res_text is not None:
+            _RES_CSV["res_samples.csv"] = res_text
+        rerun = True
+    if rerun:
         result = run_analyze(rows, eval_text,
                              image_domain=None if args.image_domain == "auto" else args.image_domain,
                              clock_offset_ns=offset,

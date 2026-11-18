@@ -349,10 +349,16 @@ def _exp_pairs_sorted(eval_events: List[Dict]):
     return sorted(pairs.items())
 
 
-def _lookup_exp(stamp_ns: int, pairs, tol_ns: int) -> Optional[int]:
-    """最近邻曝光匹配（容差 tol_ns）"""
+def _lookup_exp(stamp_ns: int, pairs, tol_ns: int, ts_list=None):
+    """最近邻曝光匹配（容差 tol_ns）。
+
+    ts_list 传入预构建的 [p[0] for p in pairs]（调用方一次构建复用）；
+    缺省时内部构建（兼容旧调用，热路径务必传入——30min 数据下
+    每次重建列表 = 数十亿次拷贝，是实测 8 分钟+ 的主因）。
+    """
     import bisect
-    ts_list = [p[0] for p in pairs]
+    if ts_list is None:
+        ts_list = [p[0] for p in pairs]
     i = bisect.bisect_left(ts_list, stamp_ns)
     best = None
     for j in (i - 1, i):
@@ -385,11 +391,12 @@ def latency_metrics(rows: List[RecRow], eval_events: List[Dict],
         stamp = r.stamp_ns if image_domain == "mono" else r.stamp_ns - clock_offset_ns
         by_topic[r.topic].append((stamp, r.recv_mono_ns))
     out = {}
+    exp_ts_list = [p[0] for p in exp_pairs]   # 预构建一次（热路径）
     for topic, pairs in by_topic.items():
         lat_mid, lat_ts = [], []
         for stamp, recv in pairs:
             lat = recv - stamp
-            exp_us = _lookup_exp(stamp, exp_pairs, tol_ns)
+            exp_us = _lookup_exp(stamp, exp_pairs, tol_ns, exp_ts_list)
             if exp_us is not None:
                 # sensor: t0 = 帧ts − exp/2；realtime: t0 = 帧ts + exp/2（方案 6.1）
                 half = exp_us * 1000 // 2
@@ -1616,6 +1623,8 @@ def recv_latency_metrics(rows: List[RecRow], eval_events: List[Dict]) -> Optiona
 # bw 文件内容缓存：analyze.py 读 run 目录的 bw_*.txt 后注入（模块级，
 # 与 thresholds 同模式；单进程 CLI 语义下安全）
 _BW_FILES: Dict[str, str] = {}
+# res_samples.csv 内容缓存（run_res.sh 产出，analyze.py 读入注入）
+_RES_CSV: Dict[str, str] = {}
 
 
 def set_bw_files(files: Optional[Dict[str, str]]) -> None:
@@ -1672,6 +1681,159 @@ def bandwidth_metrics(rows: List[RecRow], expected: Optional[Dict] = None,
         out["/imu_data"] = {"csv_rows": imu_n, "bytes_per_frame": 320,
                             "note": "0.32KB×实际频率"}
     return out
+
+
+def cam_imu_drift_metrics(rows: List[RecRow], eval_events: List[Dict],
+                          clock_offset_ns: int = 0,
+                          bucket_s: float = 60.0) -> Optional[Dict]:
+    """Camera-IMU 漂移（14-cam-imu-drift，D-03）。
+
+    nearest 偏差（带符号）按时序分桶求均值，线性拟合斜率（µs/min）；
+    相邻桶跳变 > 2×IMU 周期视为时钟跳变窗口（剔除后重拟合）。
+    30min 短漂；斜率显著性按 |slope|×span > 周期/4 判定可测。
+    """
+    imu_mono = sorted(r.stamp_ns - clock_offset_ns
+                      for r in rows if r.encoding == "imu")
+    groups = defaultdict(list)
+    for e in eval_events:
+        if e["event"] != "exposure":
+            continue
+        kv = e["kv"]
+        groups[(_i2(kv, "pipe"), str(kv.get("stream")))].append((e["ts_mono"], kv))
+    t0s = []
+    for key, items in groups.items():
+        offs = sorted(hw - mono for mono, kv in items
+                      for hw in [_i2(kv, "ts_hw_ns")] if hw and hw > 0)
+        if not offs:
+            continue
+        off = percentile(offs, 50)
+        trig = {ts: tg for _, kv in items
+                for ts, tg in [(_i2(kv, "ts_frame"), _i2(kv, "ts_trig_ns"))]
+                if ts is not None and tg is not None}
+        for ts, exp in _exposure_gate([kv for _, kv in items])["usable"]:
+            if ts in trig:
+                t0s.append((trig[ts] + exp * 1000 // 2 - off, ts))
+    if not imu_mono or not t0s:
+        return None
+    import bisect
+    # 打点时刻映射预建（ts_frame -> ts_mono），避免逐帧线性扫描（O(n²) 教训）
+    mono_by_ts = {}
+    for items in groups.values():
+        for mono, kv in items:
+            ts = _i2(kv, "ts_frame")
+            if ts is not None and ts not in mono_by_ts:
+                mono_by_ts[ts] = mono
+    t0s.sort()
+    t0 = t0s[0][0]
+    period_us = 1e6 / float(_TH["imu_nominal_hz"])
+
+    pts = []   # (相对秒, 带符号偏差 µs)
+    for tv, ts in t0s:
+        i = bisect.bisect_left(imu_mono, tv)
+        cands = [imu_mono[j] for j in (i - 1, i) if 0 <= j < len(imu_mono)]
+        if not cands:
+            continue
+        nearest = min(cands, key=lambda x: abs(x - tv))
+        mono = mono_by_ts.get(ts, t0)
+        pts.append(((mono - t0) / 1e9, (nearest - tv) / 1000.0))
+    if len(pts) < 10:
+        return None
+
+    # 分桶
+    nb = max(1, int((pts[-1][0] - pts[0][0]) / bucket_s) + 1)
+    buckets = [[] for _ in range(nb)]
+    for sec, du in pts:
+        buckets[min(nb - 1, int(sec / bucket_s))].append(du)
+    bstats = []
+    for i, vals in enumerate(buckets):
+        if vals:
+            bstats.append({"t_s": i * bucket_s, "n": len(vals),
+                           "mean_us": round(sum(vals) / len(vals), 1)})
+    # 线性拟合（全点）与跳变剔除
+    def _fit(points):
+        n = len(points)
+        sx = sum(p[0] for p in points); sy = sum(p[1] for p in points)
+        sxx = sum(p[0] * p[0] for p in points)
+        sxy = sum(p[0] * p[1] for p in points)
+        d = n * sxx - sx * sx
+        if d == 0:
+            return 0.0, 0.0
+        slope = (n * sxy - sx * sy) / d
+        return slope * 60.0, sy / n   # µs/min, 截距均值
+    slope_all, _ = _fit(pts)
+    jumps = []
+    for a, b in zip(bstats, bstats[1:]):
+        if abs(b["mean_us"] - a["mean_us"]) > 2 * period_us:
+            jumps.append({"after_s": b["t_s"],
+                          "delta_us": round(b["mean_us"] - a["mean_us"], 1)})
+    clean = pts
+    if jumps:
+        jt = {j["after_s"] for j in jumps}
+        clean = [(s, d) for s, d in pts
+                 if int(s / bucket_s) * bucket_s not in jt]
+    slope_clean, _ = _fit(clean)
+    span_min = (pts[-1][0] - pts[0][0]) / 60.0
+    return {
+        "points": len(pts),
+        "span_min": round(span_min, 2),
+        "bucket_s": bucket_s,
+        "buckets": bstats,
+        "slope_us_per_min": round(slope_clean, 4),
+        "slope_total_us": round(slope_clean * span_min, 1),
+        "jumps": jumps,
+        "detectable": abs(slope_clean * span_min) > period_us / 4,
+        "note": "斜率含两级域归一的剩余误差；跳变窗口已剔除" if jumps else "",
+    }
+
+
+
+def res_metrics(csv_text: str) -> Optional[Dict]:
+    """资源稳态（19-resources）：解析 res_samples.csv。
+
+    判定（门槛）：RSS 末段 vs 首段增长 ≤5%；fd 不增；CPU 均值记录；
+    温度记录。跳变检测防一次性台阶误判趋势。
+    """
+    import csv as _csv
+    import io as _io
+    rows = [r for r in _csv.reader(_io.StringIO(csv_text))
+            if r and not r[0].startswith("ts")]
+    if len(rows) < 10:
+        return None
+    t0 = int(rows[0][0])
+    pts = [(int(r[0]) - t0, int(r[2]), int(r[3]), int(r[4]), int(r[5]),
+            int(r[6]) if len(r) > 6 and r[6] else None) for r in rows]
+    span = pts[-1][0] or 1
+    # 稳态窗口：去头去尾各 2%——首点是建链瞬间、末点是退出收尾，
+    # 直接取端点会把“启动建 fd/退出释放 fd”误判为泄漏（19 轮实测教训）
+    trim = max(3, len(pts) // 50)
+    steady = pts[trim:len(pts) - trim] or pts
+    k = max(3, len(steady) // 20)   # 稳态首末 5%
+    rss_first = sum(p[3] for p in steady[:k]) / k
+    rss_last = sum(p[3] for p in steady[-k:]) / k
+    fd_first = steady[0][4]
+    fd_last = steady[-1][4]
+    rss_growth = (rss_last - rss_first) / rss_first if rss_first else 0
+    # CPU%：差分累计时间/差分墙钟
+    cpu = []
+    for a, b in zip(pts, pts[1:]):
+        dt = b[0] - a[0]
+        if dt > 0:
+            cpu.append((b[1] + b[2] - a[1] - a[2]) / dt * 100)
+    temps = [p[5] for p in pts if p[5] is not None]
+    return {
+        "samples": len(pts),
+        "steady_samples": len(steady),
+        "span_s": span,
+        "rss_first_kb": round(rss_first),
+        "rss_last_kb": round(rss_last),
+        "rss_growth": round(rss_growth, 4),
+        "rss_max_kb": max(p[3] for p in pts),
+        "fd_first": fd_first,
+        "fd_last": fd_last,
+        "fd_growth": fd_last - fd_first,
+        "cpu_pct": _summary([round(c * 1000) for c in cpu], 1000.0),
+        "thermal_c": {"min": min(temps), "max": max(temps)} if temps else None,
+    }
 
 
 def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = None,
@@ -1746,6 +1908,14 @@ def analyze(rows: List[RecRow], eval_text: str, image_domain: Optional[str] = No
     cam_imu = cam_imu_metrics(rows, events, clock_offset_ns)
     if cam_imu:
         result["cam_imu"] = cam_imu
+    drift = cam_imu_drift_metrics(rows, events, clock_offset_ns)
+    if drift:
+        result["cam_imu_drift"] = drift
+    res_csv = _RES_CSV.get("res_samples.csv")
+    if res_csv:
+        rm = res_metrics(res_csv)
+        if rm:
+            result["resources"] = rm
     recv = recv_metrics(rows, events, clock_offset_ns)
     if recv:
         result["recv"] = recv
