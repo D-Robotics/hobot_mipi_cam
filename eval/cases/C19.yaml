@@ -1,0 +1,45 @@
+# 8h 长稳：C06 满配，精简事件量（长稳关注帧率/丢帧/队列/资源）
+# 运行：run_stab8h.sh（OUTDIR 固定 /tmp，数据仅分析用不入仓库）
+id: C19
+name: dual-1088x1280-nv12-30-combine1-sub-8h
+run_label: dual-1088x1280-nv12-30fps-combine1-sub-8h
+stage: longrun-8h
+baseline: false
+
+launch: mipi_cam_eval_dual.launch.py
+params:
+  device_mode: dual
+  dual_combine: 1
+  sub_stream_enable: true
+  image_width: 1088
+  image_height: 1280
+  sub_image_width: 544
+  sub_image_height: 640
+  framerate: 30.0
+  sub_framerate: 15.0
+  out_format: nv12
+  io_method: ros
+  frame_ts_type: sensor
+  lpwm_enable: false
+  gdc_enable: true
+  rotation: 0.0
+  cal_rotation: 0.0
+  channel: 0
+  channel2: 2
+  imu_type: icm42688
+
+eval:
+  log_enable: true
+  # 长稳精简：frame_in 帧率细粒度 + 异常/水位；pub_out/exposure 等省略（8h 日志量减半）
+  log_events: [frame_in, frame_drop, queue_stat]
+  duration_s: 28800
+
+recorder:
+  # 不订 camera_info（长稳不需要配对校验，减 ~100MB CSV）
+  image_topics: [/image_left_raw, /image_right_raw, /image_combine_raw,
+                 /sub_image_left_raw, /sub_image_right_raw, /sub_image_combine_raw]
+  imu_topics: [/imu_data]
+  # recorder 的 info_topics 必填（空数组类型不匹配会启动失败），给最小一路
+  info_topics: [/sub_image_left_raw/camera_info]
+
+thresholds: {}
