@@ -75,6 +75,18 @@
 | 启停 8 次 | **8/8**，零进程/设备残留 |
 | **8h 长稳** | RESULT=OK：30.000fps 恒定、零取帧失败、零告警、RSS +2.13%（缓涨观察项）、IMU 丢样 0.27% 与短测一致；queue_recycle 9.4% 属缓冲周转非丢帧（前 2h 峰值后收敛） |
 
+### hbmem 通路（io_method=shared_mem，CH1/CH2/CH3）✅ 功能全通
+
+| 指标 | ros 通路 | hbmem 通路 |
+|---|---|---|
+| 采集帧率/几何 | 30.000 / 全对 | **30.000 / 全对**（含 combine 1088×2560——`HbmMsg1080P` data 上限 6.22MB，4.18MB 可发） |
+| 取帧返回→发布 | 4.2ms | **~11ms**（`borrow` 等 loan 归还——**零拷贝反压**：慢订阅者直接拖慢发布线程） |
+| DDS 段 | 1.2~2.1ms | 3.2~4.7ms |
+| 接收丢样 | 3~4% | 0.6~**7.7%**（随订阅端负载；loan 覆盖机制） |
+| camera_info | ~100% | ~100%（不走 hbmem，不受反压） |
+
+注：`ros2 topic bw` 对 hbmem 按定长 6.22MB 计，数值 ×2.97 虚高，带宽以元数据估算为准；bgr8 hbmem（8.36MB）预期超限未实测。
+
 ## 3. 问题清单（按优先级）
 
 | # | 级别 | 问题 | 证据 | 建议 |
@@ -130,5 +142,6 @@
 | 06 双目同步 | `reports/06-stereo-sync/` | 17+18 带宽/负载 | `reports/17-18-bandwidth-multisub/` |
 | 07 拼接 | `reports/07-combine/` | 19+20 资源/启停 | `reports/19-20-resources-startstop/` |
 | 08 设备延迟 | `reports/08-device-latency/` | 8h 长稳 | `reports/longrun-8h/` |
+| 09 suite 工具 | （并入 run_suite.py） | **hbmem 通路** | `reports/hbmem/` |
 
 （12 并入 10/11；09 并入 05/08/13）
