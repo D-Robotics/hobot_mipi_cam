@@ -1,0 +1,41 @@
+# hbmem 轮：shared_mem + lpwm（对应 C07，可信 t0 的延迟对比）
+id: CH2
+name: dual-1088x1280-nv12-30-combine1-hbmem-lpwm
+run_label: dual-1088x1280-nv12-30fps-combine1-hbmem-lpwm
+stage: hbmem
+baseline: false
+
+launch: mipi_cam_eval_dual.launch.py
+params:
+  device_mode: dual
+  dual_combine: 1
+  sub_stream_enable: false
+  image_width: 1088
+  image_height: 1280
+  sub_image_width: 544
+  sub_image_height: 640
+  framerate: 30.0
+  sub_framerate: 15.0
+  out_format: nv12
+  io_method: shared_mem
+  frame_ts_type: sensor
+  lpwm_enable: true
+  gdc_enable: true
+  rotation: 0.0
+  cal_rotation: 0.0
+  channel: 0
+  channel2: 2
+  imu_type: icm42688
+
+eval:
+  log_enable: true
+  log_events: [frame_in, pub_out, exposure, sync_pair, combine_out]
+  duration_s: 180
+
+recorder:
+  image_topics: []
+  imu_topics: []
+  hbmem_topics: [/hbmem_left_img, /hbmem_right_img, /hbmem_combine_img]
+  info_topics: [/hbmem_left_img/camera_info, /hbmem_right_img/camera_info]
+
+thresholds: {}

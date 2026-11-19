@@ -1102,6 +1102,33 @@ class TestBandwidth(unittest.TestCase):
         self.assertEqual(m["bytes_per_frame"], 30000)   # 100×100×3
 
 
+class TestHbmemMapping(unittest.TestCase):
+    def test_hbmem_topic_mapping(self):
+        from metrics import _latency_source
+        cases = {
+            "/hbmem_left_img": ("frame", (0, "main")),
+            "/hbmem_right_img": ("frame", (1, "main")),
+            "/hbmem_combine_img": ("combine", "main"),
+            "/sub_hbmem_left_img": ("frame", (0, "sub")),
+            "/sub_hbmem_combine_img": ("combine", "sub"),
+        }
+        for topic, expect in cases.items():
+            self.assertEqual(_latency_source(topic), expect, topic)
+        self.assertIsNone(_latency_source("/unknown_hbmem"))
+
+    def test_hbmem_seq_gaps(self):
+        from metrics import topic_metrics
+        csv = ["topic,seq,stamp_ns,recv_mono_ns,width,height,encoding"]
+        for i in range(10):
+            if i in (4, 7):
+                continue   # 两个 seq 缺口
+            s = MONO_BASE + i * 33 * MS
+            csv.append(f"/hbmem_left_img,{i},{s},{s},1088,1280,nv12")
+        rows, _ = parse_recorder_csv("\n".join(csv))
+        m = topic_metrics(rows)["/hbmem_left_img"]
+        self.assertEqual(m["seq_gaps"], 2)
+
+
 class TestSuiteReport(unittest.TestCase):
     def _run(self, result="OK", with_pair=False, with_res=True, unstable=False):
         metrics = {}

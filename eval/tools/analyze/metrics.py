@@ -1077,6 +1077,13 @@ _LATENCY_TOPIC_MAP = {
     "/sub_image_raw": ("frame", (0, "sub")),
     "/hbmem_img": ("frame", (0, "main")),
     "/sub_hbmem_img": ("frame", (0, "sub")),
+    # 双目 hbmem（io_method=shared_mem，HbmMsg1080P）
+    "/hbmem_left_img": ("frame", (0, "main")),
+    "/hbmem_right_img": ("frame", (1, "main")),
+    "/sub_hbmem_left_img": ("frame", (0, "sub")),
+    "/sub_hbmem_right_img": ("frame", (1, "sub")),
+    "/hbmem_combine_img": ("combine", "main"),
+    "/sub_hbmem_combine_img": ("combine", "sub"),
 }
 
 

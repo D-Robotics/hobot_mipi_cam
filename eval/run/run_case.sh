@@ -61,6 +61,7 @@ print(d.get('launch') or '')
 print(json.dumps(rec.get('image_topics') or []))
 print(json.dumps(rec.get('imu_topics') or []))
 print(json.dumps(rec.get('info_topics') or []))
+print(json.dumps(rec.get('hbmem_topics') or []))
 print('True' if ev.get('log_enable', True) else 'False')
 load = d.get('load') or {}
 print(load.get('cpu_affinity', ''))
@@ -89,10 +90,11 @@ EVAL_LAUNCH=${YV[3]:-}
 IMG_TOPICS=${YV[4]:-[]}
 IMU_TOPICS=${YV[5]:-[]}
 INFO_TOPICS=${YV[6]:-[]}
-EVAL_LOG_ENABLE=${YV[7]:-True}
-CPU_AFFINITY=${YV[8]:-}
-LOAD_CMD=${YV[9]:-}
-THRESHOLDS_JSON=${YV[10]:-}
+HBMEM_TOPICS=${YV[7]:-[]}
+EVAL_LOG_ENABLE=${YV[8]:-True}
+CPU_AFFINITY=${YV[9]:-}
+LOAD_CMD=${YV[10]:-}
+THRESHOLDS_JSON=${YV[11]:-}
 # bash 的 ${v:-{}} 会把第一个 } 当展开结束、多拼一个字面 }，故判空单独写
 [ -n "$THRESHOLDS_JSON" ] || THRESHOLDS_JSON='{}'
 
@@ -213,17 +215,21 @@ trap 'cleanup; exit 130' INT TERM
 export REC_CSV="$OUTDIR/recorder.csv"
 export REC_PIDFILE="$OUTDIR/recorder.pgid"
 export REC_DUR=$((DURATION + 20))
-export IMG_TOPICS IMU_TOPICS INFO_TOPICS
+export IMG_TOPICS IMU_TOPICS INFO_TOPICS HBMEM_TOPICS
 export EVAL_LOG_EVENTS
 
 setsid -w bash -c '
   echo $$ > "$REC_PIDFILE"
-  exec timeout --signal=INT --kill-after=10 "$REC_DUR" \
+  # 空 topic 列表不传参：rcl 对空数组的参数类型推断会崩（8h 轮踩坑），
+  # 省略 -p 让 recorder 用声明时的空默认值。
+  REC_ARGS=""
+  [ "$IMG_TOPICS" != "[]" ] && REC_ARGS="$REC_ARGS -p image_topics:=\"$IMG_TOPICS\""
+  [ "$IMU_TOPICS" != "[]" ] && REC_ARGS="$REC_ARGS -p imu_topics:=\"$IMU_TOPICS\""
+  [ "$INFO_TOPICS" != "[]" ] && REC_ARGS="$REC_ARGS -p info_topics:=\"$INFO_TOPICS\""
+  [ "$HBMEM_TOPICS" != "[]" ] && REC_ARGS="$REC_ARGS -p hbmem_topics:=\"$HBMEM_TOPICS\""
+  eval exec timeout --signal=INT --kill-after=10 "$REC_DUR" \
     ros2 run mipi_cam_eval recorder --ros-args \
-    -p csv_path:="$REC_CSV" \
-    -p image_topics:="$IMG_TOPICS" \
-    -p imu_topics:="$IMU_TOPICS" \
-    -p info_topics:="$INFO_TOPICS"
+    -p csv_path:="$REC_CSV" $REC_ARGS
 ' > "$OUTDIR/recorder.log" 2>&1 &
 REC_PID=$!
 

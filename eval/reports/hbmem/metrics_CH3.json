@@ -1,0 +1,474 @@
+{
+  "meta": {
+    "image_domain": "mono",
+    "clock_offset_ns": 946684805685699578,
+    "thresholds": {
+      "fps_ratio_min": 0.99,
+      "drop_rate_max": 0.005,
+      "resolution_match_min": 1.0,
+      "stability_interval_ratio": 3.0,
+      "pair_rate_min": 0.999,
+      "pair_diff_p99_ms": 1.0,
+      "exp_match_tol_ms": 50.0,
+      "exp_us_cap_s": 5.0,
+      "sync_missing_sustain_ms": 100.0,
+      "imu_nominal_hz": 200.0,
+      "imu_rate_ratio_min": 0.99,
+      "imu_interval_p99_ratio": 0.5,
+      "imu_backward_max": 0,
+      "imu_gyro_bias_max": 0.03,
+      "imu_accel_norm_min": 9.3,
+      "imu_accel_norm_max": 10.3,
+      "cam_imu_nearest_p99_ms": 10.0,
+      "cam_imu_cover_min": 0.95,
+      "recv_drop_max": 0.005,
+      "imu_recv_drop_max": 0.0001,
+      "info_pair_min": 1.0
+    },
+    "eval_events": 21107,
+    "eval_duplicate_lines": 0,
+    "eval_by_event": {
+      "frame_in": 10382,
+      "pub_out": 10379,
+      "queue_stat": 346
+    },
+    "csv_skipped_rows": 0,
+    "expected_source": "/home/dongyangliu/hobot_mipi_cam/eval/logs/CH3_dual-1088x1280-nv12-30fps-combine0-hbmem_20000102_082636/meta.txt",
+    "expected_topics": [
+      "/hbmem_left_img/camera_info",
+      "/hbmem_right_img/camera_info"
+    ]
+  },
+  "topics": {
+    "/hbmem_left_img/camera_info": {
+      "count": 5189,
+      "duration_s": 172.968,
+      "fps_mean": 29.994,
+      "recv_interval_ns": {
+        "count": 5189,
+        "mean": 33339999.75173477,
+        "p50": 32671833.0,
+        "p95": 41638480.0,
+        "p99": 42804022.21,
+        "max": 72353277,
+        "min": 9456318
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/hbmem_right_img/camera_info": {
+      "count": 5187,
+      "duration_s": 172.971,
+      "fps_mean": 29.982,
+      "recv_interval_ns": {
+        "count": 5187,
+        "mean": 33353359.96027767,
+        "p50": 33301926.5,
+        "p95": 37324261.0,
+        "p99": 39050917.599999994,
+        "max": 68305879,
+        "min": 9535777
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/hbmem_left_img": {
+      "count": 5139,
+      "duration_s": 172.933,
+      "fps_mean": 29.711,
+      "recv_interval_ns": {
+        "count": 5139,
+        "mean": 33657670.48462437,
+        "p50": 32618395.0,
+        "p95": 42962517.949999996,
+        "p99": 46922813.180000015,
+        "max": 106694866,
+        "min": 15869836
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0,
+      "seq_gaps": 49
+    },
+    "/hbmem_right_img": {
+      "count": 5158,
+      "duration_s": 172.899,
+      "fps_mean": 29.827,
+      "recv_interval_ns": {
+        "count": 5158,
+        "mean": 33527081.998836532,
+        "p50": 33319322.0,
+        "p95": 35793178.6,
+        "p99": 42382878.31999991,
+        "max": 100847689,
+        "min": 13891888
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0,
+      "seq_gaps": 30
+    }
+  },
+  "frame_in": {
+    "pipe0/main": {
+      "count": 5191,
+      "frame_id_step": 2,
+      "dropped_by_frame_id": 0,
+      "drop_rate": null,
+      "exp_valid_ratio": null,
+      "exp_us_mean": null
+    },
+    "pipe1/main": {
+      "count": 5191,
+      "frame_id_step": 2,
+      "dropped_by_frame_id": 0,
+      "drop_rate": null,
+      "exp_valid_ratio": null,
+      "exp_us_mean": null
+    }
+  },
+  "pub_out": {
+    "/hbmem_left_img": 5189,
+    "/hbmem_right_img": 5190
+  },
+  "latency": {
+    "/hbmem_left_img": {
+      "exp_midpoint": null,
+      "frame_ts": {
+        "count": 5139,
+        "mean_ms": 1447.682,
+        "p50_ms": 1447.844,
+        "p95_ms": 1453.182,
+        "p99_ms": 1455.11,
+        "max_ms": 1478.461
+      }
+    },
+    "/hbmem_right_img": {
+      "exp_midpoint": null,
+      "frame_ts": {
+        "count": 5158,
+        "mean_ms": 1450.41,
+        "p50_ms": 1450.577,
+        "p95_ms": 1453.361,
+        "p99_ms": 1454.851,
+        "max_ms": 1478.539
+      }
+    }
+  },
+  "frame_timing": {
+    "pipe0/main": {
+      "count": 5191,
+      "duration_s": 172.996,
+      "fps_mean": 30.001,
+      "interval_p50_ns": 33333000.0,
+      "interval_p95_ns": 33337417.0,
+      "interval_p99_ns": 33340084.0,
+      "interval_max_ns": 33387834,
+      "interval_min_ns": 30499626,
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "pipe1/main": {
+      "count": 5191,
+      "duration_s": 172.998,
+      "fps_mean": 30.0,
+      "interval_p50_ns": 33332917.0,
+      "interval_p95_ns": 33348500.55,
+      "interval_p99_ns": 33359259.24,
+      "interval_max_ns": 33810750,
+      "interval_min_ns": 32846292,
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    }
+  },
+  "drop": {
+    "streams": {
+      "pipe0/main": {
+        "frames_in": 5191,
+        "drops_total": 0,
+        "drop_rate": 0.0,
+        "drops_by_reason": {
+          "queue_recycle": 0,
+          "empty_null": 0,
+          "fq_full": 0,
+          "fq_expired": 0,
+          "getframe_fail": 0
+        },
+        "frame_id_gaps": 0,
+        "frame_id_step": 2,
+        "queue_meta": {
+          "depth": 0,
+          "queue_stat_seen": true
+        }
+      },
+      "pipe1/main": {
+        "frames_in": 5191,
+        "drops_total": 0,
+        "drop_rate": 0.0,
+        "drops_by_reason": {
+          "queue_recycle": 0,
+          "empty_null": 0,
+          "fq_full": 0,
+          "fq_expired": 0,
+          "getframe_fail": 0
+        },
+        "frame_id_gaps": 0,
+        "frame_id_step": 2,
+        "queue_meta": {
+          "depth": 0,
+          "queue_stat_seen": true
+        }
+      }
+    },
+    "task_drops": {},
+    "combine": {
+      "queue_recycle": 0,
+      "empty_null": 0,
+      "depth": 0
+    },
+    "queue_stat_events": 346,
+    "queue_counters_available": true
+  },
+  "resolution": {
+    "expected": {
+      "main": {
+        "width": 1088,
+        "height": 1280,
+        "encoding": "nv12"
+      },
+      "info": {
+        "width": 1088,
+        "height": 1280,
+        "encoding": "camera_info"
+      },
+      "framerate": 30.0
+    },
+    "device": {
+      "pipe0/main": {
+        "expected": "1088x1280",
+        "observed": {
+          "1088x1280": 5191
+        },
+        "mismatch": 0
+      },
+      "pipe1/main": {
+        "expected": "1088x1280",
+        "observed": {
+          "1088x1280": 5191
+        },
+        "mismatch": 0
+      }
+    },
+    "published": {
+      "/hbmem_left_img/camera_info": {
+        "expected": "1088x1280 camera_info",
+        "observed": {
+          "1088x1280 camera_info": 5189
+        },
+        "mismatch": 0
+      },
+      "/hbmem_right_img/camera_info": {
+        "expected": "1088x1280 camera_info",
+        "observed": {
+          "1088x1280 camera_info": 5187
+        },
+        "mismatch": 0
+      },
+      "/hbmem_left_img": {
+        "expected": "1088x1280 nv12",
+        "observed": {
+          "1088x1280 nv12": 5139
+        },
+        "mismatch": 0
+      },
+      "/hbmem_right_img": {
+        "expected": "1088x1280 nv12",
+        "observed": {
+          "1088x1280 nv12": 5158
+        },
+        "mismatch": 0
+      }
+    },
+    "device_mismatch": 0,
+    "published_mismatch": 0,
+    "missing_topics": [],
+    "device_covered": true,
+    "all_match": true,
+    "expected_available": true
+  },
+  "bandwidth": {
+    "/hbmem_left_img": {
+      "csv_rows": 5139,
+      "bytes_per_frame": 2088960,
+      "csv_bw_mb_s": 62.06,
+      "pub_bw_mb_s": 62.67
+    },
+    "/hbmem_right_img": {
+      "csv_rows": 5158,
+      "bytes_per_frame": 2088960,
+      "csv_bw_mb_s": 62.31,
+      "pub_bw_mb_s": 62.67
+    }
+  },
+  "device_latency": {
+    "/hbmem_left_img": {
+      "count": 5189,
+      "deq_checked": 5189,
+      "ready_checked": 5189,
+      "t0_checked": 0,
+      "t0_source": "none",
+      "unmapped": false,
+      "ready_duplicates": 0,
+      "t0_duplicates": 0,
+      "ready_to_get_ns": {
+        "count": 5189,
+        "min": 693386.0,
+        "mean": 6338204.724,
+        "p50": 6993362.0,
+        "p95": 10445624.8,
+        "p99": 10784251.96,
+        "max": 11252429.0
+      },
+      "publish_cost_ns": {
+        "count": 5189,
+        "min": 7607830.0,
+        "mean": 10304358.376,
+        "p50": 10405332.0,
+        "p95": 11935831.8,
+        "p99": 12646013.0,
+        "max": 16856269.0
+      },
+      "total_ns": {
+        "count": 5189,
+        "min": 8529177.0,
+        "mean": 16642563.1,
+        "p50": 17343985.0,
+        "p95": 22099335.6,
+        "p99": 22901176.04,
+        "max": 24945898.0
+      },
+      "pub_from_t0_ns": null,
+      "acq_from_t0_ns": null
+    },
+    "/hbmem_right_img": {
+      "count": 5190,
+      "deq_checked": 5190,
+      "ready_checked": 5190,
+      "t0_checked": 0,
+      "t0_source": "none",
+      "unmapped": false,
+      "ready_duplicates": 0,
+      "t0_duplicates": 0,
+      "ready_to_get_ns": {
+        "count": 5190,
+        "min": 617843.0,
+        "mean": 8327767.579,
+        "p50": 8630179.5,
+        "p95": 10596108.55,
+        "p99": 11190955.62,
+        "max": 12126068.0
+      },
+      "publish_cost_ns": {
+        "count": 5190,
+        "min": 7914751.0,
+        "mean": 10990509.499,
+        "p50": 11041905.5,
+        "p95": 12295402.25,
+        "p99": 12689752.61,
+        "max": 16932352.0
+      },
+      "total_ns": {
+        "count": 5190,
+        "min": 8978018.0,
+        "mean": 19318277.078,
+        "p50": 19617229.0,
+        "p95": 21162189.05,
+        "p99": 21884920.49,
+        "max": 23085992.0
+      },
+      "pub_from_t0_ns": null,
+      "acq_from_t0_ns": null
+    }
+  },
+  "recv": {
+    "topics": {
+      "/hbmem_left_img": {
+        "csv_rows": 5139,
+        "pub_count": 5189,
+        "pub_duplicates": 0,
+        "pre_subscription": 1,
+        "matched": 5139,
+        "recv_drop": 49,
+        "recv_drop_rate": 0.009445,
+        "backward": 0,
+        "duplicate": 0
+      },
+      "/hbmem_right_img": {
+        "csv_rows": 5158,
+        "pub_count": 5190,
+        "pub_duplicates": 0,
+        "pre_subscription": 2,
+        "matched": 5158,
+        "recv_drop": 30,
+        "recv_drop_rate": 0.005783,
+        "backward": 0,
+        "duplicate": 0
+      }
+    },
+    "info_pair": {
+      "/hbmem_left_img/camera_info": {
+        "info_rows": 5189,
+        "matched": 5139,
+        "pair_rate": 0.990364,
+        "img_rows": 5139,
+        "extra_info": 50
+      },
+      "/hbmem_right_img/camera_info": {
+        "info_rows": 5187,
+        "matched": 5156,
+        "pair_rate": 0.994024,
+        "img_rows": 5158,
+        "extra_info": 31
+      }
+    },
+    "overall_recv_drop_rate": 0.007614
+  },
+  "recv_latency": {
+    "/hbmem_left_img": {
+      "count": 5139,
+      "dds_ns": {
+        "count": 5139,
+        "min": 2731460.0,
+        "mean": 3803830.671,
+        "p50": 3571015.0,
+        "p95": 5052926.8,
+        "p99": 5588378.12,
+        "max": 34385089.0
+      },
+      "dds_checked": 5139
+    },
+    "/hbmem_right_img": {
+      "count": 5158,
+      "dds_ns": {
+        "count": 5158,
+        "min": 2741918.0,
+        "mean": 3450418.94,
+        "p50": 3198321.5,
+        "p95": 5021734.6,
+        "p99": 6370549.57,
+        "max": 33102235.0
+      },
+      "dds_checked": 5158
+    }
+  },
+  "pairing": [
+    {
+      "topic_a": "/hbmem_left_img",
+      "topic_b": "/hbmem_right_img",
+      "count_a": 5139,
+      "count_b": 5158,
+      "paired": 0,
+      "pair_rate": 0.0,
+      "diff_p99_ns": null,
+      "diff_max_ns": null
+    }
+  ]
+}

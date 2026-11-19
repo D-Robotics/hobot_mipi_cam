@@ -1,0 +1,860 @@
+{
+  "meta": {
+    "image_domain": "mono",
+    "clock_offset_ns": 946684805685699621,
+    "thresholds": {
+      "fps_ratio_min": 0.99,
+      "drop_rate_max": 0.005,
+      "resolution_match_min": 1.0,
+      "stability_interval_ratio": 3.0,
+      "pair_rate_min": 0.999,
+      "pair_diff_p99_ms": 1.0,
+      "exp_match_tol_ms": 50.0,
+      "exp_us_cap_s": 5.0,
+      "sync_missing_sustain_ms": 100.0,
+      "imu_nominal_hz": 200.0,
+      "imu_rate_ratio_min": 0.99,
+      "imu_interval_p99_ratio": 0.5,
+      "imu_backward_max": 0,
+      "imu_gyro_bias_max": 0.03,
+      "imu_accel_norm_min": 9.3,
+      "imu_accel_norm_max": 10.3,
+      "cam_imu_nearest_p99_ms": 10.0,
+      "cam_imu_cover_min": 0.95,
+      "recv_drop_max": 0.005,
+      "imu_recv_drop_max": 0.0001,
+      "info_pair_min": 1.0
+    },
+    "eval_events": 47058,
+    "eval_duplicate_lines": 0,
+    "eval_by_event": {
+      "combine_out": 5190,
+      "exposure": 10382,
+      "frame_in": 10382,
+      "pub_out": 15568,
+      "queue_stat": 346,
+      "sync_pair": 5190
+    },
+    "csv_skipped_rows": 0,
+    "expected_source": "/home/dongyangliu/hobot_mipi_cam/eval/logs/CH1_dual-1088x1280-nv12-30fps-combine1-hbmem_20000102_081945/meta.txt",
+    "expected_topics": [
+      "/hbmem_left_img/camera_info",
+      "/hbmem_right_img/camera_info",
+      "/hbmem_combine_img/left/camera_info",
+      "/hbmem_combine_img/right/camera_info"
+    ]
+  },
+  "topics": {
+    "/hbmem_left_img/camera_info": {
+      "count": 5187,
+      "duration_s": 172.97,
+      "fps_mean": 29.982,
+      "recv_interval_ns": {
+        "count": 5187,
+        "mean": 33353326.2148091,
+        "p50": 33516159.0,
+        "p95": 41368648.75,
+        "p99": 43534045.699999996,
+        "max": 72279943,
+        "min": 9578070
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/hbmem_right_img/camera_info": {
+      "count": 5174,
+      "duration_s": 172.953,
+      "fps_mean": 29.91,
+      "recv_interval_ns": {
+        "count": 5174,
+        "mean": 33433801.069785424,
+        "p50": 33749746.0,
+        "p95": 39792625.8,
+        "p99": 45381714.359999955,
+        "max": 71395512,
+        "min": 13849554
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/hbmem_combine_img/left/camera_info": {
+      "count": 5186,
+      "duration_s": 172.96,
+      "fps_mean": 29.978,
+      "recv_interval_ns": {
+        "count": 5186,
+        "mean": 33357760.487367406,
+        "p50": 33734121.0,
+        "p95": 41226564.60000001,
+        "p99": 47872215.47999998,
+        "max": 82882403,
+        "min": 10879215
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/hbmem_combine_img/right/camera_info": {
+      "count": 5185,
+      "duration_s": 172.961,
+      "fps_mean": 29.972,
+      "recv_interval_ns": {
+        "count": 5185,
+        "mean": 33364357.456983026,
+        "p50": 33742204.0,
+        "p95": 40985934.09999999,
+        "p99": 47636295.97,
+        "max": 82668191,
+        "min": 10898465
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "/hbmem_right_img": {
+      "count": 4824,
+      "duration_s": 172.892,
+      "fps_mean": 27.896,
+      "recv_interval_ns": {
+        "count": 4824,
+        "mean": 35847466.75824176,
+        "p50": 34152502.0,
+        "p95": 56840404.29999998,
+        "p99": 90609611.49999987,
+        "max": 164700497,
+        "min": 15385495
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0,
+      "seq_gaps": 364
+    },
+    "/hbmem_combine_img": {
+      "count": 4930,
+      "duration_s": 172.877,
+      "fps_mean": 28.512,
+      "recv_interval_ns": {
+        "count": 4930,
+        "mean": 35073454.5408805,
+        "p50": 33671120.0,
+        "p95": 49454279.99999921,
+        "p99": 71283185.24000001,
+        "max": 133802964,
+        "min": 14863195
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0,
+      "seq_gaps": 257
+    },
+    "/hbmem_left_img": {
+      "count": 4788,
+      "duration_s": 172.84,
+      "fps_mean": 27.696,
+      "recv_interval_ns": {
+        "count": 4788,
+        "mean": 36106171.71756841,
+        "p50": 33735829.0,
+        "p95": 65794081.099999994,
+        "p99": 78563854.76000004,
+        "max": 136216294,
+        "min": 15998797
+      },
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0,
+      "seq_gaps": 397
+    }
+  },
+  "frame_in": {
+    "pipe0/main": {
+      "count": 5191,
+      "frame_id_step": 2,
+      "dropped_by_frame_id": 2,
+      "drop_rate": null,
+      "exp_valid_ratio": null,
+      "exp_us_mean": null
+    },
+    "pipe1/main": {
+      "count": 5191,
+      "frame_id_step": 2,
+      "dropped_by_frame_id": 0,
+      "drop_rate": null,
+      "exp_valid_ratio": null,
+      "exp_us_mean": null
+    }
+  },
+  "pub_out": {
+    "/hbmem_left_img": 5189,
+    "/hbmem_right_img": 5190,
+    "/hbmem_combine_img": 5189
+  },
+  "latency": {
+    "/hbmem_right_img": {
+      "exp_midpoint": null,
+      "frame_ts": {
+        "count": 4824,
+        "mean_ms": 1446.248,
+        "p50_ms": 1446.586,
+        "p95_ms": 1453.624,
+        "p99_ms": 1455.635,
+        "max_ms": 1483.701
+      }
+    },
+    "/hbmem_combine_img": {
+      "exp_midpoint": null,
+      "frame_ts": {
+        "count": 4930,
+        "mean_ms": 1458.116,
+        "p50_ms": 1457.706,
+        "p95_ms": 1463.662,
+        "p99_ms": 1466.809,
+        "max_ms": 1490.84
+      }
+    },
+    "/hbmem_left_img": {
+      "exp_midpoint": null,
+      "frame_ts": {
+        "count": 4788,
+        "mean_ms": 1444.276,
+        "p50_ms": 1442.821,
+        "p95_ms": 1453.698,
+        "p99_ms": 1457.163,
+        "max_ms": 1481.488
+      }
+    }
+  },
+  "frame_timing": {
+    "pipe0/main": {
+      "count": 5191,
+      "duration_s": 173.029,
+      "fps_mean": 29.995,
+      "interval_p50_ns": 33333041.0,
+      "interval_p95_ns": 33340375.0,
+      "interval_p99_ns": 33348194.39,
+      "interval_max_ns": 66666833,
+      "interval_min_ns": 30494750,
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    },
+    "pipe1/main": {
+      "count": 5191,
+      "duration_s": 172.999,
+      "fps_mean": 30.0,
+      "interval_p50_ns": 33333041.5,
+      "interval_p95_ns": 33345314.1,
+      "interval_p99_ns": 33360212.76,
+      "interval_max_ns": 33504125,
+      "interval_min_ns": 33168042,
+      "stamp_monotonic_violations": 0,
+      "stamp_duplicates": 0
+    }
+  },
+  "drop": {
+    "streams": {
+      "pipe0/main": {
+        "frames_in": 5191,
+        "drops_total": 0,
+        "drop_rate": 0.0,
+        "drops_by_reason": {
+          "queue_recycle": 0,
+          "empty_null": 0,
+          "fq_full": 0,
+          "fq_expired": 0,
+          "getframe_fail": 0
+        },
+        "frame_id_gaps": 2,
+        "frame_id_step": 2,
+        "queue_meta": {
+          "depth": 0,
+          "queue_stat_seen": true
+        }
+      },
+      "pipe1/main": {
+        "frames_in": 5191,
+        "drops_total": 0,
+        "drop_rate": 0.0,
+        "drops_by_reason": {
+          "queue_recycle": 0,
+          "empty_null": 0,
+          "fq_full": 0,
+          "fq_expired": 0,
+          "getframe_fail": 0
+        },
+        "frame_id_gaps": 0,
+        "frame_id_step": 2,
+        "queue_meta": {
+          "depth": 0,
+          "queue_stat_seen": true
+        }
+      }
+    },
+    "task_drops": {},
+    "combine": {
+      "queue_recycle": 0,
+      "empty_null": 0,
+      "depth": 0
+    },
+    "queue_stat_events": 346,
+    "queue_counters_available": true
+  },
+  "resolution": {
+    "expected": {
+      "main": {
+        "width": 1088,
+        "height": 1280,
+        "encoding": "nv12"
+      },
+      "info": {
+        "width": 1088,
+        "height": 1280,
+        "encoding": "camera_info"
+      },
+      "framerate": 30.0,
+      "combine": {
+        "width": 1088,
+        "height": 2560,
+        "encoding": "nv12"
+      }
+    },
+    "device": {
+      "pipe0/main": {
+        "expected": "1088x1280",
+        "observed": {
+          "1088x1280": 5191
+        },
+        "mismatch": 0
+      },
+      "pipe1/main": {
+        "expected": "1088x1280",
+        "observed": {
+          "1088x1280": 5191
+        },
+        "mismatch": 0
+      }
+    },
+    "published": {
+      "/hbmem_left_img/camera_info": {
+        "expected": "1088x1280 camera_info",
+        "observed": {
+          "1088x1280 camera_info": 5187
+        },
+        "mismatch": 0
+      },
+      "/hbmem_right_img/camera_info": {
+        "expected": "1088x1280 camera_info",
+        "observed": {
+          "1088x1280 camera_info": 5174
+        },
+        "mismatch": 0
+      },
+      "/hbmem_combine_img/left/camera_info": {
+        "expected": "1088x1280 camera_info",
+        "observed": {
+          "1088x1280 camera_info": 5186
+        },
+        "mismatch": 0
+      },
+      "/hbmem_combine_img/right/camera_info": {
+        "expected": "1088x1280 camera_info",
+        "observed": {
+          "1088x1280 camera_info": 5185
+        },
+        "mismatch": 0
+      },
+      "/hbmem_right_img": {
+        "expected": "1088x1280 nv12",
+        "observed": {
+          "1088x1280 nv12": 4824
+        },
+        "mismatch": 0
+      },
+      "/hbmem_combine_img": {
+        "expected": "1088x2560 nv12",
+        "observed": {
+          "1088x2560 nv12": 4930
+        },
+        "mismatch": 0
+      },
+      "/hbmem_left_img": {
+        "expected": "1088x1280 nv12",
+        "observed": {
+          "1088x1280 nv12": 4788
+        },
+        "mismatch": 0
+      }
+    },
+    "device_mismatch": 0,
+    "published_mismatch": 0,
+    "missing_topics": [],
+    "device_covered": true,
+    "all_match": true,
+    "expected_available": true
+  },
+  "exposure": {
+    "total": 10382,
+    "pipes": {
+      "0/main": {
+        "count": 5191,
+        "trig_valid": 5191,
+        "trig_valid_ratio": 1.0,
+        "trig_usable": 0,
+        "trig_usable_ratio": 0.0,
+        "trig_stale": true,
+        "exp_cap_us": 1000000,
+        "stamp_src": {
+          "sensor": 5191
+        },
+        "exp_us": {
+          "count": 5191,
+          "min": 61073762431.0,
+          "mean": 61160261760.686,
+          "p50": 61160261773.0,
+          "p95": 61238111079.5,
+          "p99": 61245031014.3,
+          "max": 61246794332.0
+        },
+        "exp_negative": 0,
+        "exp_zero": 0,
+        "exp_over_1s": 5191,
+        "frame_domain": "mono",
+        "sys_raw_domain": "realtime",
+        "hw_minus_frame_ms": {
+          "count": 5191,
+          "min": 6106.724,
+          "mean": 6109.558,
+          "p50": 6109.559,
+          "p95": 6109.563,
+          "p99": 6109.564,
+          "max": 6109.564
+        },
+        "sys_raw_minus_frame_ms": {
+          "count": 5191,
+          "min": 946684807080.345,
+          "mean": 946684807081.723,
+          "p50": 946684807081.723,
+          "p95": 946684807082.962,
+          "p99": 946684807083.073,
+          "max": 946684807083.101
+        },
+        "hw_minus_event_mono_ms": {
+          "count": 5191,
+          "min": 4686.078,
+          "mean": 4688.965,
+          "p50": 4688.96,
+          "p95": 4690.337,
+          "p99": 4690.633,
+          "max": 4690.988
+        },
+        "realtime_adjust": {
+          "checked": 0,
+          "mismatch": 0
+        },
+        "t0_basis": {
+          "frame_ts_sensor": 5191
+        },
+        "t0_mixed": false,
+        "t0_interval_ms": {
+          "count": 5190,
+          "min": 30.495,
+          "mean": 33.339,
+          "p50": 33.333,
+          "p95": 33.34,
+          "p99": 33.348,
+          "max": 66.667
+        },
+        "t0_backwards": 0
+      },
+      "1/main": {
+        "count": 5191,
+        "trig_valid": 5191,
+        "trig_valid_ratio": 1.0,
+        "trig_usable": 0,
+        "trig_usable_ratio": 0.0,
+        "trig_stale": true,
+        "exp_cap_us": 1000000,
+        "stamp_src": {
+          "sensor": 5191
+        },
+        "exp_us": {
+          "count": 5191,
+          "min": 61073765394.0,
+          "mean": 61160264717.615,
+          "p50": 61160264736.0,
+          "p95": 61238114042.5,
+          "p99": 61245033978.3,
+          "max": 61246763962.0
+        },
+        "exp_negative": 0,
+        "exp_zero": 0,
+        "exp_over_1s": 5191,
+        "frame_domain": "mono",
+        "sys_raw_domain": "realtime",
+        "hw_minus_frame_ms": {
+          "count": 5191,
+          "min": 6109.387,
+          "mean": 6109.555,
+          "p50": 6109.557,
+          "p95": 6109.561,
+          "p99": 6109.562,
+          "max": 6109.564
+        },
+        "sys_raw_minus_frame_ms": {
+          "count": 5191,
+          "min": 946684807080.345,
+          "mean": 946684807081.723,
+          "p50": 946684807081.723,
+          "p95": 946684807082.963,
+          "p99": 946684807083.073,
+          "max": 946684807083.102
+        },
+        "hw_minus_event_mono_ms": {
+          "count": 5191,
+          "min": 4685.314,
+          "mean": 4688.413,
+          "p50": 4688.418,
+          "p95": 4689.837,
+          "p99": 4690.171,
+          "max": 4690.528
+        },
+        "realtime_adjust": {
+          "checked": 0,
+          "mismatch": 0
+        },
+        "t0_basis": {
+          "frame_ts_sensor": 5191
+        },
+        "t0_mixed": false,
+        "t0_interval_ms": {
+          "count": 5190,
+          "min": 33.168,
+          "mean": 33.333,
+          "p50": 33.333,
+          "p95": 33.345,
+          "p99": 33.36,
+          "max": 33.504
+        },
+        "t0_backwards": 0
+      }
+    }
+  },
+  "sync_pair": {
+    "main": {
+      "pairs": 5190,
+      "expected": 5191,
+      "pair_rate": 0.999807,
+      "diff_p50_ns": 2966041.0,
+      "diff_p95_ns": 2979458.0,
+      "diff_p99_ns": 2993093.02,
+      "diff_max_ns": 3129500,
+      "diff_mean_ns": 2966756.642,
+      "frame_id_mismatch": 0,
+      "frame_id_delta": {
+        "0": 5190
+      },
+      "tol_ns": 16666666,
+      "fails": {},
+      "fail_missing": {},
+      "missing_idle": 0,
+      "missing_asym": 0,
+      "pair_interval_p50_ns": 33167528.0,
+      "pair_interval_max_ns": 43395149
+    }
+  },
+  "bandwidth": {
+    "/hbmem_combine_img": {
+      "csv_rows": 4930,
+      "bytes_per_frame": 4177920,
+      "csv_bw_mb_s": 119.12,
+      "pub_bw_mb_s": 125.34
+    },
+    "/hbmem_left_img": {
+      "csv_rows": 4788,
+      "bytes_per_frame": 2088960,
+      "csv_bw_mb_s": 57.86,
+      "pub_bw_mb_s": 62.67
+    },
+    "/hbmem_right_img": {
+      "csv_rows": 4824,
+      "bytes_per_frame": 2088960,
+      "csv_bw_mb_s": 58.27,
+      "pub_bw_mb_s": 62.67
+    }
+  },
+  "combine": {
+    "main": {
+      "count": 5190,
+      "ts_source": {
+        "left": 5190,
+        "right": 0,
+        "other": 0
+      },
+      "ts_right_minus_left_ns": {
+        "count": 5190,
+        "min": 123917.0,
+        "mean": 2966756.642,
+        "p50": 2966041.0,
+        "p95": 2979458.0,
+        "p99": 2993093.02,
+        "max": 3129500.0
+      },
+      "frame_id_match_left": 5190,
+      "frame_id_match_right": 5190,
+      "width_mismatch": 0,
+      "height_mismatch": 0,
+      "expected_width": 1088,
+      "expected_height": 2560,
+      "order": {
+        "0,1": 5190
+      },
+      "extra_latency_ns": null,
+      "extra_latency_checked": 0,
+      "extra_latency_coverage": 0.0,
+      "extra_recv_ns": null,
+      "extra_recv_checked": 0,
+      "extra_recv_coverage": 0.0,
+      "pub_duplicates": 0,
+      "recv_duplicates": 0
+    }
+  },
+  "device_latency": {
+    "/hbmem_left_img": {
+      "count": 5189,
+      "deq_checked": 5189,
+      "ready_checked": 5189,
+      "t0_checked": 0,
+      "t0_source": "none",
+      "unmapped": false,
+      "ready_duplicates": 0,
+      "t0_duplicates": 0,
+      "t0_offset_p50_ns": 4688960126.0,
+      "t0_offset_p1_ns": 4687146983.9,
+      "t0_offset_p99_ns": 4690633144.0,
+      "ready_to_get_ns": {
+        "count": 5189,
+        "min": 1229436.0,
+        "mean": 6282608.644,
+        "p50": 5597798.0,
+        "p95": 11772104.6,
+        "p99": 12670962.08,
+        "max": 13630342.0
+      },
+      "publish_cost_ns": {
+        "count": 5189,
+        "min": 7806333.0,
+        "mean": 11806732.951,
+        "p50": 11736479.0,
+        "p95": 14891412.0,
+        "p99": 16922284.12,
+        "max": 20485952.0
+      },
+      "total_ns": {
+        "count": 5189,
+        "min": 9428650.0,
+        "mean": 18089341.595,
+        "p50": 17435945.0,
+        "p95": 25101441.4,
+        "p99": 27800636.12,
+        "max": 32596352.0
+      },
+      "pub_from_t0_ns": null,
+      "acq_from_t0_ns": null
+    },
+    "/hbmem_right_img": {
+      "count": 5190,
+      "deq_checked": 5190,
+      "ready_checked": 5190,
+      "t0_checked": 0,
+      "t0_source": "none",
+      "unmapped": false,
+      "ready_duplicates": 0,
+      "t0_duplicates": 0,
+      "t0_offset_p50_ns": 4688418389.0,
+      "t0_offset_p1_ns": 4686426403.4,
+      "t0_offset_p99_ns": 4690170530.2,
+      "ready_to_get_ns": {
+        "count": 5190,
+        "min": 1078225.0,
+        "mean": 7424799.344,
+        "p50": 7875667.0,
+        "p95": 11959294.65,
+        "p99": 12511235.24,
+        "max": 13387879.0
+      },
+      "publish_cost_ns": {
+        "count": 5190,
+        "min": 7757457.0,
+        "mean": 11768201.253,
+        "p50": 11736645.0,
+        "p95": 14362357.95,
+        "p99": 15986653.0,
+        "max": 21489259.0
+      },
+      "total_ns": {
+        "count": 5190,
+        "min": 9399650.0,
+        "mean": 19193000.597,
+        "p50": 19714564.0,
+        "p95": 24475587.4,
+        "p99": 26440714.49,
+        "max": 30612321.0
+      },
+      "pub_from_t0_ns": null,
+      "acq_from_t0_ns": null
+    },
+    "/hbmem_combine_img": {
+      "count": 5189,
+      "deq_checked": 5189,
+      "ready_checked": 5189,
+      "t0_checked": 0,
+      "t0_source": "none",
+      "unmapped": false,
+      "ready_duplicates": 0,
+      "t0_duplicates": 0,
+      "t0_offset_p50_ns": 4688960126.0,
+      "t0_offset_p1_ns": 4687146983.9,
+      "t0_offset_p99_ns": 4690633144.0,
+      "ready_to_get_ns": {
+        "count": 5189,
+        "min": 2560790.0,
+        "mean": 9698084.746,
+        "p50": 9702029.0,
+        "p95": 14523565.0,
+        "p99": 15439322.92,
+        "max": 16645349.0
+      },
+      "publish_cost_ns": {
+        "count": 5189,
+        "min": 7656039.0,
+        "mean": 11513679.626,
+        "p50": 11199387.0,
+        "p95": 15016080.8,
+        "p99": 16373654.0,
+        "max": 20521244.0
+      },
+      "total_ns": {
+        "count": 5189,
+        "min": 12928372.0,
+        "mean": 21211764.373,
+        "p50": 21012252.0,
+        "p95": 26074556.6,
+        "p99": 27739645.04,
+        "max": 31348874.0
+      },
+      "pub_from_t0_ns": null,
+      "acq_from_t0_ns": null
+    }
+  },
+  "recv": {
+    "topics": {
+      "/hbmem_combine_img": {
+        "csv_rows": 4930,
+        "pub_count": 5189,
+        "pub_duplicates": 0,
+        "pre_subscription": 2,
+        "matched": 4930,
+        "recv_drop": 257,
+        "recv_drop_rate": 0.049547,
+        "backward": 0,
+        "duplicate": 0
+      },
+      "/hbmem_left_img": {
+        "csv_rows": 4788,
+        "pub_count": 5189,
+        "pub_duplicates": 0,
+        "pre_subscription": 4,
+        "matched": 4788,
+        "recv_drop": 397,
+        "recv_drop_rate": 0.076567,
+        "backward": 0,
+        "duplicate": 0
+      },
+      "/hbmem_right_img": {
+        "csv_rows": 4824,
+        "pub_count": 5190,
+        "pub_duplicates": 0,
+        "pre_subscription": 2,
+        "matched": 4824,
+        "recv_drop": 364,
+        "recv_drop_rate": 0.070162,
+        "backward": 0,
+        "duplicate": 0
+      }
+    },
+    "info_pair": {
+      "/hbmem_left_img/camera_info": {
+        "info_rows": 5187,
+        "matched": 4786,
+        "pair_rate": 0.922691,
+        "img_rows": 4788,
+        "extra_info": 401
+      },
+      "/hbmem_right_img/camera_info": {
+        "info_rows": 5174,
+        "matched": 4808,
+        "pair_rate": 0.929262,
+        "img_rows": 4824,
+        "extra_info": 366
+      }
+    },
+    "overall_recv_drop_rate": 0.065424
+  },
+  "recv_latency": {
+    "/hbmem_combine_img": {
+      "count": 4930,
+      "dds_ns": {
+        "count": 4930,
+        "min": 2777169.0,
+        "mean": 4167146.324,
+        "p50": 3935500.5,
+        "p95": 6385369.6,
+        "p99": 8641087.07,
+        "max": 38662491.0
+      },
+      "dds_checked": 4930
+    },
+    "/hbmem_left_img": {
+      "count": 4788,
+      "dds_ns": {
+        "count": 4788,
+        "min": 2846504.0,
+        "mean": 4536901.701,
+        "p50": 4242359.0,
+        "p95": 6716586.5,
+        "p99": 8664335.8,
+        "max": 37020297.0
+      },
+      "dds_checked": 4788
+    },
+    "/hbmem_right_img": {
+      "count": 4824,
+      "dds_ns": {
+        "count": 4824,
+        "min": 2724918.0,
+        "mean": 5025318.15,
+        "p50": 4728555.0,
+        "p95": 8320126.65,
+        "p99": 10114664.75,
+        "max": 39640256.0
+      },
+      "dds_checked": 4824
+    }
+  },
+  "pairing": [
+    {
+      "topic_a": "/hbmem_combine_img",
+      "topic_b": "/hbmem_left_img",
+      "count_a": 4930,
+      "count_b": 4788,
+      "paired": 4561,
+      "pair_rate": 0.9252,
+      "diff_p99_ns": 0.0,
+      "diff_max_ns": 0
+    },
+    {
+      "topic_a": "/hbmem_combine_img",
+      "topic_b": "/hbmem_right_img",
+      "count_a": 4930,
+      "count_b": 4824,
+      "paired": 0,
+      "pair_rate": 0.0,
+      "diff_p99_ns": null,
+      "diff_max_ns": null
+    }
+  ]
+}
