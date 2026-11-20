@@ -112,6 +112,33 @@ def generate_launch_description():
             default_value='False',
             description='mipi sub stream enable'),
         DeclareLaunchArgument(
+            'fault_inject',
+            default_value='',
+            description='fault injection list for downstream testing, comma separated: '
+                        'IMU_STALLED, IMU_STALE_OR_FUTURE_TIMESTAMP, '
+                        'IMU_TIMESTAMP_NOT_INCREASING, IMAGE_STALLED, '
+                        'IMAGE_STALE_OR_FUTURE_TIMESTAMP'),
+        DeclareLaunchArgument(
+            'fault_ts_drift_mode',
+            default_value='stale',
+            description='timestamp drift direction for *TS* faults: stale(-250ms) or future(+150ms)'),
+        DeclareLaunchArgument(
+            'fault_imu_stall_period_s',
+            default_value='10.0',
+            description='imu stall period in seconds, 0 = inject once'),
+        DeclareLaunchArgument(
+            'fault_imu_stall_duration_ms',
+            default_value='1000',
+            description='imu stall duration in ms, 0 = permanent silence'),
+        DeclareLaunchArgument(
+            'fault_image_stall_period_s',
+            default_value='10.0',
+            description='image stall period in seconds, 0 = inject once'),
+        DeclareLaunchArgument(
+            'fault_image_stall_duration_ms',
+            default_value='1000',
+            description='image stall duration in ms, 0 = permanent silence'),
+        DeclareLaunchArgument(
             'log_level',
             default_value='warn',
             description='log level'),
@@ -149,6 +176,12 @@ def generate_launch_description():
                 {"link_port": LaunchConfiguration('mipi_link_port')},
                 {"cal_alpha": LaunchConfiguration('mipi_cal_alpha')},
                 {"sub_stream_enable": LaunchConfiguration('mipi_sub_stream_enable')},
+                {"fault_inject": LaunchConfiguration('fault_inject')},
+                {"fault_ts_drift_mode": LaunchConfiguration('fault_ts_drift_mode')},
+                {"fault_imu_stall_period_s": LaunchConfiguration('fault_imu_stall_period_s')},
+                {"fault_imu_stall_duration_ms": LaunchConfiguration('fault_imu_stall_duration_ms')},
+                {"fault_image_stall_period_s": LaunchConfiguration('fault_image_stall_period_s')},
+                {"fault_image_stall_duration_ms": LaunchConfiguration('fault_image_stall_duration_ms')},
             ],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         )

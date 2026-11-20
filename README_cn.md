@@ -210,6 +210,14 @@ PC打开浏览器（chrome/firefox/edge）输入<http://IP:8000>（IP为RDK IP�
 | channel                      | 0（默认）                                        | mipi的camera接口,范围0~3                          |
 | channel2                      | 2（默认）                                        | mipi的camera接口,范围0~3,双目时的右目接口          |
 | gdc_bin_file                   | 无（默认）                                      | 相机GDC文件的路径                                 |
+| fault_inject                   | 无（默认）                                      | 异常模拟列表（逗号分隔），用于下游节点异常检测测试：IMU_STALLED / IMU_STALE_OR_FUTURE_TIMESTAMP / IMU_TIMESTAMP_NOT_INCREASING / IMAGE_STALLED / IMAGE_STALE_OR_FUTURE_TIMESTAMP；非法值节点拒绝启动；仅在发布层注入，不影响底层采集 |
+| fault_ts_drift_mode            | stale（默认）<br />future                       | 时间戳类异常的偏移方向：stale=-250ms（落后超阈值200ms），future=+150ms（超前超阈值100ms） |
+| fault_imu_stall_period_s       | 10.0（默认）                                    | IMU 停顿注入周期（秒），0=只注入一次；以首条 IMU 发布为基准，先正常后停顿 |
+| fault_imu_stall_duration_ms    | 1000（默认）                                    | IMU 停顿时长（毫秒），0=永久静默 |
+| fault_image_stall_period_s     | 10.0（默认）                                    | 图像停顿注入周期（秒），0=只注入一次 |
+| fault_image_stall_duration_ms  | 1000（默认）                                    | 图像停顿时长（毫秒），0=永久静默 |
+
+异常模拟开启时发布状态话题 `/mipi_cam_fault_status`（std_msgs/msg/String）：当前激活异常字段集合变化时发布，内容为逗号分隔列表（空串=全部恢复），可作为测试的 ground truth。测试入口：`ros2 launch mipi_cam mipi_cam_fault_inject.launch.py fault_inject:="IMU_STALLED"`。
 
 
 # 常见问题

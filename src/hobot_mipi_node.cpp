@@ -142,6 +142,67 @@ MipiCamNode::MipiCamNode(const rclcpp::NodeOptions& node_options)
   nodePare_->sync_ae_ = this->declare_parameter<bool>("sync_ae", false);
   nodePare_->print_isp_log_ = this->declare_parameter<bool>("print_isp_log", false);
 
+  // ---- 异常模拟控制（fault injection，用于下游节点的异常检测测试）----
+  // 仅在发布层注入（update/hbmemUpdate/read_imu_data 发布前），采集线程、
+  // 帧队列、hbn vflow、src/x5、src/imu 均零改动，底层照常产数据。
+  // 非法字段名/非法drift模式 → 拒绝启动（测试配置错误早失败，避免"以为
+  // 开了注入其实没开"的测试白跑）。
+  std::string fault_inject_list = "";
+  std::string fault_ts_drift_mode = "stale";
+  double fault_imu_stall_period_s = 10.0;
+  int fault_imu_stall_duration_ms = 1000;
+  double fault_image_stall_period_s = 10.0;
+  int fault_image_stall_duration_ms = 1000;
+  this->declare_parameter<std::string>("fault_inject", fault_inject_list);
+  this->declare_parameter<std::string>("fault_ts_drift_mode", fault_ts_drift_mode);
+  this->declare_parameter<double>("fault_imu_stall_period_s", fault_imu_stall_period_s);
+  this->declare_parameter<int>("fault_imu_stall_duration_ms", fault_imu_stall_duration_ms);
+  this->declare_parameter<double>("fault_image_stall_period_s", fault_image_stall_period_s);
+  this->declare_parameter<int>("fault_image_stall_duration_ms", fault_image_stall_duration_ms);
+  this->get_parameter<std::string>("fault_inject", fault_inject_list);
+  this->get_parameter<std::string>("fault_ts_drift_mode", fault_ts_drift_mode);
+  this->get_parameter<double>("fault_imu_stall_period_s", fault_imu_stall_period_s);
+  this->get_parameter<int>("fault_imu_stall_duration_ms", fault_imu_stall_duration_ms);
+  this->get_parameter<double>("fault_image_stall_period_s", fault_image_stall_period_s);
+  this->get_parameter<int>("fault_image_stall_duration_ms", fault_image_stall_duration_ms);
+  if (!fault_inject_list.empty()) {
+    FaultInjector::Config fault_cfg;
+    std::string fault_err;
+    if (!FaultInjector::parseFaultList(fault_inject_list, fault_cfg, fault_err)) {
+      RCLCPP_ERROR(rclcpp::get_logger("mipi_node"),
+                   "invalid fault_inject param, refuse to start: %s",
+                   fault_err.c_str());
+      rclcpp::shutdown();
+      return;
+    }
+    if (fault_ts_drift_mode == "stale") {
+      // 实时模式下落后>200ms 触发下游判定：注入 250ms（阈值+50ms余量）
+      fault_cfg.ts_drift_ns = -250LL * 1000000LL;
+    } else if (fault_ts_drift_mode == "future") {
+      // 实时模式下超前>100ms 触发下游判定：注入 150ms（阈值+50ms余量）
+      fault_cfg.ts_drift_ns = 150LL * 1000000LL;
+    } else {
+      RCLCPP_ERROR(rclcpp::get_logger("mipi_node"),
+                   "invalid fault_ts_drift_mode '%s' (must be stale or future), "
+                   "refuse to start", fault_ts_drift_mode.c_str());
+      rclcpp::shutdown();
+      return;
+    }
+    fault_cfg.imu_stall_period_s = fault_imu_stall_period_s;
+    fault_cfg.imu_stall_duration_ms = fault_imu_stall_duration_ms;
+    fault_cfg.image_stall_period_s = fault_image_stall_period_s;
+    fault_cfg.image_stall_duration_ms = fault_image_stall_duration_ms;
+    fault_injector_ = std::make_shared<FaultInjector>(fault_cfg);
+    RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+                "[fault-inject] ENABLED list:[%s] drift_mode:%s(%lldms) "
+                "imu_stall:P=%.1fs/D=%dms image_stall:P=%.1fs/D=%dms "
+                "(publish-layer only, underlying pipeline untouched)",
+                fault_inject_list.c_str(), fault_ts_drift_mode.c_str(),
+                static_cast<long long>(fault_cfg.ts_drift_ns / 1000000LL),
+                fault_cfg.imu_stall_period_s, fault_cfg.imu_stall_duration_ms,
+                fault_cfg.image_stall_period_s, fault_cfg.image_stall_duration_ms);
+  }
+
   RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
               "\n node params:" \
     "\n config_path: %s" \
@@ -440,6 +501,13 @@ void MipiCamNode::init() {
     return;
   }
 
+  // 异常模拟状态话题：激活字段集合变化时发布（测试框架据此对齐注入窗口
+  // 边界，作为检测器报警/恢复时延验证的 ground truth）
+  if (fault_injector_) {
+    pub_fault_status_ = this->create_publisher<std_msgs::msg::String>(
+        "/mipi_cam_fault_status", 10);
+  }
+
   // start the camera
 
   if (0 != mipiCam_ptr_->start()) {
@@ -502,12 +570,94 @@ void MipiCamNode::init_publisher(std::shared_ptr<Publisher_info> Pub_info, std::
   Pub_info->frame_id = frame_id;
   Pub_info->topic_type = topic_type;
   Pub_info->time_start_ = std::chrono::system_clock::now();
+  setPubRateLimit(Pub_info.get(), topic_type, topic);
 }
 
 void MipiCamNode::init_publisher_hbmem(std::shared_ptr<Publisher_hbmem_info>  Pub_info, std::string topic, std::string topic_type){
   Pub_info->publisher_hbmem_ = this->create_publisher<hbm_img_msgs::msg::HbmMsg1080P>(topic, rclcpp::SensorDataQoS());
   Pub_info->topic_type = topic_type;
   Pub_info->time_start_ = std::chrono::system_clock::now();
+  setPubRateLimit(Pub_info.get(), topic_type, topic);
+}
+
+// 主/辅码流发布帧率设置：底层VIN以max(fps, sub_fps)统一出帧，
+// 主码流topic(single/left/right/combine)按framerate发布，
+// 辅码流topic(sub_*)按sub_framerate发布
+void MipiCamNode::setPubRateLimit(Publisher_info_base *pub_info,
+                                  const std::string &topic_type,
+                                  const std::string &topic) {
+  const bool is_sub_stream = topic_type.rfind("sub_", 0) == 0;
+  const int target_fps =
+      is_sub_stream ? nodePare_->sub_framerate_ : nodePare_->framerate_;
+  if (target_fps > 0) {
+    pub_info->target_fps_ = target_fps;
+    pub_info->pub_interval_ns_ =
+        static_cast<int64_t>(1000000000.0 / target_fps);
+    pub_info->next_pub_ts_ns_ = 0;
+    pub_info->last_pub_ts_ns_ = 0;
+  }
+  RCLCPP_INFO(rclcpp::get_logger("mipi_node"),
+              "publisher topic:%s, type:%s, pub rate limit:%d fps%s",
+              topic.c_str(), topic_type.c_str(), pub_info->target_fps_,
+              (pub_info->target_fps_ > 0 ? "" : " (no limit)"));
+}
+
+// 发布帧率抽帧(发布时刻表法)：维护next_pub_ts_ns_发布时刻，帧ts到达或越过
+// 该时刻(留10%周期容差，兼容sensor时间戳抖动)即发布，并把时刻表推进一个目标
+// 周期。丢帧按时刻表均匀分布，平均发布帧率精确等于目标帧率，
+// 不会因整数倍跳帧而偏低(如底层8fps目标7fps时按125*6+250ms模式发布，恰为7fps)。
+// 目标帧率不低于底层实际帧率时不丢帧。时刻表落后于当前帧(码流停顿后恢复)时
+// 重新锚定，避免连续补发。返回true表示允许发布。
+bool MipiCamNode::pubRateAllow(Publisher_info_base &pub_info, int64_t frame_ts_ns) {
+  if (pub_info.target_fps_ <= 0 || pub_info.pub_interval_ns_ <= 0) {
+    return true;  // 未限速
+  }
+  const int64_t interval = pub_info.pub_interval_ns_;
+  const int64_t tol = interval / 10;
+  // 首帧；或时间戳回退(码流重启/时钟切换)：发布并重新锚定时刻表
+  if (pub_info.next_pub_ts_ns_ == 0 || frame_ts_ns < pub_info.last_pub_ts_ns_) {
+    pub_info.last_pub_ts_ns_ = frame_ts_ns;
+    pub_info.next_pub_ts_ns_ = frame_ts_ns + interval;
+    return true;
+  }
+  if (frame_ts_ns + tol >= pub_info.next_pub_ts_ns_) {
+    // 到达发布时刻：发布并推进时刻表
+    pub_info.last_pub_ts_ns_ = frame_ts_ns;
+    pub_info.next_pub_ts_ns_ += interval;
+    if (pub_info.next_pub_ts_ns_ <= frame_ts_ns) {
+      // 时刻表已落后(帧停顿后恢复等)：按当前帧重新锚定，避免连续补发
+      pub_info.next_pub_ts_ns_ = frame_ts_ns + interval;
+    }
+    return true;
+  }
+  RCLCPP_DEBUG(rclcpp::get_logger("mipi_node"),
+               "drop frame ts:%ld ns, next pub ts:%ld ns (target %d fps)",
+               static_cast<long>(frame_ts_ns),
+               static_cast<long>(pub_info.next_pub_ts_ns_), pub_info.target_fps_);
+  return false;
+}
+
+// 异常模拟状态发布：激活字段集合变化时发布 /mipi_cam_fault_status
+// （内容=逗号分隔字段列表，空串=全部恢复正常），并打 WARN 便于测试确认。
+// 多个发布线程与 IMU 线程都会触发，变化检测加锁。
+void MipiCamNode::publishFaultStatusIfChanged() {
+  if (!fault_injector_ || !pub_fault_status_) {
+    return;
+  }
+  const std::string active = fault_injector_->activeFaultsNow();
+  {
+    std::lock_guard<std::mutex> lk(fault_status_mtx_);
+    if (active == last_fault_status_) {
+      return;
+    }
+    last_fault_status_ = active;
+  }
+  std_msgs::msg::String msg;
+  msg.data = active;
+  pub_fault_status_->publish(msg);
+  RCLCPP_WARN(rclcpp::get_logger("mipi_node"),
+              "[fault-inject] active faults: %s",
+              active.empty() ? "(none)" : active.c_str());
 }
 
 
@@ -626,6 +776,31 @@ void MipiCamNode::update(std::shared_ptr<Publisher_info> pub_info) {
       }
       return;
     }
+    // 帧率控制：按目标帧率抽帧，未到发布间隔的帧直接丢弃
+    const int64_t frame_ts_ns =
+        static_cast<int64_t>(img->header.stamp.sec) * 1000000000LL +
+        static_cast<int64_t>(img->header.stamp.nanosec);
+    if (!pubRateAllow(*pub_info, frame_ts_ns)) {
+      return;
+    }
+    // 异常模拟注入点（在抽帧判定之后、publish 之前，不干扰帧率控制）：
+    // - IMAGE_STALLED：丢弃本帧（帧已从队列取出、缓冲已归还，底层采集
+    //   不受影响，恢复后无积压）；anchor 以首帧发布时刻为停顿时序 T0
+    // - 时间戳篡改后 camera_info 的 stamp 在下方赋值处取自
+    //   img->header.stamp，附属话题自动跟随
+    if (fault_injector_) {
+      publishFaultStatusIfChanged();
+      fault_injector_->anchorImageStream();
+      if (fault_injector_->imageStallActive()) {
+        return;
+      }
+      const int64_t injected_ns = fault_injector_->transformImageTs(frame_ts_ns);
+      if (injected_ns != frame_ts_ns) {
+        img->header.stamp.sec = static_cast<int32_t>(injected_ns / 1000000000LL);
+        img->header.stamp.nanosec =
+            static_cast<uint32_t>(injected_ns % 1000000000LL);
+      }
+    }
     save_jpg(img->header.stamp,img->encoding,img->width,img->height,(void *)&img->data[0]);
     save_yuv(img->header.stamp, (void *)&img->data[0], img->data.size());
     if (pub_info->info_pub_ && pub_info->camera_calibration_info_) {
@@ -674,6 +849,30 @@ void MipiCamNode::hbmemUpdate(std::shared_ptr<Publisher_hbmem_info> pub_info) {
           RCLCPP_WARN(rclcpp::get_logger("mipi_node"), "hbmemUpdate grab img failed");
         }
         return;
+      }
+      // 帧率控制：按目标帧率抽帧，未到发布间隔的帧丢弃
+      // (loaned消息随作用域回收，不publish、不递增index)
+      const int64_t frame_ts_ns =
+          static_cast<int64_t>(msg.time_stamp.sec) * 1000000000LL +
+          static_cast<int64_t>(msg.time_stamp.nanosec);
+      if (!pubRateAllow(*pub_info, frame_ts_ns)) {
+        return;
+      }
+      // 异常模拟注入点（与 update() 的 ros 通路对称）：
+      // - IMAGE_STALLED：丢弃本帧，loaned 消息随作用域回收、不递增 index
+      // - 时间戳篡改只改本条 loaned 消息的字段，随 publish 生效无残留
+      if (fault_injector_) {
+        publishFaultStatusIfChanged();
+        fault_injector_->anchorImageStream();
+        if (fault_injector_->imageStallActive()) {
+          return;
+        }
+        const int64_t injected_ns = fault_injector_->transformImageTs(frame_ts_ns);
+        if (injected_ns != frame_ts_ns) {
+          msg.time_stamp.sec = static_cast<int32_t>(injected_ns / 1000000000LL);
+          msg.time_stamp.nanosec =
+              static_cast<uint32_t>(injected_ns % 1000000000LL);
+        }
       }
       std::string encode(msg.encoding.begin(), msg.encoding.end());
       save_jpg(msg.time_stamp,encode,msg.width,msg.height,(void *)&msg.data);
@@ -752,13 +951,33 @@ void MipiCamNode::read_imu_data() {
   imu_sensor::ImuData_T imu_data;
 
   while (is_imu_running_ ) {
+    if (fault_injector_) {
+      publishFaultStatusIfChanged();
+    }
     size_t subscriber_count = pub_imu_->get_subscription_count();
     if (subscriber_count > 0) {
       imu_manager_->read_sensor_data(&imu_data);
+      // 异常模拟注入点（发布层，采集通路不动）：
+      // - IMU_STALLED：读后丢弃——继续 read 保持驱动队列新鲜（event 路
+      //   deque 深64≈320ms，不读会积压），恢复瞬间发出的就是新鲜数据，
+      //   不引入"停顿前陈旧数据堆积→时间戳跳变"的二次异常
+      if (fault_injector_) {
+        fault_injector_->anchorImuStream();
+        if (fault_injector_->imuStallActive()) {
+          usleep(1*1000);
+          continue;
+        }
+      }
       // ---- IMU 时间戳 ----
-      auto sec = static_cast<int32_t>(imu_data.timestamp / 1e9);
+      // 异常模拟流水线 raw→drift偏移→重复替换 在此统一篡改；
+      // imu_msg 与 tf_msg 共用 sec/nanosec，附属话题(TF//imu_extrinsic)自动跟随
+      int64_t imu_ts_ns = static_cast<int64_t>(imu_data.timestamp);
+      if (fault_injector_) {
+        imu_ts_ns = fault_injector_->transformImuTs(imu_ts_ns);
+      }
+      auto sec = static_cast<int32_t>(imu_ts_ns / 1000000000LL);
       auto nanosec = static_cast<uint32_t>(
-          imu_data.timestamp - sec * 1e9);
+          imu_ts_ns - static_cast<int64_t>(sec) * 1000000000LL);
       imu_msg.header.stamp.set__sec(sec);
       imu_msg.header.stamp.set__nanosec(nanosec);
       imu_msg.linear_acceleration.x = imu_data.ax;
