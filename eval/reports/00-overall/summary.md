@@ -87,6 +87,18 @@
 
 注：`ros2 topic bw` 对 hbmem 按定长 6.22MB 计，数值 ×2.97 虚高，带宽以元数据估算为准；bgr8 hbmem（8.36MB）预期超限未实测。
 
+### IMU/Image 延迟 × CPU 负载（`imu_latency_test.py` 接入，HI1/HI2）✅
+
+| 指标 | 实测 | 说明 |
+|---|---|---|
+| IMU 采样→接收（稳态） | **3.06ms**（p99 3.98，两次复现差 <2%） | HI2（仅订阅 IMU） |
+| IMU 延迟受 3 核压力影响 | 3.06 → **3.18** → 3.08ms | 几乎无影响 |
+| 图像延迟（剥 boot 偏移） | 左 20.5 / 右 27.2ms（p50） | HI1 |
+| 图像延迟受压力影响 | p95 1.01~1.08×（≤2× 判据） | ✅ |
+| 测量架构注意 | HI1（同 executor 订图像）IMU 显示 1526ms —— **脚本自身 Python 反序列化阻塞 + reliable 队列积压**，非产品问题 | IMU 结论以 HI2 为准 |
+
+> 入口：`./eval/run/run_suite.py --suite imu-latency`（root）；报告 `reports/imu-latency-cpu/`。
+
 ## 3. 问题清单（按优先级）
 
 | # | 级别 | 问题 | 证据 | 建议 |

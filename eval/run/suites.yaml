@@ -11,5 +11,7 @@ suites:
     cases: [C04, C07, C04B, C06]
   resolution:       # 分辨率/旋转
     cases: [C04, C14R]
+  imu-latency:      # IMU 延迟×CPU 负载（需 root；HI2 为 IMU-only 对照）
+    cases: [HI1, HI2]
   full:             # 全部已定义用例
     cases: [C04, C04S, C04B, C05, C06, C07, C08, C14R]

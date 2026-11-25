@@ -1,0 +1,83 @@
+{
+  "run_dir": "/home/dongyangliu/hobot_mipi_cam/eval/logs/HI2_dual-1088x1280-nv12-30fps-imu-latency-cpu-imuonly_20261125_171514",
+  "phases": {
+    "pre_s": 60.0,
+    "stress_s": 60.0,
+    "post_s": 60.0
+  },
+  "warmup_s": 5.0,
+  "warmup_dropped": {
+    "imu": 1524,
+    "image": 0
+  },
+  "thresholds": {
+    "fps_ratio_min": 0.99,
+    "drop_rate_max": 0.005,
+    "resolution_match_min": 1.0,
+    "stability_interval_ratio": 3.0,
+    "pair_rate_min": 0.999,
+    "pair_diff_p99_ms": 1.0,
+    "exp_match_tol_ms": 50.0,
+    "exp_us_cap_s": 5.0,
+    "sync_missing_sustain_ms": 100.0,
+    "imu_nominal_hz": 200.0,
+    "imu_rate_ratio_min": 0.99,
+    "imu_interval_p99_ratio": 0.5,
+    "imu_backward_max": 0,
+    "imu_gyro_bias_max": 0.03,
+    "imu_accel_norm_min": 9.3,
+    "imu_accel_norm_max": 10.3,
+    "cam_imu_nearest_p99_ms": 10.0,
+    "cam_imu_cover_min": 0.95,
+    "recv_drop_max": 0.005,
+    "imu_recv_drop_max": 0.0001,
+    "info_pair_min": 1.0,
+    "imu_latency_p99_ms": 5.0,
+    "image_stress_p95_ratio": 2.0,
+    "image_post_p95_ratio": 1.2
+  },
+  "stamp_offset_ms": 22.019,
+  "phase_start_mono_ns": 2319014267116,
+  "phase_end_mono_ns": 2379014267116,
+  "imu": {
+    "/imu_data": {
+      "pre": {
+        "n": 11131,
+        "mean_ms": 3.137,
+        "p50_ms": 3.059,
+        "p95_ms": 3.701,
+        "p99_ms": 3.975,
+        "max_ms": 12.707
+      },
+      "stress": {
+        "n": 12142,
+        "mean_ms": 3.248,
+        "p50_ms": 3.181,
+        "p95_ms": 3.872,
+        "p99_ms": 4.15,
+        "max_ms": 10.302
+      },
+      "post": {
+        "n": 12041,
+        "mean_ms": 3.143,
+        "p50_ms": 3.075,
+        "p95_ms": 3.701,
+        "p99_ms": 3.963,
+        "max_ms": 4.941
+      }
+    }
+  },
+  "image": {},
+  "raw_counts": {
+    "imu": 36838,
+    "image": 0
+  },
+  "verdict": "PASS",
+  "checks": [
+    {
+      "check": "IMU 空载 p99 ≤ 5.0ms（/imu_data）",
+      "pass": true,
+      "detail": "p99=3.975ms"
+    }
+  ]
+}

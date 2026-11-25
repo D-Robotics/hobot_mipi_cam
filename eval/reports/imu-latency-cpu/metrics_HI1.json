@@ -1,0 +1,156 @@
+{
+  "run_dir": "/home/dongyangliu/hobot_mipi_cam/eval/logs/HI1_dual-1088x1280-nv12-30fps-imu-latency-cpu_20261125_170810",
+  "phases": {
+    "pre_s": 60.0,
+    "stress_s": 60.0,
+    "post_s": 60.0
+  },
+  "warmup_s": 5.0,
+  "warmup_dropped": {
+    "imu": 861,
+    "image": 268
+  },
+  "thresholds": {
+    "fps_ratio_min": 0.99,
+    "drop_rate_max": 0.005,
+    "resolution_match_min": 1.0,
+    "stability_interval_ratio": 3.0,
+    "pair_rate_min": 0.999,
+    "pair_diff_p99_ms": 1.0,
+    "exp_match_tol_ms": 50.0,
+    "exp_us_cap_s": 5.0,
+    "sync_missing_sustain_ms": 100.0,
+    "imu_nominal_hz": 200.0,
+    "imu_rate_ratio_min": 0.99,
+    "imu_interval_p99_ratio": 0.5,
+    "imu_backward_max": 0,
+    "imu_gyro_bias_max": 0.03,
+    "imu_accel_norm_min": 9.3,
+    "imu_accel_norm_max": 10.3,
+    "cam_imu_nearest_p99_ms": 10.0,
+    "cam_imu_cover_min": 0.95,
+    "recv_drop_max": 0.005,
+    "imu_recv_drop_max": 0.0001,
+    "info_pair_min": 1.0,
+    "imu_latency_p99_ms": 5.0,
+    "image_stress_p95_ratio": 2.0,
+    "image_post_p95_ratio": 1.2
+  },
+  "stamp_offset_ms": 20.126,
+  "phase_start_mono_ns": 1900942163271,
+  "phase_end_mono_ns": 1960942163271,
+  "imu": {
+    "/imu_data": {
+      "pre": {
+        "n": 11530,
+        "mean_ms": 1692.703,
+        "p50_ms": 1526.477,
+        "p95_ms": 3355.798,
+        "p99_ms": 3646.617,
+        "max_ms": 3718.873
+      },
+      "stress": {
+        "n": 12340,
+        "mean_ms": 143.86,
+        "p50_ms": 56.498,
+        "p95_ms": 485.357,
+        "p99_ms": 1113.462,
+        "max_ms": 1324.79
+      },
+      "post": {
+        "n": 11981,
+        "mean_ms": 1986.328,
+        "p50_ms": 1933.501,
+        "p95_ms": 3217.023,
+        "p99_ms": 3482.102,
+        "max_ms": 3570.492
+      }
+    }
+  },
+  "image": {
+    "/image_left_raw": {
+      "pre": {
+        "n": 1437,
+        "mean_ms": 21.406,
+        "p50_ms": 20.475,
+        "p95_ms": 30.663,
+        "p99_ms": 34.457,
+        "max_ms": 157.114
+      },
+      "stress": {
+        "n": 1297,
+        "mean_ms": 22.142,
+        "p50_ms": 21.007,
+        "p95_ms": 33.26,
+        "p99_ms": 37.053,
+        "max_ms": 42.466
+      },
+      "post": {
+        "n": 1537,
+        "mean_ms": 21.796,
+        "p50_ms": 20.877,
+        "p95_ms": 32.612,
+        "p99_ms": 35.461,
+        "max_ms": 40.375
+      }
+    },
+    "/image_right_raw": {
+      "pre": {
+        "n": 1448,
+        "mean_ms": 27.613,
+        "p50_ms": 27.188,
+        "p95_ms": 33.598,
+        "p99_ms": 35.437,
+        "max_ms": 174.869
+      },
+      "stress": {
+        "n": 1388,
+        "mean_ms": 26.693,
+        "p50_ms": 27.346,
+        "p95_ms": 33.894,
+        "p99_ms": 36.337,
+        "max_ms": 51.621
+      },
+      "post": {
+        "n": 1535,
+        "mean_ms": 27.885,
+        "p50_ms": 28.035,
+        "p95_ms": 34.585,
+        "p99_ms": 36.37,
+        "max_ms": 39.765
+      }
+    }
+  },
+  "raw_counts": {
+    "imu": 36712,
+    "image": 8910
+  },
+  "verdict": "WARN",
+  "checks": [
+    {
+      "check": "IMU 空载 p99 ≤ 5.0ms（/imu_data）",
+      "pass": false,
+      "detail": "p99=3646.617ms"
+    },
+    {
+      "check": "图像压力期 p95 ≤ 2.0× 空载（/image_left_raw）",
+      "pass": true,
+      "detail": "空载 30.663ms → 压力 33.26ms（1.08×）"
+    },
+    {
+      "check": "图像恢复期 p95 ≤ 1.2× 空载（/image_left_raw）",
+      "pass": true,
+      "detail": "空载 30.663ms → 恢复 32.612ms（1.06×）"
+    },
+    {
+      "check": "图像压力期 p95 ≤ 2.0× 空载（/image_right_raw）",
+      "pass": true,
+      "detail": "空载 33.598ms → 压力 33.894ms（1.01×）"
+    },
+    {
+      "check": "图像恢复期 p95 ≤ 1.2× 空载（/image_right_raw）",
+      "pass": true,
+      "detail": "空载 33.598ms → 恢复 34.585ms（1.03×）"
+    }
+  ]
+}

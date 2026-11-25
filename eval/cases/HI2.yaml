@@ -1,0 +1,53 @@
+# IMU 延迟（只测 IMU，不订图像）——排除 Python 单线程图像回调的阻塞
+# 与 HI1 同一被测算据，唯一差别：不订阅图像。用于判定 HI1 中 IMU 延迟
+# 被同 executor 的图像反序列化 + reliable 队列积压污染的程度。
+id: HI2
+name: dual-1088x1280-nv12-30-imu-latency-cpu-imuonly
+run_label: dual-1088x1280-nv12-30fps-imu-latency-cpu-imuonly
+stage: imu-latency-cpu
+baseline: false
+
+launch: mipi_cam_eval_dual.launch.py
+params:
+  device_mode: dual
+  dual_combine: 1
+  sub_stream_enable: false
+  image_width: 1088
+  image_height: 1280
+  sub_image_width: 544
+  sub_image_height: 640
+  framerate: 30.0
+  sub_framerate: 15.0
+  out_format: nv12
+  io_method: ros
+  frame_ts_type: sensor
+  lpwm_enable: false
+  gdc_enable: true
+  rotation: 0.0
+  cal_rotation: 0.0
+  channel: 0
+  channel2: 2
+  imu_type: icm42688
+
+eval:
+  log_enable: true
+  log_events: [exposure, frame_in]
+
+imu_latency:
+  pre_stress: 60
+  stress_duration: 60
+  post_stress: 60
+  stress_cores: 3
+  image_domain: mono
+  imu_topic: /imu_data
+  image_topics: []          # 关键差异：不订阅图像
+
+recorder:
+  image_topics: []
+  imu_topics: []
+  info_topics: []
+
+thresholds:
+  imu_latency_p99_ms: 5.0
+  image_stress_p95_ratio: 2.0
+  image_post_p95_ratio: 1.2

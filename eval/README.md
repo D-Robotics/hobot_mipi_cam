@@ -77,6 +77,7 @@ t0 域偏移逐 boot 变化）。阈值默认值在 `tools/analyze/thresholds.py
 | C16 | C04 + IMU 静置（root） | C-01~06（imu_probe/imu_stat） |
 | C19 | C06 满配 28800s | 8h 长稳（配合 run_stab8h.sh） |
 | CH1/CH2/CH3 | io_method=shared_mem（combine=1 / +lpwm / combine=0） | hbmem 通路 |
+| HI1/HI2 | 延迟×CPU 负载（IMU+图像 / 仅 IMU） | 走 run_latency.sh，见专项工具 |
 
 ## 专项工具
 
@@ -86,6 +87,19 @@ t0 域偏移逐 boot 变化）。阈值默认值在 `tools/analyze/thresholds.py
 ./eval/run/run_res.sh C06 1800        # 长测 + 资源采样 → res_samples.csv（分析链自动读）
 ./eval/run/run_startstop.sh 8 C04 30  # 启停 8 次，残留检查 → startstop_*/
 nohup ./eval/run/run_stab8h.sh 28800 &  # 8h 长稳：数据落 /tmp/stab8h_*，心跳+资源
+```
+
+### IMU/Image 延迟 × CPU 负载（封装仓库根 `imu_latency_test.py`，脚本不改）
+
+```bash
+./eval/run/run_latency.sh HI1          # IMU+图像，三阶段 60/60/60（root：ssh s600）
+./eval/run/run_latency.sh HI2          # 仅 IMU（对照：排除图像回调对 IMU 的阻塞）
+./eval/run/run_suite.py --suite imu-latency   # 一键跑 HI1+HI2 + 三态汇总
+
+python3 eval/tools/analyze/latency_csv.py --run-dir <运行目录>   # 分段统计+判据
+# 口径：启动前 5s 剔除（IIO 缓冲积压）；image 值剥离 ts_mono−ts_frame 的 boot 偏移
+# 结论（2026-11-25）：IMU 稳态 3.0ms、3 核压力下 3.2ms（无影响）；
+#   HI1 同 executor 订图像时 IMU 被 Python 反序列化阻塞到 1.5s —— IMU 结论以 HI2 为准
 ```
 
 长测（>10min）必须 nohup + done 标志轮询（单 ssh 上限 600s）：

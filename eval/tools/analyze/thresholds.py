@@ -51,6 +51,10 @@ DEFAULT_THRESHOLDS = {
     "imu_recv_drop_max": 0.0001,
     # E-10 camera_info 与图像 stamp 配对率下限
     "info_pair_min": 1.0,
+    # IMU/Image 延迟×CPU 负载（imu_latency_test.py 封装）
+    "imu_latency_p99_ms": 5.0,
+    "image_stress_p95_ratio": 2.0,
+    "image_post_p95_ratio": 1.2,
 }
 
 # 允许出现在 YAML 里的键（未知键告警并忽略，防拼写错误静默失效）

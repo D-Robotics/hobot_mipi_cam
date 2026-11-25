@@ -1,0 +1,58 @@
+# IMU/Image 延迟 × CPU 负载敏感性（封装 imu_latency_test.py，不改脚本）
+# 运行：eval/run/run_latency.sh HI1 [总时长]（root：ssh s600；IMU 需 /dev/iio*）
+# 三阶段由脚本内部 sleep 驱动：pre_stress / stress_duration / post_stress。
+# 同时开 [EVAL] exposure+frame_in，分析器用 ts_mono−ts_frame 剥离
+# stamp 与单调钟的 boot 相关偏移（image 延迟绝对值仅作同 run 相对比较）。
+id: HI1
+name: dual-1088x1280-nv12-30-imu-latency-cpu
+run_label: dual-1088x1280-nv12-30fps-imu-latency-cpu
+stage: imu-latency-cpu
+baseline: false
+
+launch: mipi_cam_eval_dual.launch.py
+params:
+  device_mode: dual
+  dual_combine: 1
+  sub_stream_enable: false
+  image_width: 1088
+  image_height: 1280
+  sub_image_width: 544
+  sub_image_height: 640
+  framerate: 30.0
+  sub_framerate: 15.0
+  out_format: nv12
+  io_method: ros
+  frame_ts_type: sensor
+  lpwm_enable: false
+  gdc_enable: true
+  rotation: 0.0
+  cal_rotation: 0.0
+  channel: 0
+  channel2: 2
+  imu_type: icm42688
+
+eval:
+  log_enable: true
+  # 仅用于偏移分解（ts_mono−ts_frame），不含高频 pub_out/combine_out
+  log_events: [exposure, frame_in]
+
+# imu_latency_test.py 的调用参数（不改脚本，只传 CLI）
+imu_latency:
+  pre_stress: 60
+  stress_duration: 60
+  post_stress: 60
+  stress_cores: 3          # 4 核板留 1 核给采集/测量
+  image_domain: mono       # frame_ts_type=sensor → stamp 为 monotonic
+  imu_topic: /imu_data
+  image_topics: [/image_left_raw, /image_right_raw]
+
+# 本用例不使用 recorder（脚本自身即订阅端，避免抢 CPU 污染测量）
+recorder:
+  image_topics: []
+  imu_topics: []
+  info_topics: []
+
+thresholds:
+  imu_latency_p99_ms: 5.0
+  image_stress_p95_ratio: 2.0
+  image_post_p95_ratio: 1.2

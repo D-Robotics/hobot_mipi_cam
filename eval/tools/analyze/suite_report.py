@@ -27,6 +27,23 @@ def summarize_run(run: Dict) -> Dict:
     s = {"case": run.get("case"), "result": run.get("result", "?"),
          "elapsed_s": run.get("elapsed_s"), "outdir": run.get("outdir")}
 
+    # imu-latency-cpu（latency_csv.py 产出）：自带 verdict/checks 与三阶段结构
+    if isinstance(m.get("verdict"), str) and m.get("checks") is not None:
+        lat = {}
+        for kind in ("imu", "image"):
+            for topic, ph in (m.get(kind) or {}).items():
+                pre = (ph.get("pre") or {}).get("p50_ms")
+                st = (ph.get("stress") or {}).get("p50_ms")
+                key = topic if kind == "image" else "imu"
+                if pre is not None:
+                    lat[key] = pre
+                if st is not None:
+                    lat[key + "@stress"] = st
+        s["latency_p50_ms"] = lat or None
+        s["warnings"] = [c["check"] for c in m["checks"] if not c.get("pass")]
+        s["verdict"] = m["verdict"] if run.get("result") != "FAIL" else "FAIL"
+        return s
+
     ft = m.get("frame_timing") or {}
     s["fps"] = {k: round(v.get("fps_mean", 0), 2) for k, v in sorted(ft.items())} or None
 

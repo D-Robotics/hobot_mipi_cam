@@ -1129,6 +1129,73 @@ class TestHbmemMapping(unittest.TestCase):
         self.assertEqual(m["seq_gaps"], 2)
 
 
+class TestLatencyCsv(unittest.TestCase):
+    """imu_latency_test.py 封装的分析器（latency_csv.py）。"""
+
+    def _rows(self, n=180, lat_pre=10.0, lat_stress=40.0, lat_post=11.0, t0=MONO_BASE):
+        rows = []
+        for i in range(n):
+            lat = lat_pre if i < 60 else (lat_stress if i < 120 else lat_post)
+            rows.append(("/image_left_raw", t0 + i * 1_000_000_000 - 10_000_000,
+                         t0 + i * 1_000_000_000, lat))
+        return rows
+
+    def test_phases_split_and_warmup(self):
+        from latency_csv import split_phases
+        m, start, end, dropped = split_phases(self._rows(), 60, 60, 60, warmup_s=5)
+        self.assertEqual(dropped, 5)          # 前 5s 剔除
+        self.assertEqual(m["/image_left_raw"]["pre"]["n"], 55)
+        self.assertEqual(m["/image_left_raw"]["stress"]["n"], 60)
+        self.assertEqual(m["/image_left_raw"]["post"]["n"], 60)
+        self.assertEqual(m["/image_left_raw"]["stress"]["p50_ms"], 40.0)
+
+    def test_offset_subtracted(self):
+        from latency_csv import split_phases
+        m, _, _, _ = split_phases(self._rows(), 60, 60, 60, offset_ms=20.0, warmup_s=0)
+        self.assertEqual(m["/image_left_raw"]["pre"]["p50_ms"], -10.0)  # 10 - 20
+
+    def test_judge_stress_ratio(self):
+        from latency_csv import judge, split_phases
+        from thresholds import merge_thresholds
+        th = merge_thresholds({})
+        img, _, _, _ = split_phases(self._rows(), 60, 60, 60, warmup_s=0)
+        metrics = {"image": img, "imu": {}}
+        verdict, checks = judge(metrics, th)
+        self.assertEqual(verdict, "WARN")     # 40/10 = 4× > 2×
+        self.assertTrue(any("压力期" in c["check"] and not c["pass"] for c in checks))
+
+    def test_judge_zero_baseline_skipped(self):
+        from latency_csv import judge, split_phases
+        from thresholds import merge_thresholds
+        img, _, _, _ = split_phases(self._rows(), 60, 60, 60, offset_ms=10.0, warmup_s=0)
+        verdict, checks = judge({"image": img, "imu": {}}, merge_thresholds({}))
+        # 剥离后空载基准为 0：跳过比率判定，不应误判
+        self.assertEqual(verdict, "PASS")
+        self.assertTrue(any("跳过" in c["detail"] for c in checks))
+
+    def test_judge_imu_pass(self):
+        from latency_csv import judge
+        metrics = {"imu": {"/imu_data": {"pre": {"p99_ms": 3.9},
+                                         "stress": {"p99_ms": 4.2}}}, "image": {}}
+        from thresholds import merge_thresholds
+        verdict, _ = judge(metrics, merge_thresholds({}))
+        self.assertEqual(verdict, "PASS")
+
+    def test_frame_stamp_offset(self):
+        from latency_csv import frame_stamp_offset_ms
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as f:
+            f.write("[EVAL] ts_mono=1010000000 event=frame_in pipe=0 stream=main "
+                    "ts_frame=1000000000\n")
+            f.write("[EVAL] ts_mono=1020000000 event=frame_in pipe=0 stream=main "
+                    "ts_frame=1010000000\n")
+            path = f.name
+        try:
+            self.assertAlmostEqual(frame_stamp_offset_ms(path), 10.0, places=3)
+        finally:
+            os.unlink(path)
+
+
 class TestSuiteReport(unittest.TestCase):
     def _run(self, result="OK", with_pair=False, with_res=True, unstable=False):
         metrics = {}

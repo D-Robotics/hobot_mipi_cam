@@ -58,12 +58,47 @@ def parse_result_txt(outdir):
     return info
 
 
-def analyze_outdir(outdir):
-    """对单个运行目录执行分析，返回 metrics dict（失败返回 {}）。"""
+RUN_LATENCY = os.path.join(PROJ, "eval", "run", "run_latency.sh")
+LATENCY_ANALYZE = os.path.join(PROJ, "eval", "tools", "analyze", "latency_csv.py")
+IMU_LATENCY_STAGE = "imu-latency-cpu"
+
+
+def case_stage(case):
+    """读用例 YAML 的 stage（决定用哪个 runner/分析器）；读不到返回 None。"""
+    path = os.path.join(PROJ, "eval", "cases", f"{case}.yaml")
+    if not yaml or not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return ((yaml.safe_load(f) or {}).get("stage") or "").strip() or None
+    except OSError:
+        return None
+
+
+def analyze_outdir(outdir, stage=None, out_dir=None):
+    """对单个运行目录执行分析，返回 metrics dict（失败返回 {}）。
+
+    imu-latency-cpu 用例走 latency_csv.py（脚本 CSV + 三阶段）；
+    其余走 analyze.py（recorder CSV）。输出写到 out_dir（默认运行目录，
+    板端 root 跑时运行目录本机不可写，suite 传入自己的目录）。
+    """
+    dest = out_dir or outdir
+    os.makedirs(dest, exist_ok=True)
+    if stage == IMU_LATENCY_STAGE:
+        js = os.path.join(dest, "latency_metrics.json")
+        md = os.path.join(dest, "latency_report.md")
+        r = subprocess.run([sys.executable, LATENCY_ANALYZE, "--run-dir", outdir,
+                            "--out-json", js, "--out-md", md],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if not os.path.exists(js):
+            return {}
+        with open(js, encoding="utf-8") as f:
+            return json.load(f)
+
     csv = os.path.join(outdir, "recorder.csv")
     log = os.path.join(outdir, "mipi_cam.eval.log")
-    js = os.path.join(outdir, "metrics.json")
-    md = os.path.join(outdir, "report.md")
+    js = os.path.join(dest, "metrics.json")
+    md = os.path.join(dest, "report.md")
     if not os.path.exists(csv):
         return {}
     cmd = [sys.executable, ANALYZE, "--csv", csv, "--out-json", js, "--out-md", md]
@@ -76,14 +111,17 @@ def analyze_outdir(outdir):
         return json.load(f)
 
 
-def run_case(case, duration, known_dirs):
+def run_case(case, duration, known_dirs, stage=None):
     """跑一个用例，返回本次新增的 outdir（失败返回 None）。
 
+    imu-latency-cpu 用例走 run_latency.sh（不起 recorder，脚本即订阅端）；
+    其余走 run_case.sh。
     板端时钟不可靠（可能回到 2000 年），目录名字典序不能代表新旧：
     优先取“跑前快照之后新出现”的目录，多个时按 mtime 取最新；
     没有新增（复跑同名校验冲突等）回退到该用例 mtime 最新的目录。
     """
-    cmd = [RUN_CASE, case]
+    runner = RUN_LATENCY if stage == IMU_LATENCY_STAGE else RUN_CASE
+    cmd = [runner, case]
     if duration:
         cmd.append(str(duration))
     r = subprocess.run(cmd)
@@ -152,14 +190,16 @@ def main():
     if os.path.isdir(logs_dir):
         known_dirs = {os.path.join(logs_dir, n) for n in os.listdir(logs_dir)}
     for case, dur in runs_src:
+        stage = case_stage(case)
         if args.analyze_only is not None:
             outdir = os.path.abspath(dur)
             if not os.path.isdir(outdir):
                 print(f"skip: {outdir} 不是目录")
                 continue
         else:
-            print(f"==> run {case} (duration={dur or 'yaml'})")
-            outdir = run_case(case, dur, known_dirs)
+            print(f"==> run {case} (duration={dur or 'yaml'}, runner="
+                  f"{'run_latency' if stage == IMU_LATENCY_STAGE else 'run_case'})")
+            outdir = run_case(case, dur, known_dirs, stage)
             if outdir is None:
                 runs.append({"case": case, "outdir": None, "result": "FAIL",
                              "elapsed_s": None, "metrics": {}})
@@ -169,7 +209,9 @@ def main():
         info = parse_result_txt(outdir)
         info["case"] = case
         print(f"==> analyze {case}: {outdir} RESULT={info['result']}")
-        info["metrics"] = analyze_outdir(outdir)
+        # 分析产物落到 suite 目录：板端 root 跑时运行目录本机不可写
+        info["metrics"] = analyze_outdir(outdir, stage,
+                                         out_dir=os.path.join(out_root, f"analyze_{case}"))
         runs.append(info)
 
     suite = {"suite": suite_name,
