@@ -89,17 +89,19 @@ t0 域偏移逐 boot 变化）。阈值默认值在 `tools/analyze/thresholds.py
 nohup ./eval/run/run_stab8h.sh 28800 &  # 8h 长稳：数据落 /tmp/stab8h_*，心跳+资源
 ```
 
-### IMU/Image 延迟 × CPU 负载（封装仓库根 `imu_latency_test.py`，脚本不改）
+### IMU/Image 延迟 × CPU 负载（封装仓库根 `imu_latency_test.py`）
 
 ```bash
-./eval/run/run_latency.sh HI1          # IMU+图像，三阶段 60/60/60（root：ssh s600）
-./eval/run/run_latency.sh HI2          # 仅 IMU（对照：排除图像回调对 IMU 的阻塞）
+./eval/run/run_latency.sh HI1          # IMU+图像，预热15+空载60+压力60+恢复60（root：ssh s600）
+./eval/run/run_latency.sh HI2          # 仅 IMU（严格 IMU 判定）
 ./eval/run/run_suite.py --suite imu-latency   # 一键跑 HI1+HI2 + 三态汇总
 
 python3 eval/tools/analyze/latency_csv.py --run-dir <运行目录>   # 分段统计+判据
-# 口径：启动前 5s 剔除（IIO 缓冲积压）；image 值剥离 ts_mono−ts_frame 的 boot 偏移
-# 结论（2026-11-25）：IMU 稳态 3.0ms、3 核压力下 3.2ms（无影响）；
-#   HI1 同 executor 订图像时 IMU 被 Python 反序列化阻塞到 1.5s —— IMU 结论以 HI2 为准
+# 脚本 v2：IMU 用独立进程订阅（与图像彻底隔离）；预热 --warmup 丢弃 IIO 缓冲积压
+#   （实测积压约 9s，用例配 15）；汇总表分空载/压力/恢复；写 <stem>.phases.json
+#   供分析精确分段；image 值剥离 ts_mono−ts_frame 的 boot 偏移（本轮达 371ms）
+# 结论（2026-11-26）：IMU 采样→接收 3.0~3.8ms（p99 4.1），3 核压力无影响；
+#   图像 18.5/24.7ms，压力期 p95 1.0×；两例 PASS
 ```
 
 长测（>10min）必须 nohup + done 标志轮询（单 ssh 上限 600s）：

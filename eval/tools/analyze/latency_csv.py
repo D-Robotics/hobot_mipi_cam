@@ -107,19 +107,42 @@ def frame_stamp_offset_ms(eval_log):
     return round(_pct(vals, 0.5) / 1e6, 3)
 
 
-def split_phases(rows, pre_s, stress_s, post_s, offset_ms=None, warmup_s=0.0):
+def read_phases(run_dir):
+    """读脚本产出的 *.phases.json（阶段边界/域/偏移提示）；没有返回 None。"""
+    if not os.path.isdir(run_dir):
+        return None
+    for name in sorted(os.listdir(run_dir)):
+        if not name.endswith(".phases.json"):
+            continue
+        try:
+            with open(os.path.join(run_dir, name), encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if data.get("stress_start_mono_ns") and data.get("stress_end_mono_ns"):
+            return data
+    return None
+
+
+def split_phases(rows, pre_s, stress_s, post_s, offset_ms=None, warmup_s=0.0,
+                 bounds=None):
     """按 recv_mono 相对首样本的时间切三阶段 -> {topic: {phase: stats}}。
 
-    warmup_s：剔除启动窗口（IIO 缓冲积压 + 订阅建立，实测仅前 ~5s，
-    之后 IMU 延迟恒定 3.1ms）；阶段边界仍按原始 t0 计算。
+    bounds=(t0, stress_start, stress_end) 来自脚本 sidecar 时直接采用（精确）；
+    否则按「首样本 + pre_stress」推算（CSV 无阶段标记，误差 <1s）。
+    warmup_s：剔除启动窗口（仅推算模式需要；脚本侧已自行丢弃）。
     返回 (metrics, stress_start, stress_end, dropped_warmup_rows)。
     """
     if not rows:
         return {}, None, None, 0
-    t0 = min(r[2] for r in rows)
-    stress_start = t0 + int(pre_s * 1e9)
-    stress_end = stress_start + int(stress_s * 1e9)
-    warm_end = t0 + int(warmup_s * 1e9)
+    if bounds:
+        t0, stress_start, stress_end = [int(v) for v in bounds]
+        warm_end = t0
+    else:
+        t0 = min(r[2] for r in rows)
+        stress_start = t0 + int(pre_s * 1e9)
+        stress_end = stress_start + int(stress_s * 1e9)
+        warm_end = t0 + int(warmup_s * 1e9)
 
     buckets = {}
     kept = dropped = 0
@@ -235,11 +258,20 @@ def render(metrics, checks, verdict, meta):
 
     lines.append("## 口径与局限")
     lines.append("")
-    lines.append("- 测量端即 `imu_latency_test.py`（Python 单线程订阅）；压力期其自身也被挤占，"
-                 "延迟上升含「测量端被饿」成分。")
-    lines.append("- 阶段边界按「首样本 + pre_stress」推算（脚本 CSV 无阶段标记），误差 <1s。")
+    lines.append("- 测量端即 `imu_latency_test.py`（IMU/图像分节点分线程订阅）；"
+                 "压力期测量端自身也会被挤占，延迟含部分「测量端被饿」成分。")
+    src = metrics.get("phase_bounds_source")
+    if src == "sidecar":
+        lines.append("- 阶段边界取自脚本 `<stem>.phases.json`（精确，非推算）。")
+    else:
+        lines.append("- 阶段边界按「首样本 + pre_stress」推算（旧版 CSV 无阶段标记），误差 <1s。")
+    hints = metrics.get("offset_hint_ms") or {}
+    if hints:
+        lines.append("- 脚本域检查（`recv−stamp` 最小值，最接近纯偏移）："
+                     + "、".join(f"{k}={v}ms" for k, v in hints.items() if v is not None))
     lines.append("- image 绝对值受 boot 相关偏移影响；已剥离时可比，未剥离时仅同 run 相对比较。")
-    lines.append("- IMU 订阅用默认 reliable depth=1000，与产品 best_effort 消费者行为不同。")
+    lines.append("- IMU 订阅为 best_effort depth=50（不随订阅端变慢积压），"
+                 "与产品 best_effort 消费者行为一致。")
     lines.append("")
     return "\n".join(lines)
 
@@ -267,14 +299,27 @@ def main():
     imu_rows = read_latency_csv(os.path.join(run_dir, "latency_imu.csv"))
     img_rows = read_latency_csv(os.path.join(run_dir, "latency_image.csv"))
 
+    # 脚本 sidecar（新版）优先：边界精确，且脚本侧已丢弃预热窗口
+    sidecar = read_phases(run_dir)
+    bounds = None
+    warmup_eff = args.warmup_s
+    if sidecar:
+        bounds = (sidecar["t0_mono_ns"], sidecar["stress_start_mono_ns"],
+                  sidecar["stress_end_mono_ns"])
+        warmup_eff = 0.0
+
     imu_m, start, end, imu_dropped = split_phases(
-        imu_rows, pre_s, stress_s, post_s, warmup_s=args.warmup_s)
+        imu_rows, pre_s, stress_s, post_s, warmup_s=warmup_eff, bounds=bounds)
     img_m, _, _, img_dropped = split_phases(
-        img_rows, pre_s, stress_s, post_s, offset_ms=off, warmup_s=args.warmup_s)
+        img_rows, pre_s, stress_s, post_s, offset_ms=off,
+        warmup_s=warmup_eff, bounds=bounds)
     metrics = {
         "run_dir": run_dir,
         "phases": {"pre_s": pre_s, "stress_s": stress_s, "post_s": post_s},
-        "warmup_s": args.warmup_s,
+        "phase_bounds_source": "sidecar" if sidecar else "inferred",
+        "offset_hint_ms": (sidecar or {}).get("offset_hint_ms"),
+        "warmup_s": warmup_eff + (float((sidecar or {}).get("warmup_s") or 0)
+                                  if sidecar else 0),
         "warmup_dropped": {"imu": imu_dropped, "image": img_dropped},
         "thresholds": th,
         "stamp_offset_ms": off,

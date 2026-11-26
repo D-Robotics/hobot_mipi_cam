@@ -4,6 +4,7 @@
 
 运行：python3 -m unittest discover -s src/box/hobot_sensor/hobot_mipi_cam/eval/test/analyze
 """
+import json
 import os
 import sys
 import unittest
@@ -1194,6 +1195,56 @@ class TestLatencyCsv(unittest.TestCase):
             self.assertAlmostEqual(frame_stamp_offset_ms(path), 10.0, places=3)
         finally:
             os.unlink(path)
+
+
+class TestLatencyPhases(unittest.TestCase):
+    """脚本 sidecar（*.phases.json）优先于按参数推算。"""
+
+    def _dir(self, with_sidecar=True):
+        import tempfile
+        d = tempfile.mkdtemp()
+        t0 = MONO_BASE
+        rows = ["topic,stamp_ns,recv_mono_ns,recv_rt_ns,latency_ms"]
+        for i in range(180):
+            lat = 10.0 if i < 60 else (40.0 if i < 120 else 11.0)
+            rows.append(f"/image_left_raw,{t0 + i * 10**9 - 10**7},"
+                        f"{t0 + i * 10**9},{t0 + i * 10**9},{lat}")
+        with open(os.path.join(d, "latency_image.csv"), "w") as f:
+            f.write("\n".join(rows))
+        if with_sidecar:
+            with open(os.path.join(d, "latency.phases.json"), "w") as f:
+                json.dump({"t0_mono_ns": t0, "stress_start_mono_ns": t0 + 60 * 10**9,
+                           "stress_end_mono_ns": t0 + 120 * 10**9,
+                           "warmup_s": 15.0, "image_domain": "mono",
+                           "offset_hint_ms": {"/image_left_raw": 10.0}}, f)
+        return d
+
+    def test_read_phases(self):
+        from latency_csv import read_phases
+        d = self._dir(True)
+        ph = read_phases(d)
+        self.assertEqual(ph["warmup_s"], 15.0)
+        self.assertEqual(ph["stress_start_mono_ns"], MONO_BASE + 60 * 10**9)
+        self.assertIsNone(read_phases(self._dir(False)))
+
+    def test_bounds_used_directly(self):
+        from latency_csv import read_phases, split_phases
+        from parsers import parse_recorder_csv  # noqa: F401  仅确保导入路径
+        d = self._dir(True)
+        rows = []
+        with open(os.path.join(d, "latency_image.csv")) as f:
+            f.readline()
+            for line in f:
+                p = line.strip().split(",")
+                rows.append((p[0], int(p[1]), int(p[2]), float(p[4])))
+        ph = read_phases(d)
+        m, start, end, dropped = split_phases(
+            rows, 60, 60, 60, warmup_s=0,
+            bounds=(ph["t0_mono_ns"], ph["stress_start_mono_ns"],
+                    ph["stress_end_mono_ns"]))
+        self.assertEqual(start, MONO_BASE + 60 * 10**9)
+        self.assertEqual(m["/image_left_raw"]["stress"]["p50_ms"], 40.0)
+        self.assertEqual(dropped, 0)
 
 
 class TestSuiteReport(unittest.TestCase):

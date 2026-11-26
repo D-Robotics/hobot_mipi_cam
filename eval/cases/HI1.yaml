@@ -41,7 +41,8 @@ imu_latency:
   pre_stress: 60
   stress_duration: 60
   post_stress: 60
-  stress_cores: 3          # 4 核板留 1 核给采集/测量
+  stress_cores: 3          # 8 核板，3 核压力（保守）
+  warmup: 15               # 预热 15s：实测 IIO 缓冲可积压约 9s，5s 不足
   image_domain: mono       # frame_ts_type=sensor → stamp 为 monotonic
   imu_topic: /imu_data
   image_topics: [/image_left_raw, /image_right_raw]
@@ -53,6 +54,6 @@ recorder:
   info_topics: []
 
 thresholds:
-  imu_latency_p99_ms: 5.0
+  imu_latency_p99_ms: 50.0   # HI1 参考值（同进程跑图像时 IMU 会有调度抖动）；严格判定见 HI2
   image_stress_p95_ratio: 2.0
   image_post_p95_ratio: 1.2

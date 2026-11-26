@@ -1,13 +1,17 @@
 {
-  "run_dir": "/home/dongyangliu/hobot_mipi_cam/eval/logs/HI2_dual-1088x1280-nv12-30fps-imu-latency-cpu-imuonly_20261125_171514",
+  "run_dir": "/home/dongyangliu/hobot_mipi_cam/eval/logs/HI2_dual-1088x1280-nv12-30fps-imu-latency-cpu-imuonly_20261126_105210",
   "phases": {
     "pre_s": 60.0,
     "stress_s": 60.0,
     "post_s": 60.0
   },
-  "warmup_s": 5.0,
+  "phase_bounds_source": "sidecar",
+  "offset_hint_ms": {
+    "/imu_data": 2.71
+  },
+  "warmup_s": 15.0,
   "warmup_dropped": {
-    "imu": 1524,
+    "imu": 0,
     "image": 0
   },
   "thresholds": {
@@ -36,40 +40,40 @@
     "image_stress_p95_ratio": 2.0,
     "image_post_p95_ratio": 1.2
   },
-  "stamp_offset_ms": 22.019,
-  "phase_start_mono_ns": 2319014267116,
-  "phase_end_mono_ns": 2379014267116,
+  "stamp_offset_ms": 373.117,
+  "phase_start_mono_ns": 65748920998716,
+  "phase_end_mono_ns": 65808997410478,
   "imu": {
     "/imu_data": {
       "pre": {
-        "n": 11131,
-        "mean_ms": 3.137,
-        "p50_ms": 3.059,
-        "p95_ms": 3.701,
-        "p99_ms": 3.975,
-        "max_ms": 12.707
+        "n": 12144,
+        "mean_ms": 3.275,
+        "p50_ms": 3.049,
+        "p95_ms": 3.686,
+        "p99_ms": 4.064,
+        "max_ms": 94.418
       },
       "stress": {
-        "n": 12142,
-        "mean_ms": 3.248,
-        "p50_ms": 3.181,
-        "p95_ms": 3.872,
-        "p99_ms": 4.15,
-        "max_ms": 10.302
+        "n": 12158,
+        "mean_ms": 3.478,
+        "p50_ms": 3.183,
+        "p95_ms": 3.883,
+        "p99_ms": 4.283,
+        "max_ms": 99.301
       },
       "post": {
-        "n": 12041,
-        "mean_ms": 3.143,
-        "p50_ms": 3.075,
-        "p95_ms": 3.701,
-        "p99_ms": 3.963,
-        "max_ms": 4.941
+        "n": 10461,
+        "mean_ms": 3.25,
+        "p50_ms": 3.039,
+        "p95_ms": 3.647,
+        "p99_ms": 4.031,
+        "max_ms": 100.455
       }
     }
   },
   "image": {},
   "raw_counts": {
-    "imu": 36838,
+    "imu": 34763,
     "image": 0
   },
   "verdict": "PASS",
@@ -77,7 +81,7 @@
     {
       "check": "IMU 空载 p99 ≤ 5.0ms（/imu_data）",
       "pass": true,
-      "detail": "p99=3.975ms"
+      "detail": "p99=4.064ms"
     }
   ]
 }

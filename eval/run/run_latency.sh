@@ -58,9 +58,10 @@ print(il.get('image_domain', 'mono'))
 print(pre)
 print(stress)
 print(post)
-print(int(il.get('stress_cores') or max((__import__('os').cpu_count() or 2) - 1, 1)))
+print(int(il.get('stress_cores') or max((__import__('os').cpu_count()) - 1, 1)))
 print(json.dumps(d.get('thresholds') or {}))
 print('True' if ev.get('log_enable', True) else 'False')
+print(float(il.get('warmup', 5)))
 with open(sys.argv[2], 'w', encoding='utf-8') as af:
     for k, v in (d.get('params') or {}).items():
         if isinstance(v, bool):
@@ -90,6 +91,7 @@ POST_STRESS=${YV[9]:-60}
 STRESS_CORES=${YV[10]:-3}
 THRESHOLDS_JSON=${YV[11]:-}
 EVAL_LOG_ENABLE=${YV[12]:-True}
+WARMUP_S=${YV[13]:-5}
 [ -n "$THRESHOLDS_JSON" ] || THRESHOLDS_JSON='{}'
 [ -n "$EVAL_LAUNCH" ] || die launch_not_set 2
 [ -f "$PROJ/eval/launch/$EVAL_LAUNCH" ] || die "launch_missing path=$PROJ/eval/launch/$EVAL_LAUNCH" 2
@@ -206,6 +208,7 @@ python3 "$LATENCY_PY" \
   --image_domain "$IMAGE_DOMAIN" \
   --pre_stress "$PRE_STRESS" --stress_duration "$STRESS_DUR" --post_stress "$POST_STRESS" \
   --stress_cores "$STRESS_CORES" \
+  --warmup "$WARMUP_S" \
   --output "$OUTDIR/latency.csv" \
   --plot "$OUTDIR/latency_plot.png" \
   > "$OUTDIR/latency_test.log" 2>&1

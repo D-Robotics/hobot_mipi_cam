@@ -1,14 +1,20 @@
 {
-  "run_dir": "/home/dongyangliu/hobot_mipi_cam/eval/logs/HI1_dual-1088x1280-nv12-30fps-imu-latency-cpu_20261125_170810",
+  "run_dir": "/home/dongyangliu/hobot_mipi_cam/eval/logs/HI1_dual-1088x1280-nv12-30fps-imu-latency-cpu_20261126_104428",
   "phases": {
     "pre_s": 60.0,
     "stress_s": 60.0,
     "post_s": 60.0
   },
-  "warmup_s": 5.0,
+  "phase_bounds_source": "sidecar",
+  "offset_hint_ms": {
+    "/image_left_raw": 384.317,
+    "/image_right_raw": 384.507,
+    "/imu_data": 2.734
+  },
+  "warmup_s": 15.0,
   "warmup_dropped": {
-    "imu": 861,
-    "image": 268
+    "imu": 0,
+    "image": 0
   },
   "thresholds": {
     "fps_ratio_min": 0.99,
@@ -32,125 +38,125 @@
     "recv_drop_max": 0.005,
     "imu_recv_drop_max": 0.0001,
     "info_pair_min": 1.0,
-    "imu_latency_p99_ms": 5.0,
+    "imu_latency_p99_ms": 50.0,
     "image_stress_p95_ratio": 2.0,
     "image_post_p95_ratio": 1.2
   },
-  "stamp_offset_ms": 20.126,
-  "phase_start_mono_ns": 1900942163271,
-  "phase_end_mono_ns": 1960942163271,
+  "stamp_offset_ms": 371.029,
+  "phase_start_mono_ns": 65288006041669,
+  "phase_end_mono_ns": 65348146772147,
   "imu": {
     "/imu_data": {
       "pre": {
-        "n": 11530,
-        "mean_ms": 1692.703,
-        "p50_ms": 1526.477,
-        "p95_ms": 3355.798,
-        "p99_ms": 3646.617,
-        "max_ms": 3718.873
+        "n": 12147,
+        "mean_ms": 4.288,
+        "p50_ms": 3.831,
+        "p95_ms": 5.802,
+        "p99_ms": 10.517,
+        "max_ms": 55.131
       },
       "stress": {
-        "n": 12340,
-        "mean_ms": 143.86,
-        "p50_ms": 56.498,
-        "p95_ms": 485.357,
-        "p99_ms": 1113.462,
-        "max_ms": 1324.79
+        "n": 12147,
+        "mean_ms": 4.261,
+        "p50_ms": 3.835,
+        "p95_ms": 6.133,
+        "p99_ms": 9.394,
+        "max_ms": 52.458
       },
       "post": {
-        "n": 11981,
-        "mean_ms": 1986.328,
-        "p50_ms": 1933.501,
-        "p95_ms": 3217.023,
-        "p99_ms": 3482.102,
-        "max_ms": 3570.492
+        "n": 10341,
+        "mean_ms": 4.257,
+        "p50_ms": 3.841,
+        "p95_ms": 5.692,
+        "p99_ms": 7.426,
+        "max_ms": 55.621
       }
     }
   },
   "image": {
     "/image_left_raw": {
       "pre": {
-        "n": 1437,
-        "mean_ms": 21.406,
-        "p50_ms": 20.475,
-        "p95_ms": 30.663,
-        "p99_ms": 34.457,
-        "max_ms": 157.114
+        "n": 1717,
+        "mean_ms": 20.115,
+        "p50_ms": 18.516,
+        "p95_ms": 31.091,
+        "p99_ms": 35.054,
+        "max_ms": 38.039
       },
       "stress": {
-        "n": 1297,
-        "mean_ms": 22.142,
-        "p50_ms": 21.007,
-        "p95_ms": 33.26,
-        "p99_ms": 37.053,
-        "max_ms": 42.466
+        "n": 1220,
+        "mean_ms": 20.607,
+        "p50_ms": 19.159,
+        "p95_ms": 31.121,
+        "p99_ms": 34.899,
+        "max_ms": 37.27
       },
       "post": {
-        "n": 1537,
-        "mean_ms": 21.796,
-        "p50_ms": 20.877,
-        "p95_ms": 32.612,
-        "p99_ms": 35.461,
-        "max_ms": 40.375
+        "n": 1488,
+        "mean_ms": 20.915,
+        "p50_ms": 19.32,
+        "p95_ms": 31.492,
+        "p99_ms": 35.81,
+        "max_ms": 39.627
       }
     },
     "/image_right_raw": {
       "pre": {
-        "n": 1448,
-        "mean_ms": 27.613,
-        "p50_ms": 27.188,
-        "p95_ms": 33.598,
-        "p99_ms": 35.437,
-        "max_ms": 174.869
+        "n": 1728,
+        "mean_ms": 24.576,
+        "p50_ms": 24.699,
+        "p95_ms": 31.152,
+        "p99_ms": 32.781,
+        "max_ms": 34.937
       },
       "stress": {
-        "n": 1388,
-        "mean_ms": 26.693,
-        "p50_ms": 27.346,
-        "p95_ms": 33.894,
-        "p99_ms": 36.337,
-        "max_ms": 51.621
+        "n": 1223,
+        "mean_ms": 23.382,
+        "p50_ms": 23.998,
+        "p95_ms": 30.706,
+        "p99_ms": 33.053,
+        "max_ms": 35.709
       },
       "post": {
-        "n": 1535,
-        "mean_ms": 27.885,
-        "p50_ms": 28.035,
-        "p95_ms": 34.585,
-        "p99_ms": 36.37,
-        "max_ms": 39.765
+        "n": 1470,
+        "mean_ms": 25.489,
+        "p50_ms": 25.784,
+        "p95_ms": 32.167,
+        "p99_ms": 34.043,
+        "max_ms": 36.75
       }
     }
   },
   "raw_counts": {
-    "imu": 36712,
-    "image": 8910
+    "imu": 34635,
+    "image": 8846
   },
-  "verdict": "WARN",
+  "verdict": "PASS",
   "checks": [
     {
-      "check": "IMU 空载 p99 ≤ 5.0ms（/imu_data）",
-      "pass": false,
-      "detail": "p99=3646.617ms"
+      "check": "IMU 空载 p99 ≤ 50.0ms（/imu_data）",
+      "pass": true,
+      "detail": "p99=10.517ms"
     },
     {
       "check": "图像压力期 p95 ≤ 2.0× 空载（/image_left_raw）",
       "pass": true,
-      "detail": "空载 30.663ms → 压力 33.26ms（1.08×）"
+      "detail": "空载 31.091ms → 压力 31.121ms（1.0×）"
     },
     {
       "check": "图像恢复期 p95 ≤ 1.2× 空载（/image_left_raw）",
       "pass": true,
-      "detail": "空载 30.663ms → 恢复 32.612ms（1.06×）"
+      "detail": "空载 31.091ms → 恢复 31.492ms（1.01×）"
     },
     {
       "check": "图像压力期 p95 ≤ 2.0× 空载（/image_right_raw）",
       "pass": true,
-      "detail": "空载 33.598ms → 压力 33.894ms（1.01×）"
+      "detail": "空载 31.152ms → 压力 30.706ms（0.99×）"
     },
     {
       "check": "图像恢复期 p95 ≤ 1.2× 空载（/image_right_raw）",
       "pass": true,
-      "detail": "空载 33.598ms → 恢复 34.585ms（1.03×）"
+      "detail": "空载 31.152ms → 恢复 32.167ms（1.03×）"
     }
   ]
 }

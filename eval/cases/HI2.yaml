@@ -38,6 +38,7 @@ imu_latency:
   stress_duration: 60
   post_stress: 60
   stress_cores: 3
+  warmup: 15               # 预热 15s：实测 IIO 缓冲可积压约 9s，5s 不足
   image_domain: mono
   imu_topic: /imu_data
   image_topics: []          # 关键差异：不订阅图像
